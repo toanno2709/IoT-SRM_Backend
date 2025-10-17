@@ -1,5 +1,6 @@
 using AppBackend.Repositories.Generic;
 using AppBackend.Repositories.Repositories.UserRepo;
+using AppBackend.Repositories.Repositories.RoleRepo;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
@@ -8,6 +9,8 @@ using AppBackend.Repositories.Repositories.SubmissionRepo;
 using AppBackend.Repositories.Repositories.ApprovalHistoryRepo;
 using AppBackend.Repositories.Repositories.EvaluationRepo;
 using AppBackend.Repositories.Repositories.EvaluationDetailRepo;
+using AppBackend.Repositories.Repositories.SemesterRepo;
+using AppBackend.Repositories.Repositories.SensorRepo;
 using AppBackend.Services;
 using AppBackend.Services.RateLimiting;
 using AppBackend.Services.Services.Email;
@@ -17,6 +20,8 @@ using AppBackend.Services.Services.Announcement;
 using AppBackend.Services.Services.ProjectMilestone;
 using AppBackend.Services.Services.TopicReview;
 using AppBackend.Services.Services.Grading;
+using AppBackend.Services.Services.Semester;
+using AppBackend.Services.Services.Sensor;
 using AppBackend.Services.ServicesHelpers;
 
 namespace AppBackend.Extensions;
@@ -31,6 +36,7 @@ public static class ServicesConfig
 
         #region Repositories
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IClassRepository, ClassRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
@@ -39,6 +45,8 @@ public static class ServicesConfig
         services.AddScoped<IApprovalHistoryRepository, ApprovalHistoryRepository>();
         services.AddScoped<IEvaluationRepository, EvaluationRepository>();
         services.AddScoped<IEvaluationDetailRepository, EvaluationDetailRepository>();
+        services.AddScoped<ISemesterRepository, SemesterRepository>();
+        services.AddScoped<ISensorRepository, SensorRepository>();
         #endregion
 
         #region Services
@@ -51,6 +59,8 @@ public static class ServicesConfig
         services.AddScoped<IGradingService, GradingService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
+        services.AddScoped<ISemesterService, SemesterService>();
+        services.AddScoped<ISensorService, SensorService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion

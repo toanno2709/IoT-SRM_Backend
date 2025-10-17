@@ -15,16 +15,6 @@ public class ProjectMilestonesController : ControllerBase
         _milestoneService = milestoneService;
     }
 
-    [HttpGet("total-weight")]
-    public async Task<ActionResult<object>> GetTotalWeight([FromRoute] int projectId)
-    {
-        // Endpoint tiện ích: tính tổng weight hiện tại của project
-        var items = await _milestoneService.GetByProjectAsync(projectId);
-        if (!items.IsSuccess || items.Data == null) return BadRequest(items);
-        var total = items.Data.Sum(m => m.Weight ?? 0);
-        return Ok(new { totalWeight = total });
-    }
-
     [HttpGet]
     public async Task<ActionResult<ResultModel<List<ProjectMilestoneResponseDto>>>> GetByProject([FromRoute] int projectId)
     {

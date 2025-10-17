@@ -51,6 +51,7 @@ public class InstructorController : ControllerBase
             });
         }
     }
+    
     /// <summary>
     /// Get all classes assigned to the current instructor
     /// </summary>
@@ -72,7 +73,7 @@ public class InstructorController : ControllerBase
             
             return BadRequest(result);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return StatusCode(500, new ResultModel<List<ClassResponseDto>>
             {
@@ -83,8 +84,10 @@ public class InstructorController : ControllerBase
         }
     }
 
+    // TODO: Cần refactor các endpoints sau cho schema mới (MilestoneEvaluation)
+    /*
     /// <summary>
-    /// Chấm điểm và phản hồi cho project
+    /// Chấm điểm và phản hồi cho project milestone
     /// </summary>
     [HttpPost("grade")]
     public async Task<ActionResult<ResultModel<GradeSubmissionResponseDto>>> Grade([FromBody] GradeSubmissionRequestDto request)
@@ -109,6 +112,7 @@ public class InstructorController : ControllerBase
         if (result.IsSuccess) return Ok(result);
         return BadRequest(result);
     }
+    
     /// <summary>
     /// Danh sách đề tài chờ duyệt (pending)
     /// </summary>
@@ -137,6 +141,8 @@ public class InstructorController : ControllerBase
         if (result.IsSuccess) return Ok(result);
         return BadRequest(result);
     }
+    */
+
     /// <summary>
     /// Gửi thông báo mới (giảng viên)
     /// </summary>
@@ -171,6 +177,7 @@ public class InstructorController : ControllerBase
             });
         }
     }
+    
     /// <summary>
     /// Get all groups (projects) in a class
     /// </summary>
@@ -188,7 +195,7 @@ public class InstructorController : ControllerBase
             }
             return BadRequest(result);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return StatusCode(500, new ResultModel<List<ProjectGroupResponseDto>>
             {
