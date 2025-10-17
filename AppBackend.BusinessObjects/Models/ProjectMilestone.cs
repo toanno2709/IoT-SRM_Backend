@@ -31,6 +31,9 @@ public partial class ProjectMilestone
     [StringLength(255)]
     public string? Status { get; set; }
 
+    [Column("weight", TypeName = "decimal(5, 2)")]
+    public decimal? Weight { get; set; }
+
     [Column("created_at")]
     [Precision(0)]
     public DateTime? CreatedAt { get; set; }
