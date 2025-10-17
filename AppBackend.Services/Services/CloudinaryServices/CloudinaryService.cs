@@ -1,5 +1,5 @@
 using AppBackend.BusinessObjects.Dtos;
-using AppBackend.Services.ApiModels;
+using AppBackend.Services.ApiModels.Commons;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 
