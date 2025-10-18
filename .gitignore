@@ -401,3 +401,4 @@ FodyWeavers.xsd
 *.sln.iml
 *.xml
 .idea/.idea.AppBackend/.idea/.name
+/docs

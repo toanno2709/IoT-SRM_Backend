@@ -10,11 +10,11 @@ namespace AppBackend.Extensions
             using var scope = app.ApplicationServices.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<IOTShowroomContext>();
 
-            // Run migrations if needed
-            context.Database.Migrate();
+            //// Run migrations if needed
+            //context.Database.Migrate();
 
             // ---- Roles ----
-            if (!context.Roles.Any())
+           /* if (!context.Roles.Any())
             {
                 context.Roles.AddRange(
                     new Role { RoleName = "Admin", Description = "Administrator" },
@@ -37,7 +37,7 @@ namespace AppBackend.Extensions
                     new User { FullName = "Le Van C", Email = "instructor@example.com", PasswordHash = "123456hash", Phone = "0903234567", RoleId = userRoleId, CreatedAt = DateTime.UtcNow }
                 );
                 context.SaveChanges();
-            }
+            }*/
 
         }
     }
