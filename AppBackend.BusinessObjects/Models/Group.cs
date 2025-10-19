@@ -1,15 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.BusinessObjects.Models;
-
 public partial class Group
 {
     public int GroupId { get; set; }
 
-    public int ClassId { get; set; }
+    public int? ClassId { get; set; }
 
-    public string GroupName { get; set; } = null!;
+    public string? GroupName { get; set; }
 
     public string? Description { get; set; }
 
@@ -19,11 +21,11 @@ public partial class Group
 
     public DateTime? UpdatedAt { get; set; }
 
-    public virtual Class Class { get; set; } = null!;
-
-    public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
+    public virtual Class? Class { get; set; }
 
     public virtual User? Leader { get; set; }
+
+    public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
 
     public virtual ICollection<Project> Projects { get; set; } = new List<Project>();
 }

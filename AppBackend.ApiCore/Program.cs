@@ -1,4 +1,5 @@
 using AppBackend.Extensions;
+using AppBackend.Services.Services.Group;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +17,9 @@ builder.Services.AddSessionConfig();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddServicesConfig();
 builder.Services.AddAutoMapperConfig();
-builder.Services.AddRateLimitConfig();   
+builder.Services.AddRateLimitConfig();
+builder.Services.AddScoped<IGroupService, GroupService>();
+
 
 builder.Services.AddControllers()   
     .AddJsonOptions(options =>
