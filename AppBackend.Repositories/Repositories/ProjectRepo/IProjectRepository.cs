@@ -18,9 +18,11 @@ public class ProjectRepository : GenericRepository<Project>, IProjectRepository
     public async Task<List<Project>> GetProjectsByClassAsync(int classId)
     {
         return await _context.Projects
-            .Include(p => p.Leader)
-            .Include(p => p.ProjectMembers).ThenInclude(pm => pm.User)
-            .Where(p => p.ClassId == classId)
+            .Include(p => p.Group)
+                .ThenInclude(g => g.Leader)
+            .Include(p => p.Group.GroupMembers)
+                .ThenInclude(gm => gm.User)
+            .Where(p => p.Group.ClassId == classId)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
     }

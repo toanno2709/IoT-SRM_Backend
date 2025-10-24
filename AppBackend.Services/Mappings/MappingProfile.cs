@@ -1,5 +1,6 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Services.ApiModels;
+using AppBackend.Services.ApiModels.Commons;
 using AutoMapper;
 
 namespace AppBackend.Services.Mappers

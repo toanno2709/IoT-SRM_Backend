@@ -20,8 +20,5 @@ public partial class Rubric
     public decimal? MaxScore { get; set; }
 
     [InverseProperty("Rubric")]
-    public virtual ICollection<EvaluationDetail> EvaluationDetails { get; set; } = new List<EvaluationDetail>();
-
-    [InverseProperty("Rubric")]
     public virtual ICollection<RubricWeight> RubricWeights { get; set; } = new List<RubricWeight>();
 }

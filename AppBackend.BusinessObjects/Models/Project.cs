@@ -19,11 +19,8 @@ public partial class Project
     [Column("description")]
     public string? Description { get; set; }
 
-    [Column("class_id")]
-    public int? ClassId { get; set; }
-
-    [Column("leader_id")]
-    public int? LeaderId { get; set; }
+    [Column("group_id")]
+    public int? GroupId { get; set; }
 
     [Column("created_at")]
     [Precision(0)]
@@ -37,34 +34,25 @@ public partial class Project
     [StringLength(255)]
     public string? Status { get; set; }
 
-    [ForeignKey("ClassId")]
+    [ForeignKey("GroupId")]
     [InverseProperty("Projects")]
-    public virtual Class? Class { get; set; }
-
-    [InverseProperty("Project")]
-    public virtual ICollection<Evaluation> Evaluations { get; set; } = new List<Evaluation>();
+    public virtual Group? Group { get; set; }
 
     [InverseProperty("Project")]
     public virtual ICollection<HallOfFame> HallOfFames { get; set; } = new List<HallOfFame>();
-
-    [ForeignKey("LeaderId")]
-    [InverseProperty("Projects")]
-    public virtual User? Leader { get; set; }
 
     [InverseProperty("Project")]
     public virtual ICollection<LiveDemo> LiveDemos { get; set; } = new List<LiveDemo>();
 
     [InverseProperty("Project")]
-    public virtual ICollection<ProjectAsset> ProjectAssets { get; set; } = new List<ProjectAsset>();
+    public virtual ICollection<MilestoneSubmission> MilestoneSubmissions { get; set; } = new List<MilestoneSubmission>();
 
     [InverseProperty("Project")]
-    public virtual ICollection<ProjectMember> ProjectMembers { get; set; } = new List<ProjectMember>();
+    public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
 
     [InverseProperty("Project")]
     public virtual ICollection<ProjectMilestone> ProjectMilestones { get; set; } = new List<ProjectMilestone>();
 
-    [InverseProperty("Project")]
-    public virtual ICollection<ProjectSubmission> ProjectSubmissions { get; set; } = new List<ProjectSubmission>();
 
     [InverseProperty("Project")]
     public virtual ICollection<Sensor> Sensors { get; set; } = new List<Sensor>();

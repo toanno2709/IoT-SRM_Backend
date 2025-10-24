@@ -28,19 +28,19 @@ public class ProjectService : IProjectService
                 ProjectId = p.ProjectId,
                 Title = p.Title,
                 Description = p.Description,
-                LeaderId = p.LeaderId,
-                LeaderName = p.Leader?.FullName,
-                ClassId = p.ClassId,
+                LeaderId = p.Group?.LeaderId,
+                LeaderName = p.Group?.Leader?.FullName,
+                ClassId = p.Group?.ClassId,
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt,
-                MemberCount = p.ProjectMembers?.Count ?? 0,
-                Members = (p.ProjectMembers ?? new List<AppBackend.BusinessObjects.Models.ProjectMember>())
+                MemberCount = p.Group?.GroupMembers?.Count ?? 0,
+                Members = (p.Group?.GroupMembers ?? new List<AppBackend.BusinessObjects.Models.GroupMember>())
                     .Select(m => new ProjectMemberDto
                     {
-                        UserId = m.UserId ?? 0,
+                        UserId = m.UserId,
                         FullName = m.User?.FullName,
                         Email = m.User?.Email,
-                        RoleInProject = m.RoleInProject
+                        RoleInProject = m.RoleInGroup
                     }).ToList()
             }).ToList();
 

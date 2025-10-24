@@ -45,4 +45,10 @@ public partial class ProjectMilestone
     [ForeignKey("ProjectId")]
     [InverseProperty("ProjectMilestones")]
     public virtual Project Project { get; set; } = null!;
+
+    [InverseProperty("MilestoneDef")]
+    public virtual ICollection<MilestoneSubmission> MilestoneSubmissions { get; set; } = new List<MilestoneSubmission>();
+
+    [InverseProperty("MilestoneDef")]
+    public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
 }

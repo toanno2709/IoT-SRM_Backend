@@ -1,6 +1,5 @@
 using AppBackend.Services.ApiModels;
-using LoginRequest = AppBackend.Services.ApiModels.LoginRequest;
-using RegisterRequest = AppBackend.Services.ApiModels.RegisterRequest;
+using AppBackend.Services.ApiModels.Commons;
 
 namespace AppBackend.Services
 {

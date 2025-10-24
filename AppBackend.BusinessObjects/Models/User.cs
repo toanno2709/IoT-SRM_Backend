@@ -53,14 +53,6 @@ public partial class User
     [InverseProperty("Instructor")]
     public virtual ICollection<Class> Classes { get; set; } = new List<Class>();
 
-    [InverseProperty("Instructor")]
-    public virtual ICollection<Evaluation> Evaluations { get; set; } = new List<Evaluation>();
-
-    [InverseProperty("Receiver")]
-    public virtual ICollection<Message> MessageReceivers { get; set; } = new List<Message>();
-
-    [InverseProperty("Sender")]
-    public virtual ICollection<Message> MessageSenders { get; set; } = new List<Message>();
 
     [InverseProperty("User")]
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
@@ -68,14 +60,24 @@ public partial class User
     [InverseProperty("Reviewer")]
     public virtual ICollection<ProjectApprovalHistory> ProjectApprovalHistories { get; set; } = new List<ProjectApprovalHistory>();
 
-    [InverseProperty("User")]
-    public virtual ICollection<ProjectMember> ProjectMembers { get; set; } = new List<ProjectMember>();
-
-    [InverseProperty("SubmittedByNavigation")]
-    public virtual ICollection<ProjectSubmission> ProjectSubmissions { get; set; } = new List<ProjectSubmission>();
 
     [InverseProperty("Leader")]
-    public virtual ICollection<Project> Projects { get; set; } = new List<Project>();
+    public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
+
+    [InverseProperty("User")]
+    public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
+
+    [InverseProperty("Sender")]
+    public virtual ICollection<ClassMessage> ClassMessages { get; set; } = new List<ClassMessage>();
+
+    [InverseProperty("UpdatedByNavigation")]
+    public virtual ICollection<EmailSMTPSettings> EmailSMTPSettings { get; set; } = new List<EmailSMTPSettings>();
+
+    [InverseProperty("Instructor")]
+    public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
+
+    [InverseProperty("UploadedByNavigation")]
+    public virtual ICollection<SubmissionFile> SubmissionFiles { get; set; } = new List<SubmissionFile>();
 
     [ForeignKey("RoleId")]
     [InverseProperty("Users")]

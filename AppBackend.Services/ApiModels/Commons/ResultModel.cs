@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AppBackend.Services.ApiModels
+namespace AppBackend.Services.ApiModels.Commons
 {
     public class ResultModel<T>
     {

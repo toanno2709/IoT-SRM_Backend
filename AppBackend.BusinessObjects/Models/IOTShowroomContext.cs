@@ -21,9 +21,9 @@ public partial class IOTShowroomContext : DbContext
 
     public virtual DbSet<ClassEnrollment> ClassEnrollments { get; set; }
 
-    public virtual DbSet<Evaluation> Evaluations { get; set; }
+    public virtual DbSet<ClassMessage> ClassMessages { get; set; }
 
-    public virtual DbSet<EvaluationDetail> EvaluationDetails { get; set; }
+    public virtual DbSet<EmailSMTPSettings> EmailSMTPSettings { get; set; }
 
     public virtual DbSet<HallOfFame> HallOfFames { get; set; }
 
@@ -31,7 +31,9 @@ public partial class IOTShowroomContext : DbContext
 
     public virtual DbSet<LiveDemoSensor> LiveDemoSensors { get; set; }
 
-    public virtual DbSet<Message> Messages { get; set; }
+    public virtual DbSet<Group> Groups { get; set; }
+
+    public virtual DbSet<GroupMember> GroupMembers { get; set; }
 
     public virtual DbSet<Notification> Notifications { get; set; }
 
@@ -39,13 +41,13 @@ public partial class IOTShowroomContext : DbContext
 
     public virtual DbSet<ProjectApprovalHistory> ProjectApprovalHistories { get; set; }
 
-    public virtual DbSet<ProjectAsset> ProjectAssets { get; set; }
+    public virtual DbSet<MilestoneSubmission> MilestoneSubmissions { get; set; }
 
-    public virtual DbSet<ProjectMember> ProjectMembers { get; set; }
+    public virtual DbSet<MilestoneEvaluation> MilestoneEvaluations { get; set; }
+
+    public virtual DbSet<SubmissionFile> SubmissionFiles { get; set; }
 
     public virtual DbSet<ProjectMilestone> ProjectMilestones { get; set; }
-
-    public virtual DbSet<ProjectSubmission> ProjectSubmissions { get; set; }
 
     public virtual DbSet<Role> Roles { get; set; }
 
@@ -97,23 +99,6 @@ public partial class IOTShowroomContext : DbContext
             entity.HasOne(d => d.Student).WithMany(p => p.ClassEnrollments).HasConstraintName("FK_Enrollments_Student");
         });
 
-        modelBuilder.Entity<Evaluation>(entity =>
-        {
-            entity.HasKey(e => e.EvaluationId).HasName("PK__Evaluati__827C592D4FC39243");
-
-            entity.HasOne(d => d.Instructor).WithMany(p => p.Evaluations).HasConstraintName("FK_Evaluations_Instructor");
-
-            entity.HasOne(d => d.Project).WithMany(p => p.Evaluations).HasConstraintName("FK_Evaluations_Project");
-        });
-
-        modelBuilder.Entity<EvaluationDetail>(entity =>
-        {
-            entity.HasKey(e => e.DetailId).HasName("PK__Evaluati__38E9A224263B5411");
-
-            entity.HasOne(d => d.Evaluation).WithMany(p => p.EvaluationDetails).HasConstraintName("FK_EvalDetails_Evaluation");
-
-            entity.HasOne(d => d.Rubric).WithMany(p => p.EvaluationDetails).HasConstraintName("FK_EvalDetails_Rubric");
-        });
 
         modelBuilder.Entity<HallOfFame>(entity =>
         {
@@ -142,14 +127,6 @@ public partial class IOTShowroomContext : DbContext
             entity.HasOne(d => d.Sensor).WithMany(p => p.LiveDemoSensors).HasConstraintName("FK_LDS_Sensor");
         });
 
-        modelBuilder.Entity<Message>(entity =>
-        {
-            entity.HasKey(e => e.MessageId).HasName("PK__Messages__0BBF6EE61FA26B94");
-
-            entity.HasOne(d => d.Receiver).WithMany(p => p.MessageReceivers).HasConstraintName("FK_Messages_Receiver");
-
-            entity.HasOne(d => d.Sender).WithMany(p => p.MessageSenders).HasConstraintName("FK_Messages_Sender");
-        });
 
         modelBuilder.Entity<Notification>(entity =>
         {
@@ -162,9 +139,7 @@ public partial class IOTShowroomContext : DbContext
         {
             entity.HasKey(e => e.ProjectId).HasName("PK__Projects__BC799E1F4515E28E");
 
-            entity.HasOne(d => d.Class).WithMany(p => p.Projects).HasConstraintName("FK_Projects_Class");
-
-            entity.HasOne(d => d.Leader).WithMany(p => p.Projects).HasConstraintName("FK_Projects_Leader");
+            entity.HasOne(d => d.Group).WithMany(p => p.Projects).HasConstraintName("FK_Projects_Group");
         });
 
         modelBuilder.Entity<ProjectApprovalHistory>(entity =>
@@ -180,21 +155,6 @@ public partial class IOTShowroomContext : DbContext
                 .HasConstraintName("FK_ApprovalHistory_Submission");
         });
 
-        modelBuilder.Entity<ProjectAsset>(entity =>
-        {
-            entity.HasKey(e => e.AssetId).HasName("PK__Project___D28B561D5D4D7819");
-
-            entity.HasOne(d => d.Project).WithMany(p => p.ProjectAssets).HasConstraintName("FK_Project_Assets_Project");
-        });
-
-        modelBuilder.Entity<ProjectMember>(entity =>
-        {
-            entity.HasKey(e => e.MemberId).HasName("PK__Project___B29B85342BF23F4F");
-
-            entity.HasOne(d => d.Project).WithMany(p => p.ProjectMembers).HasConstraintName("FK_Project_Members_Project");
-
-            entity.HasOne(d => d.User).WithMany(p => p.ProjectMembers).HasConstraintName("FK_Project_Members_User");
-        });
 
         modelBuilder.Entity<ProjectMilestone>(entity =>
         {
@@ -205,18 +165,6 @@ public partial class IOTShowroomContext : DbContext
                 .HasConstraintName("FK_Project_Milestones_Project");
         });
 
-        modelBuilder.Entity<ProjectSubmission>(entity =>
-        {
-            entity.HasKey(e => e.SubmissionId).HasName("PK__Project___9B53559522FF4404");
-
-            entity.HasOne(d => d.Project).WithMany(p => p.ProjectSubmissions)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Submissions_Project");
-
-            entity.HasOne(d => d.SubmittedByNavigation).WithMany(p => p.ProjectSubmissions)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Submissions_User");
-        });
 
         modelBuilder.Entity<Role>(entity =>
         {
@@ -265,6 +213,70 @@ public partial class IOTShowroomContext : DbContext
             entity.HasKey(e => e.UserId).HasName("PK__Users__B9BE370F77954EFA");
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users).HasConstraintName("FK_Users_Roles");
+        });
+
+        // New model configurations
+        modelBuilder.Entity<Group>(entity =>
+        {
+            entity.HasKey(e => e.GroupId).HasName("PK__Groups__A7FA0EFE9BDCBBC9");
+
+            entity.HasOne(d => d.Class).WithMany(p => p.Groups).HasConstraintName("FK_Groups_Class");
+
+            entity.HasOne(d => d.Leader).WithMany(p => p.Groups).HasConstraintName("FK_Groups_Leader");
+        });
+
+        modelBuilder.Entity<GroupMember>(entity =>
+        {
+            entity.HasKey(e => e.GmId).HasName("PK__Group_Me__B29B85342BF23F4F");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.GroupMembers).HasConstraintName("FK_GroupMembers_Group");
+
+            entity.HasOne(d => d.User).WithMany(p => p.GroupMembers).HasConstraintName("FK_GroupMembers_User");
+        });
+
+        modelBuilder.Entity<ClassMessage>(entity =>
+        {
+            entity.HasKey(e => e.MessageId).HasName("PK__Class_Me__0BBF6EE61FA26B94");
+
+            entity.HasOne(d => d.Class).WithMany(p => p.ClassMessages).HasConstraintName("FK_ClassMessages_Class");
+
+            entity.HasOne(d => d.Sender).WithMany(p => p.ClassMessages).HasConstraintName("FK_ClassMessages_Sender");
+        });
+
+        modelBuilder.Entity<EmailSMTPSettings>(entity =>
+        {
+            entity.HasKey(e => e.SettingId).HasName("PK__Email_SM__A7FA0EFE9BDCBBC9");
+
+            entity.HasOne(d => d.UpdatedByNavigation).WithMany(p => p.EmailSMTPSettings).HasConstraintName("FK_SMTP_UpdatedBy");
+        });
+
+        modelBuilder.Entity<MilestoneSubmission>(entity =>
+        {
+            entity.HasKey(e => e.SubmissionId).HasName("PK__Mileston__9B53559522FF4404");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.MilestoneSubmissions).HasConstraintName("FK_MS_Project");
+
+            entity.HasOne(d => d.MilestoneDef).WithMany(p => p.MilestoneSubmissions).HasConstraintName("FK_MS_MilestoneDef");
+        });
+
+        modelBuilder.Entity<SubmissionFile>(entity =>
+        {
+            entity.HasKey(e => e.FileId).HasName("PK__Submissi__D28B561D5D4D7819");
+
+            entity.HasOne(d => d.Submission).WithMany(p => p.SubmissionFiles).HasConstraintName("FK_SubFiles_Submission");
+
+            entity.HasOne(d => d.UploadedByNavigation).WithMany(p => p.SubmissionFiles).HasConstraintName("FK_SubFiles_Uploader");
+        });
+
+        modelBuilder.Entity<MilestoneEvaluation>(entity =>
+        {
+            entity.HasKey(e => e.MeId).HasName("PK__Mileston__827C592D4FC39243");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.MilestoneEvaluations).HasConstraintName("FK_ME_Project");
+
+            entity.HasOne(d => d.MilestoneDef).WithMany(p => p.MilestoneEvaluations).HasConstraintName("FK_ME_MilestoneDef");
+
+            entity.HasOne(d => d.Instructor).WithMany(p => p.MilestoneEvaluations).HasConstraintName("FK_ME_Instructor");
         });
 
         OnModelCreatingPartial(modelBuilder);

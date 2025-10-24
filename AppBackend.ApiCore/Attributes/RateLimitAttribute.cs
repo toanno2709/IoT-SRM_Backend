@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using System.Threading.RateLimiting;
 using AppBackend.Services.RateLimiting;
-using AppBackend.Services.ApiModels;
+using AppBackend.Services.ApiModels.Commons;
 
 namespace AppBackend.Attributes
 {

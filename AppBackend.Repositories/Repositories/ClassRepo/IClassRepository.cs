@@ -22,7 +22,7 @@ public class ClassRepository : GenericRepository<Class>, IClassRepository
             .Include(c => c.Instructor)
             .Include(c => c.Semester)
             .Include(c => c.ClassEnrollments)
-            .Include(c => c.Projects)
+            .Include(c => c.Groups)
             .Where(c => c.InstructorId == instructorId)
             .OrderByDescending(c => c.CreatedAt)
             .ToListAsync();
@@ -34,7 +34,7 @@ public class ClassRepository : GenericRepository<Class>, IClassRepository
             .Include(c => c.Instructor)
             .Include(c => c.Semester)
             .Include(c => c.ClassEnrollments)
-            .Include(c => c.Projects)
+            .Include(c => c.Groups)
             .FirstOrDefaultAsync(c => c.ClassId == classId);
     }
 }

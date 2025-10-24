@@ -36,5 +36,5 @@ public partial class ProjectApprovalHistory
 
     [ForeignKey("SubmissionId")]
     [InverseProperty("ProjectApprovalHistories")]
-    public virtual ProjectSubmission Submission { get; set; } = null!;
+    public virtual MilestoneSubmission Submission { get; set; } = null!;
 }
