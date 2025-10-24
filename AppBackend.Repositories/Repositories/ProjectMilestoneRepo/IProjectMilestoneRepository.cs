@@ -7,7 +7,7 @@ namespace AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
 public interface IProjectMilestoneRepository : IGenericRepository<ProjectMilestone>
 {
     Task<List<ProjectMilestone>> GetByProjectAsync(int projectId);
-    Task<ProjectMilestone?> GetWithSubmissionsAsync(int milestoneId);
+    Task<decimal> GetTotalWeightByProjectAsync(int projectId, int? excludeMilestoneId = null);
 }
 
 public class ProjectMilestoneRepository : GenericRepository<ProjectMilestone>, IProjectMilestoneRepository
@@ -19,21 +19,26 @@ public class ProjectMilestoneRepository : GenericRepository<ProjectMilestone>, I
     public async Task<List<ProjectMilestone>> GetByProjectAsync(int projectId)
     {
         return await _context.ProjectMilestones
-            .Include(m => m.MilestoneSubmissions)
-            .Include(m => m.MilestoneEvaluations)
             .Where(m => m.ProjectId == projectId)
             .OrderBy(m => m.DueDate)
             .ToListAsync();
     }
 
-    public async Task<ProjectMilestone?> GetWithSubmissionsAsync(int milestoneId)
+    public async Task<decimal> GetTotalWeightByProjectAsync(int projectId, int? excludeMilestoneId = null)
     {
-        return await _context.ProjectMilestones
-            .Include(m => m.Project)
-            .Include(m => m.MilestoneSubmissions)
-                .ThenInclude(ms => ms.SubmissionFiles)
-            .Include(m => m.MilestoneEvaluations)
-            .FirstOrDefaultAsync(m => m.MilestoneId == milestoneId);
+        var query = _context.ProjectMilestones
+            .Where(m => m.ProjectId == projectId)
+            .AsQueryable();
+
+        if (excludeMilestoneId.HasValue)
+        {
+            query = query.Where(m => m.MilestoneId != excludeMilestoneId.Value);
+        }
+
+        var sum = await query
+            .Select(m => m.Weight ?? 0)
+            .SumAsync();
+        return sum;
     }
 }
 

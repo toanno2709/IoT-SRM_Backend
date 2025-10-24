@@ -37,4 +37,3 @@ public partial class ClassMessage
 }
 
 
-

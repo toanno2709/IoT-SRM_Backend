@@ -6,23 +6,12 @@ namespace AppBackend.Repositories.Repositories.ProjectRepo;
 public interface IProjectRepository : IGenericRepository<Project>
 {
     Task<List<Project>> GetProjectsByClassAsync(int classId);
+    Task<List<Project>> GetProjectsByGroupAsync(int groupId);
+    Task<Project?> GetProjectWithDetailsAsync(int projectId);
+    Task<Project?> GetByIdWithDetailsAsync(int projectId);
 }
 
-public class ProjectRepository : GenericRepository<Project>, IProjectRepository
-{
-    public ProjectRepository(IOTShowroomContext context) : base(context)
-    {
-    }
 
-    public async Task<List<Project>> GetProjectsByClassAsync(int classId)
-    {
-        return await _context.Projects
-            .Include(p => p.Group)
-                .ThenInclude(g => g.Leader)
-            .Include(p => p.Group.GroupMembers)
-                .ThenInclude(gm => gm.User)
-            .Where(p => p.Group.ClassId == classId)
-            .OrderByDescending(p => p.CreatedAt)
-            .ToListAsync();
-    }
-}
+
+
+

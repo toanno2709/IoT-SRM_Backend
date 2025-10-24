@@ -8,10 +8,10 @@ using AppBackend.Attributes;
 namespace AppBackend.Api.Controllers
 {
     /// <summary>
-    /// APIs for user management and authentication
+    /// APIs for managing users (Register, Login, Query Users)
     /// </summary>
     [ApiController]
-    [Route("api/users")]
+    [Route("api/[controller]")]
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
@@ -21,10 +21,8 @@ namespace AppBackend.Api.Controllers
             _userService = userService;
         }
 
-        #region Public Authentication Endpoints
-
         /// <summary>
-        /// Register a new user account (Public - defaults to Student role)
+        /// Register a new user account
         /// </summary>
         /// <param name="request">Registration request payload</param>
         /// <returns>JWT access token and refresh token</returns>
@@ -61,19 +59,15 @@ namespace AppBackend.Api.Controllers
             return StatusCode(result.StatusCode, result);
         }
 
-        #endregion
-
-        #region Admin - User Management
-
         /// <summary>
-        /// Get all users (Admin only)
+        /// Get all users (only for Admin or Manager)
         /// </summary>
-        /// <returns>List of all users</returns>
+        /// <returns>List of users</returns>
         /// <response code="200">Users retrieved successfully</response>
-        /// <response code="403">Forbidden - Admin access required</response>
-        [HttpGet("all")]
-        [Authorize(Roles = "Admin")]
-        [RateLimit(10, 30)]
+        /// <response code="403">Forbidden (not enough role permissions)</response>
+        [HttpGet]
+        [Authorize(Roles = "Admin,Manager")]
+        [RateLimit(5, 30)] 
         public async Task<IActionResult> GetAllUsers()
         {
             var result = await _userService.GetAllUsersAsync();
@@ -81,9 +75,9 @@ namespace AppBackend.Api.Controllers
         }
 
         /// <summary>
-        /// Get user by ID (Admin or self)
+        /// Get user detail by Id
         /// </summary>
-        /// <param name="id">User ID</param>
+        /// <param name="id">User Id</param>
         /// <returns>User detail</returns>
         /// <response code="200">User retrieved successfully</response>
         /// <response code="404">User not found</response>
@@ -95,79 +89,5 @@ namespace AppBackend.Api.Controllers
             var result = await _userService.GetUserByIdAsync(id);
             return StatusCode(result.StatusCode, result);
         }
-
-        /// <summary>
-        /// Create new user (Admin only)
-        /// </summary>
-        /// <param name="request">User creation data</param>
-        /// <returns>Created user information</returns>
-        /// <response code="201">User created successfully</response>
-        /// <response code="400">Invalid role ID</response>
-        /// <response code="409">Email already exists</response>
-        [HttpPost("create")]
-        [Authorize(Roles = "Admin")]
-        [RateLimit(permitLimit: 5, windowSeconds: 60)]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var result = await _userService.CreateUserAsync(request);
-            return StatusCode(result.StatusCode, result);
-        }
-
-        /// <summary>
-        /// Update user information (Admin only)
-        /// </summary>
-        /// <param name="id">User ID to update</param>
-        /// <param name="request">Update data (phone, avatar, password)</param>
-        /// <returns>Updated user information</returns>
-        /// <response code="200">User updated successfully</response>
-        /// <response code="404">User not found</response>
-        [HttpPut("update/{id:int}")]
-        [Authorize(Roles = "Admin")]
-        [RateLimit(permitLimit: 10, windowSeconds: 60)]
-        public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserRequest request)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var result = await _userService.UpdateUserAsync(id, request);
-            return StatusCode(result.StatusCode, result);
-        }
-
-        /// <summary>
-        /// Get users filtered by role (Admin only)
-        /// </summary>
-        /// <param name="roleId">Optional role ID filter</param>
-        /// <returns>List of users matching the role filter</returns>
-        /// <response code="200">Users retrieved successfully</response>
-        /// <response code="400">Invalid role ID</response>
-        [HttpGet]
-        [Authorize(Roles = "Admin")]
-        [RateLimit(permitLimit: 10, windowSeconds: 30)]
-        public async Task<IActionResult> GetUsersByRole([FromQuery] int? roleId)
-        {
-            var result = await _userService.GetUsersByRoleAsync(roleId);
-            return StatusCode(result.StatusCode, result);
-        }
-
-        /// <summary>
-        /// Delete user (Admin only)
-        /// </summary>
-        /// <param name="id">User ID to delete</param>
-        /// <returns>Success status</returns>
-        /// <response code="200">User deleted successfully</response>
-        /// <response code="404">User not found</response>
-        [HttpDelete("{id:int}")]
-        [Authorize(Roles = "Admin")]
-        [RateLimit(permitLimit: 5, windowSeconds: 60)]
-        public async Task<IActionResult> DeleteUser(int id)
-        {
-            var result = await _userService.DeleteUserAsync(id);
-            return StatusCode(result.StatusCode, result);
-        }
-
-        #endregion
     }
 }

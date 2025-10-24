@@ -1,13 +1,14 @@
 using AppBackend.Repositories.Generic;
 using AppBackend.Repositories.Repositories.UserRepo;
-using AppBackend.Repositories.Repositories.RoleRepo;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
 using AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
+using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Services;
 using AppBackend.Services.RateLimiting;
 using AppBackend.Services.Services.Email;
+using AutoMapper;
 using AppBackend.Services.Services.Class;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.Services.Announcement;
@@ -24,7 +25,6 @@ using AppBackend.Repositories.Repositories.GroupMemberRepo;
 using AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
 using AppBackend.Repositories.Repositories.ProjectApprovalHistoryRepo;
 using AppBackend.Services.ServicesHelpers;
-using AutoMapper;
 
 namespace AppBackend.Extensions;
 
@@ -38,11 +38,11 @@ public static class ServicesConfig
 
         #region Repositories
         services.AddScoped<IUserRepository, UserRepository>();
-        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IClassRepository, ClassRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
         services.AddScoped<IProjectMilestoneRepository, ProjectMilestoneRepository>();
+        services.AddScoped<ISemesterRepository, SemesterRepository>();
         services.AddScoped<IGroupRepository, GroupRepository>();
         services.AddScoped<IMilestoneEvaluationRepository, MilestoneEvaluationRepository>();
         services.AddScoped<IMilestoneSubmissionRepository, MilestoneSubmissionRepository>();
@@ -54,6 +54,8 @@ public static class ServicesConfig
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IClassService>(sp => new ClassService(
             sp.GetRequiredService<IClassRepository>(),
+            sp.GetRequiredService<ISemesterRepository>(),
+            sp.GetRequiredService<IUserRepository>(),
             sp.GetRequiredService<IGroupRepository>(),
             sp.GetRequiredService<IMapper>()
         ));
@@ -73,8 +75,6 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
-        services.AddScoped<ISemesterService, SemesterService>();
-        services.AddScoped<ISensorService, SensorService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion

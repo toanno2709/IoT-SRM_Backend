@@ -1,20 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.BusinessObjects.Models;
 
 public partial class Class
 {
+    [Key]
+    [Column("class_id")]
     public int ClassId { get; set; }
 
+    [Column("class_name")]
+    [StringLength(255)]
     public string? ClassName { get; set; }
 
+    [Column("instructor_id")]
     public int? InstructorId { get; set; }
 
+    [Column("description")]
     public string? Description { get; set; }
 
+    [Column("created_at")]
+    [Precision(0)]
     public DateTime? CreatedAt { get; set; }
 
+    [Column("semester_id")]
     public int? SemesterId { get; set; }
 
     [Column("max_groups")]
@@ -29,10 +41,8 @@ public partial class Class
     [InverseProperty("Class")]
     public virtual ICollection<ClassEnrollment> ClassEnrollments { get; set; } = new List<ClassEnrollment>();
 
-    public virtual ICollection<ClassMessage> ClassMessages { get; set; } = new List<ClassMessage>();
-
-    public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
-
+    [ForeignKey("InstructorId")]
+    [InverseProperty("Classes")]
     public virtual User? Instructor { get; set; }
 
     [InverseProperty("Class")]
@@ -44,5 +54,7 @@ public partial class Class
     [InverseProperty("Class")]
     public virtual ICollection<RubricWeight> RubricWeights { get; set; } = new List<RubricWeight>();
 
+    [ForeignKey("SemesterId")]
+    [InverseProperty("Classes")]
     public virtual Semester? Semester { get; set; }
 }

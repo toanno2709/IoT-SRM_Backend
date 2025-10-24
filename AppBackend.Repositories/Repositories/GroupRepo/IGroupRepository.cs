@@ -40,4 +40,3 @@ public class GroupRepository : GenericRepository<Group>, IGroupRepository
 }
 
 
-
