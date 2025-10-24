@@ -1,0 +1,70 @@
+using AppBackend.BusinessObjects.Models;
+using AppBackend.Repositories.Generic;
+using Microsoft.EntityFrameworkCore;
+
+namespace AppBackend.Repositories.Repositories.ProjectRepo;
+
+public class ProjectRepository : GenericRepository<Project>, IProjectRepository
+{
+    public ProjectRepository(IOTShowroomContext context) : base(context)
+    {
+    }
+
+    public async Task<List<Project>> GetProjectsByClassAsync(int classId)
+    {
+        // Project gi? thu?c Group, Group thu?c Class
+        return await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Class)
+            .Where(p => p.Group != null && p.Group.ClassId == classId)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<List<Project>> GetProjectsByGroupAsync(int groupId)
+    {
+        return await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+            .Where(p => p.GroupId == groupId)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<Project?> GetProjectWithDetailsAsync(int projectId)
+    {
+        return await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Class)
+            .Include(p => p.ProjectMilestones)
+            .Include(p => p.Sensors)
+            .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+    }
+
+    public async Task<Project?> GetByIdWithDetailsAsync(int projectId)
+    {
+        return await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Class)
+                    .ThenInclude(c => c!.Instructor)
+            .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+    }
+}

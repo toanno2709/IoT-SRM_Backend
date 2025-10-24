@@ -1,5 +1,6 @@
 using AppBackend.Repositories.Generic;
 using AppBackend.Repositories.Repositories.UserRepo;
+using AppBackend.Repositories.Repositories.RoleRepo;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
@@ -37,6 +38,7 @@ public static class ServicesConfig
 
         #region Repositories
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IClassRepository, ClassRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
@@ -71,6 +73,8 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
+        services.AddScoped<ISemesterService, SemesterService>();
+        services.AddScoped<ISensorService, SensorService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion

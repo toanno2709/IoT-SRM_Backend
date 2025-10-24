@@ -1,6 +1,5 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
-using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Repositories.Repositories.ClassRepo;
 

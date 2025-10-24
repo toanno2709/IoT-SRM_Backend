@@ -1,6 +1,5 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
-using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Repositories.Repositories.ProjectRepo;
 
@@ -27,8 +26,3 @@ public class ProjectRepository : GenericRepository<Project>, IProjectRepository
             .ToListAsync();
     }
 }
-
-
-
-
-

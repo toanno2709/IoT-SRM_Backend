@@ -88,6 +88,7 @@ public class InstructorController : ControllerBase
             });
         }
     }
+    
     /// <summary>
     /// Get all classes assigned to the current instructor
     /// </summary>
@@ -120,6 +121,8 @@ public class InstructorController : ControllerBase
         }
     }
 
+    // TODO: Cần refactor các endpoints sau cho schema mới (MilestoneEvaluation)
+    /*
     /// <summary>
     /// Lấy cấu hình class settings (max groups, max/min members)
     /// </summary>
@@ -252,6 +255,7 @@ public class InstructorController : ControllerBase
             });
         }
     }
+    
     /// <summary>
     /// Get all groups in a class
     /// </summary>

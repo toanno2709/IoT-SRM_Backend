@@ -20,12 +20,23 @@ public class ClassResponseDto
     
     public string? SemesterName { get; set; }
     
+    public string? SemesterCode { get; set; }
+    
     public DateTime? CreatedAt { get; set; }
     
     public int TotalStudents { get; set; }
     
+    public int TotalGroups { get; set; }
+    
     public int TotalProjects { get; set; }
 }
+
+
+
+
+
+
+
 
 
 

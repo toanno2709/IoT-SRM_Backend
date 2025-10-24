@@ -1,12 +1,12 @@
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Services.ApiModels.Commons;
-using AutoMapper;
 
 namespace AppBackend.Services.Services.Class;
 
 public interface IClassService
 {
+    // Existing methods
     Task<ResultModel<List<ClassResponseDto>>> GetAssignedClassesAsync(int instructorId);
     Task<ResultModel<ClassResponseDto>> GetClassByIdAsync(int classId);
     Task<ResultModel<ClassSettingsResponseDto>> UpdateClassSettingsAsync(int classId, ClassSettingsUpdateRequestDto request);
