@@ -38,7 +38,7 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
         public async Task<Group> CreateGroupAsync(Group group, int leaderId)
         {
             // Kiểm tra leader đã có nhóm trong class này chưa
-            var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId ?? 0, leaderId);
+            var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId, leaderId);
             if (alreadyInGroup)
                 throw new InvalidOperationException("Leader đã thuộc một nhóm khác trong cùng lớp.");
 
@@ -70,7 +70,7 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
                 throw new KeyNotFoundException("Group not found.");
 
             // Kiểm tra sinh viên đã thuộc nhóm khác trong cùng class chưa
-            var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId ?? 0, userId);
+            var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId, userId);
             if (alreadyInGroup)
                 throw new InvalidOperationException("Sinh viên đã thuộc một nhóm khác trong cùng lớp.");
 
@@ -93,6 +93,28 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
             return await _context.GroupMembers
                 .Include(gm => gm.Group)
                 .AnyAsync(gm => gm.UserId == userId && gm.Group.ClassId == classId);
+        }
+
+        public async Task<List<Group>> GetGroupsByClassAsync(int classId)
+        {
+            return await _context.Groups
+                .Include(g => g.Leader)
+                .Include(g => g.Class)
+                .Include(g => g.GroupMembers).ThenInclude(gm => gm.User)
+                .Include(g => g.Projects)
+                .Where(g => g.ClassId == classId)
+                .OrderByDescending(g => g.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<Group?> GetGroupWithDetailsAsync(int groupId)
+        {
+            return await _context.Groups
+                .Include(g => g.Leader)
+                .Include(g => g.Class)
+                .Include(g => g.GroupMembers).ThenInclude(gm => gm.User)
+                .Include(g => g.Projects)
+                .FirstOrDefaultAsync(g => g.GroupId == groupId);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using AppBackend.BusinessObjects.Dtos.Group;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories;
+using AppBackend.Services.ApiModels.Commons;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System;
@@ -248,8 +249,8 @@ namespace AppBackend.Services.Services.Group
             await _db.SaveChangesAsync();
         }
 
-        // 8. Get groups by class
-        public async Task<IEnumerable<GroupListItemDto>> GetGroupsByClassAsync(int classId)
+        // 8. Get groups by class (simple list)
+        public async Task<IEnumerable<GroupListItemDto>> GetGroupListByClassAsync(int classId)
         {
             var results = await _db.Groups
                 .Where(g => g.ClassId == classId)
@@ -263,6 +264,60 @@ namespace AppBackend.Services.Services.Group
                 .ToListAsync();
 
             return results;
+        }
+
+        // Get groups by class with ResultModel (for controller compatibility)
+        public async Task<ResultModel<List<GroupResponseDto>>> GetGroupsByClassAsync(int classId)
+        {
+            try
+            {
+                var groups = await _db.Groups
+                    .Include(g => g.Leader)
+                    .Include(g => g.Class)
+                    .Include(g => g.GroupMembers).ThenInclude(gm => gm.User)
+                    .Include(g => g.Projects)
+                    .Where(g => g.ClassId == classId)
+                    .ToListAsync();
+
+                var dtos = groups.Select(g => new GroupResponseDto
+                {
+                    GroupId = g.GroupId,
+                    GroupName = g.GroupName,
+                    Description = g.Description,
+                    LeaderId = g.LeaderId,
+                    LeaderName = g.Leader?.FullName,
+                    ClassId = g.ClassId,
+                    ClassName = g.Class?.ClassName,
+                    CreatedAt = g.CreatedAt,
+                    UpdatedAt = g.UpdatedAt,
+                    MemberCount = g.GroupMembers?.Count ?? 0,
+                    ProjectCount = g.Projects?.Count ?? 0,
+                    Members = (g.GroupMembers ?? new List<GroupMember>())
+                        .Select(m => new AppBackend.Services.ApiModels.Commons.GroupMemberDto
+                        {
+                            UserId = m.UserId,
+                            FullName = m.User?.FullName,
+                            Email = m.User?.Email,
+                            RoleInGroup = m.RoleInGroup
+                        }).ToList()
+                }).ToList();
+
+                return new ResultModel<List<GroupResponseDto>>
+                {
+                    IsSuccess = true,
+                    Message = "Groups retrieved successfully",
+                    Data = dtos
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<List<GroupResponseDto>>
+                {
+                    IsSuccess = false,
+                    Message = $"Error retrieving groups: {ex.Message}",
+                    Data = null
+                };
+            }
         }
 
         // 9. Get group detail
@@ -284,7 +339,7 @@ namespace AppBackend.Services.Services.Group
                 LeaderId = group.LeaderId,
                 CreatedAt = group.CreatedAt,
                 UpdatedAt = group.UpdatedAt,
-                Members = group.GroupMembers.Select(m => new GroupMemberDto
+                Members = group.GroupMembers.Select(m => new AppBackend.BusinessObjects.Dtos.Group.GroupMemberDto
                 {
                     GmId = m.GmId,
                     UserId = m.UserId,
