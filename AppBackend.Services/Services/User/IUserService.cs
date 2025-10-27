@@ -5,6 +5,7 @@ namespace AppBackend.Services
 {
     public interface IUserService
     {
+<<<<<<< Updated upstream
         Task<ResultModel> RegisterAsync(RegisterRequest request);
         Task<ResultModel> LoginAsync(LoginRequest request);
         Task<ResultModel> GetAllUsersAsync();

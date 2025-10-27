@@ -402,3 +402,4 @@ FodyWeavers.xsd
 *.xml
 .idea/.idea.AppBackend/.idea/.name
 /docs
+AppBackend.ApiCore/appsettings.json

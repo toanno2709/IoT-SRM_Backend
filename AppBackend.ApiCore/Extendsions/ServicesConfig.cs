@@ -13,6 +13,7 @@ using AppBackend.Services.Services.Class;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.Services.Announcement;
 using AppBackend.Services.Services.ProjectMilestone;
+<<<<<<< Updated upstream:AppBackend.ApiCore/Extendsions/ServicesConfig.cs
 using AppBackend.Services.Services.ClassStats;
 using AppBackend.Services.Services.Group;
 using AppBackend.Repositories.Repositories.GroupRepo;
@@ -24,6 +25,13 @@ using AppBackend.Services.Services.GroupManagement;
 using AppBackend.Repositories.Repositories.GroupMemberRepo;
 using AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
 using AppBackend.Repositories.Repositories.ProjectApprovalHistoryRepo;
+=======
+using AppBackend.Services.Services.TopicReview;
+using AppBackend.Services.Services.Grading;
+using AppBackend.Services.Services.Semester;
+using AppBackend.Services.Services.Sensor;
+using AppBackend.Services.Services.Authentication;
+>>>>>>> Stashed changes:AppBackend.ApiCore/Extensions/ServicesConfig.cs
 using AppBackend.Services.ServicesHelpers;
 
 namespace AppBackend.Extensions;
@@ -51,6 +59,7 @@ public static class ServicesConfig
         #endregion
 
         #region Services
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IClassService>(sp => new ClassService(
             sp.GetRequiredService<IClassRepository>(),
