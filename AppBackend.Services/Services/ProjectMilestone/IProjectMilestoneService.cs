@@ -40,6 +40,18 @@ public class ProjectMilestoneService : IProjectMilestoneService
             return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = "Title is required" };
         }
 
+        if (request.Weight is < 0 or > 100)
+        {
+            return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = "Weight must be between 0 and 100" };
+        }
+
+        var currentTotal = await _repository.GetTotalWeightByProjectAsync(request.ProjectId);
+        var newTotal = currentTotal + (request.Weight ?? 0);
+        if (newTotal > 100)
+        {
+            return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = $"Total weight would be {newTotal}, exceeds 100" };
+        }
+
         var entity = new BusinessObjects.Models.ProjectMilestone
         {
             ProjectId = request.ProjectId,
@@ -47,6 +59,7 @@ public class ProjectMilestoneService : IProjectMilestoneService
             Description = request.Description,
             DueDate = request.DueDate,
             Status = "Planned",
+            Weight = request.Weight,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -69,10 +82,26 @@ public class ProjectMilestoneService : IProjectMilestoneService
             return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = "Milestone not found" };
         }
 
+        if (request.Weight is < 0 or > 100)
+        {
+            return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = "Weight must be between 0 and 100" };
+        }
+
+        if (request.Weight.HasValue)
+        {
+            var currentTotal = await _repository.GetTotalWeightByProjectAsync(entity.ProjectId, excludeMilestoneId: entity.MilestoneId);
+            var newTotal = currentTotal + request.Weight.Value;
+            if (newTotal > 100)
+            {
+                return new ResultModel<ProjectMilestoneResponseDto> { IsSuccess = false, Message = $"Total weight would be {newTotal}, exceeds 100" };
+            }
+        }
+
         if (request.Title != null) entity.Title = request.Title;
         if (request.Description != null) entity.Description = request.Description;
         if (request.DueDate != null) entity.DueDate = request.DueDate;
         if (request.Status != null) entity.Status = request.Status;
+        if (request.Weight.HasValue) entity.Weight = request.Weight.Value;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repository.UpdateAsync(entity);

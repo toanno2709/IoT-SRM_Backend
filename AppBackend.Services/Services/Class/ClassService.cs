@@ -1,6 +1,7 @@
 using AppBackend.BusinessObjects.Constants;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Repositories.ClassRepo;
+using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
 using AppBackend.Services.ApiModels.Commons;
@@ -14,17 +15,20 @@ public class ClassService : IClassService
     private readonly IClassRepository _classRepo;
     private readonly ISemesterRepository _semesterRepo;
     private readonly IUserRepository _userRepo;
+    private readonly IGroupRepository _groupRepo;
     private readonly IMapper _mapper;
 
     public ClassService(
         IClassRepository classRepo, 
         ISemesterRepository semesterRepo,
         IUserRepository userRepo,
+        IGroupRepository groupRepo,
         IMapper mapper)
     {
         _classRepo = classRepo;
         _semesterRepo = semesterRepo;
         _userRepo = userRepo;
+        _groupRepo = groupRepo;
         _mapper = mapper;
     }
 
@@ -564,5 +568,179 @@ public class ClassService : IClassService
             Data = true,
             StatusCode = StatusCodes.Status200OK
         };
+    }
+
+    public async Task<ResultModel<ClassSettingsResponseDto>> UpdateClassSettingsAsync(
+        int classId, 
+        ClassSettingsUpdateRequestDto request)
+    {
+        try
+        {
+            var classEntity = await _classRepo.GetClassWithDetailsAsync(classId);
+            if (classEntity == null)
+            {
+                return new ResultModel<ClassSettingsResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.NOT_FOUND,
+                    Message = "Class not found",
+                    Data = null,
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Validate min <= max
+            if (request.MinMembersPerGroup.HasValue && request.MaxMembersPerGroup.HasValue)
+            {
+                if (request.MinMembersPerGroup > request.MaxMembersPerGroup)
+                {
+                    return new ResultModel<ClassSettingsResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = "INVALID_SETTINGS",
+                        Message = "Min members cannot be greater than max members",
+                        Data = null,
+                        StatusCode = StatusCodes.Status400BadRequest
+                    };
+                }
+            }
+
+            // Get current groups to check constraints
+            var groups = await _groupRepo.GetGroupsByClassAsync(classId);
+            var warnings = new List<string>();
+
+            // Check max groups constraint
+            if (request.MaxGroups.HasValue && groups.Count > request.MaxGroups.Value)
+            {
+                warnings.Add($"Current group count ({groups.Count}) exceeds new max groups limit ({request.MaxGroups.Value})");
+            }
+
+            // Check member constraints
+            if (request.MaxMembersPerGroup.HasValue || request.MinMembersPerGroup.HasValue)
+            {
+                foreach (var group in groups)
+                {
+                    var memberCount = group.GroupMembers?.Count ?? 0;
+                    
+                    if (request.MaxMembersPerGroup.HasValue && memberCount > request.MaxMembersPerGroup.Value)
+                    {
+                        warnings.Add($"Group '{group.GroupName}' has {memberCount} members, exceeds new max ({request.MaxMembersPerGroup.Value})");
+                    }
+                    
+                    if (request.MinMembersPerGroup.HasValue && memberCount < request.MinMembersPerGroup.Value)
+                    {
+                        warnings.Add($"Group '{group.GroupName}' has {memberCount} members, below new min ({request.MinMembersPerGroup.Value})");
+                    }
+                }
+            }
+
+            // Update settings
+            if (request.MaxGroups.HasValue)
+                classEntity.MaxGroups = request.MaxGroups.Value;
+            
+            if (request.MaxMembersPerGroup.HasValue)
+                classEntity.MaxMembersPerGroup = request.MaxMembersPerGroup.Value;
+            
+            if (request.MinMembersPerGroup.HasValue)
+                classEntity.MinMembersPerGroup = request.MinMembersPerGroup.Value;
+
+            await _classRepo.UpdateAsync(classEntity);
+            await _classRepo.SaveChangesAsync();
+
+            // Calculate current stats
+            var memberCounts = groups
+                .Select(g => g.GroupMembers?.Count ?? 0)
+                .Where(c => c > 0)
+                .ToList();
+
+            return new ResultModel<ClassSettingsResponseDto>
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = warnings.Any() 
+                    ? "Settings updated with warnings" 
+                    : "Settings updated successfully",
+                Data = new ClassSettingsResponseDto
+                {
+                    ClassId = classEntity.ClassId,
+                    ClassName = classEntity.ClassName,
+                    MaxGroups = classEntity.MaxGroups,
+                    MaxMembersPerGroup = classEntity.MaxMembersPerGroup,
+                    MinMembersPerGroup = classEntity.MinMembersPerGroup,
+                    CurrentGroupCount = groups.Count,
+                    LargestGroupSize = memberCounts.Any() ? memberCounts.Max() : null,
+                    SmallestGroupSize = memberCounts.Any() ? memberCounts.Min() : null,
+                    Warnings = warnings
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ClassSettingsResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = CommonMessageConstants.ERROR,
+                Message = $"Error updating settings: {ex.Message}",
+                Data = null,
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<ClassSettingsResponseDto>> GetClassSettingsAsync(int classId)
+    {
+        try
+        {
+            var classEntity = await _classRepo.GetClassWithDetailsAsync(classId);
+            if (classEntity == null)
+            {
+                return new ResultModel<ClassSettingsResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.NOT_FOUND,
+                    Message = "Class not found",
+                    Data = null,
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            var groups = await _groupRepo.GetGroupsByClassAsync(classId);
+            var memberCounts = groups
+                .Select(g => g.GroupMembers?.Count ?? 0)
+                .Where(c => c > 0)
+                .ToList();
+
+            return new ResultModel<ClassSettingsResponseDto>
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = "Settings retrieved successfully",
+                Data = new ClassSettingsResponseDto
+                {
+                    ClassId = classEntity.ClassId,
+                    ClassName = classEntity.ClassName,
+                    MaxGroups = classEntity.MaxGroups,
+                    MaxMembersPerGroup = classEntity.MaxMembersPerGroup,
+                    MinMembersPerGroup = classEntity.MinMembersPerGroup,
+                    CurrentGroupCount = groups.Count,
+                    LargestGroupSize = memberCounts.Any() ? memberCounts.Max() : null,
+                    SmallestGroupSize = memberCounts.Any() ? memberCounts.Min() : null,
+                    Warnings = new List<string>()
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ClassSettingsResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = CommonMessageConstants.ERROR,
+                Message = $"Error retrieving settings: {ex.Message}",
+                Data = null,
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
     }
 }

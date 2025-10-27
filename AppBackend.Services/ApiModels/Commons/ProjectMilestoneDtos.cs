@@ -14,6 +14,9 @@ public class ProjectMilestoneCreateRequestDto
     public string? Description { get; set; }
 
     public DateOnly? DueDate { get; set; }
+
+    [Range(typeof(decimal), "0", "100")]
+    public decimal? Weight { get; set; }
 }
 
 public class ProjectMilestoneUpdateRequestDto
@@ -29,6 +32,9 @@ public class ProjectMilestoneUpdateRequestDto
     public DateOnly? DueDate { get; set; }
 
     public string? Status { get; set; }
+
+    [Range(typeof(decimal), "0", "100")]
+    public decimal? Weight { get; set; }
 }
 
 public class ProjectMilestoneResponseDto
@@ -41,6 +47,7 @@ public class ProjectMilestoneResponseDto
     public string? Status { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public decimal? Weight { get; set; }
 }
 
 
