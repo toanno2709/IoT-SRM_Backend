@@ -402,3 +402,8 @@ FodyWeavers.xsd
 *.xml
 .idea/.idea.AppBackend/.idea/.name
 /docs
+
+# Markdown files
+*.md
+# But keep README
+!README.md
