@@ -10,3 +10,8 @@ public interface IProjectRepository : IGenericRepository<Project>
     Task<Project?> GetProjectWithDetailsAsync(int projectId);
     Task<Project?> GetByIdWithDetailsAsync(int projectId);
 }
+
+
+
+
+

@@ -24,7 +24,8 @@ namespace AppBackend.Services.Services.Sensor
 
         public async Task<ResultModel<SensorResponseDto>> CreateSensorAsync(
             int projectId, 
-            int currentUserId, 
+            int currentUserId,
+            string userRole,
             CreateSensorRequestDto request)
         {
             // Check if project exists
@@ -42,7 +43,7 @@ namespace AppBackend.Services.Services.Sensor
             }
 
             // Check ownership/permission
-            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, "Student");
+            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, userRole);
             if (!canAccess)
             {
                 return new ResultModel<SensorResponseDto>
@@ -110,7 +111,8 @@ namespace AppBackend.Services.Services.Sensor
 
         public async Task<ResultModel<SensorListResponseDto>> GetSensorsByProjectAsync(
             int projectId, 
-            int currentUserId, 
+            int currentUserId,
+            string userRole,
             string? searchQuery, 
             int page, 
             int pageSize)
@@ -135,7 +137,7 @@ namespace AppBackend.Services.Services.Sensor
             }
 
             // Check ownership/permission
-            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, "Student");
+            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, userRole);
             if (!canAccess)
             {
                 return new ResultModel<SensorListResponseDto>
@@ -185,7 +187,8 @@ namespace AppBackend.Services.Services.Sensor
         public async Task<ResultModel<SensorDetailDto>> GetSensorByIdAsync(
             int projectId, 
             int sensorId, 
-            int currentUserId)
+            int currentUserId,
+            string userRole)
         {
             // Check if sensor belongs to project
             var belongsToProject = await _sensorRepo.BelongsToProjectAsync(sensorId, projectId);
@@ -202,7 +205,7 @@ namespace AppBackend.Services.Services.Sensor
             }
 
             // Check ownership/permission
-            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, "Student");
+            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, userRole);
             if (!canAccess)
             {
                 return new ResultModel<SensorDetailDto>
@@ -259,7 +262,8 @@ namespace AppBackend.Services.Services.Sensor
         public async Task<ResultModel<SensorResponseDto>> UpdateSensorAsync(
             int projectId, 
             int sensorId, 
-            int currentUserId, 
+            int currentUserId,
+            string userRole,
             UpdateSensorRequestDto request)
         {
             // Check if sensor belongs to project
@@ -277,7 +281,7 @@ namespace AppBackend.Services.Services.Sensor
             }
 
             // Check ownership/permission
-            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, "Student");
+            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, userRole);
             if (!canAccess)
             {
                 return new ResultModel<SensorResponseDto>
@@ -369,7 +373,8 @@ namespace AppBackend.Services.Services.Sensor
         public async Task<ResultModel<bool>> DeleteSensorAsync(
             int projectId, 
             int sensorId, 
-            int currentUserId)
+            int currentUserId,
+            string userRole)
         {
             // Check if sensor belongs to project
             var belongsToProject = await _sensorRepo.BelongsToProjectAsync(sensorId, projectId);
@@ -386,7 +391,7 @@ namespace AppBackend.Services.Services.Sensor
             }
 
             // Check ownership/permission
-            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, "Student");
+            var canAccess = await CanAccessProjectAsync(projectId, currentUserId, userRole);
             if (!canAccess)
             {
                 return new ResultModel<bool>

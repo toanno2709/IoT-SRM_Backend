@@ -1,5 +1,5 @@
 using System.Linq.Expressions;
-using AppBackend.BusinessObjects.Models;
+using AppBackend.BusinessObjects.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -7,10 +7,10 @@ namespace AppBackend.Repositories.Generic
 {
     public class GenericRepository<T> : IGenericRepository<T> where T : class
     {
-        protected readonly IOTShowroomContext _context;
+        protected readonly IotShowroomContext _context;
         private IDbContextTransaction? _transaction;
 
-        public GenericRepository(IOTShowroomContext context)
+        public GenericRepository(IotShowroomContext context)
         {
             _context = context;
         }
