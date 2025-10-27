@@ -5,17 +5,10 @@ namespace AppBackend.Services
 {
     public interface IUserService
     {
-        #region User Profile
-        Task<ResultModel> GetCurrentUserAsync(int userId);
-        #endregion
-
-        #region Admin - User Management
+<<<<<<< Updated upstream
+        Task<ResultModel> RegisterAsync(RegisterRequest request);
+        Task<ResultModel> LoginAsync(LoginRequest request);
         Task<ResultModel> GetAllUsersAsync();
         Task<ResultModel> GetUserByIdAsync(int id);
-        Task<ResultModel<UserResponseDto>> CreateUserAsync(CreateUserRequest request);
-        Task<ResultModel<UserResponseDto>> UpdateUserAsync(int userId, UpdateUserRequest request);
-        Task<ResultModel<List<UserResponseDto>>> GetUsersByRoleAsync(int? roleId);
-        Task<ResultModel<bool>> DeleteUserAsync(int userId);
-        #endregion
     }
 }
