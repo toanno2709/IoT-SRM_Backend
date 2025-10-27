@@ -4,16 +4,11 @@ using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AppBackend.Attributes;
-using System.Security.Claims;
 
 namespace AppBackend.Api.Controllers
 {
     /// <summary>
-<<<<<<< Updated upstream
     /// APIs for managing users (Register, Login, Query Users)
-=======
-    /// APIs for user management
->>>>>>> Stashed changes
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
@@ -26,38 +21,41 @@ namespace AppBackend.Api.Controllers
             _userService = userService;
         }
 
-<<<<<<< Updated upstream
         /// <summary>
         /// Register a new user account
-=======
-        #region User Profile
+        /// </summary>
+        /// <param name="request">Registration request payload</param>
+        /// <returns>JWT access token and refresh token</returns>
+        /// <response code="201">User registered successfully</response>
+        /// <response code="400">Invalid input data</response>
+        [HttpPost("register")]
+        [AllowAnonymous]
+        [RateLimit(permitLimit: 3, windowSeconds: 60, queueLimit: 1, strategy: "fixed")]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _userService.RegisterAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
 
         /// <summary>
-        /// Get current authenticated user information
->>>>>>> Stashed changes
+        /// Login an existing user
         /// </summary>
-        /// <returns>Current user details</returns>
-        /// <response code="200">User information retrieved successfully</response>
-        /// <response code="401">Unauthorized - Login required</response>
-        /// <response code="404">User not found</response>
-        [HttpGet("me")]
-        [Authorize]
-        [RateLimit(permitLimit: 20, windowSeconds: 60)]
-        public async Task<IActionResult> GetCurrentUser()
+        /// <param name="request">Login credentials (Email + Password)</param>
+        /// <returns>JWT access token and refresh token</returns>
+        /// <response code="200">Login successful</response>
+        /// <response code="401">Invalid credentials</response>
+        [HttpPost("login")]
+        [AllowAnonymous]
+        [RateLimit(permitLimit: 5, windowSeconds: 60, queueLimit: 2, strategy: "sliding")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
-            {
-                return Unauthorized(new ResultModel
-                {
-                    IsSuccess = false,
-                    ResponseCode = "UNAUTHORIZED",
-                    Message = "Invalid token",
-                    StatusCode = StatusCodes.Status401Unauthorized
-                });
-            }
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
-            var result = await _userService.GetCurrentUserAsync(userId);
+            var result = await _userService.LoginAsync(request);
             return StatusCode(result.StatusCode, result);
         }
 

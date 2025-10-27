@@ -100,12 +100,6 @@ namespace AppBackend.Services.ApiModels
         public string Password { get; set; } = null!;
     }
 
-    public class RefreshTokenRequest
-    {
-        [Required(ErrorMessage = "Refresh token is required")]
-        public string RefreshToken { get; set; } = null!;
-    }
-
     #endregion
 
     #region Legacy DTOs (for backward compatibility)
