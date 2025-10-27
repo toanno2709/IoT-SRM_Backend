@@ -402,3 +402,8 @@ FodyWeavers.xsd
 *.xml
 .idea/.idea.AppBackend/.idea/.name
 /docs
+CLASS_SETTINGS_API.md
+CLASS_SETTINGS_API.md
+*.md
+AppBackend.ApiCore/appsettings.json
+AppBackend.BusinessObjects/Migrations/20251013121206_InitialCreate.cs

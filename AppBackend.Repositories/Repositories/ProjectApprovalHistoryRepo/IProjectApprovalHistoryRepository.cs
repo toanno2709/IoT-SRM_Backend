@@ -1,6 +1,6 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.ProjectApprovalHistoryRepo;
 
 public interface IProjectApprovalHistoryRepository : IGenericRepository<ProjectApprovalHistory>
@@ -10,7 +10,7 @@ public interface IProjectApprovalHistoryRepository : IGenericRepository<ProjectA
 
 public class ProjectApprovalHistoryRepository : GenericRepository<ProjectApprovalHistory>, IProjectApprovalHistoryRepository
 {
-    public ProjectApprovalHistoryRepository(IOTShowroomContext context) : base(context)
+    public ProjectApprovalHistoryRepository(IotShowroomContext context) : base(context)
     {
     }
 

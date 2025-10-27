@@ -25,6 +25,10 @@ using AppBackend.Repositories.Repositories.GroupMemberRepo;
 using AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
 using AppBackend.Repositories.Repositories.ProjectApprovalHistoryRepo;
 using AppBackend.Services.ServicesHelpers;
+using AppBackend.Services.Services.Authentication;
+using AppBackend.Services.Services.Semester;
+using AppBackend.Services.Services.Sensor;
+using AppBackend.Repositories.Repositories.SensorRepo;
 
 namespace AppBackend.Extensions;
 
@@ -48,9 +52,11 @@ public static class ServicesConfig
         services.AddScoped<IMilestoneSubmissionRepository, MilestoneSubmissionRepository>();
         services.AddScoped<IProjectApprovalHistoryRepository, ProjectApprovalHistoryRepository>();
         services.AddScoped<IGroupMemberRepository, GroupMemberRepository>();
+        services.AddScoped<ISensorRepository, SensorRepository>();
         #endregion
 
         #region Services
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IClassService>(sp => new ClassService(
             sp.GetRequiredService<IClassRepository>(),
@@ -62,6 +68,8 @@ public static class ServicesConfig
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
         services.AddScoped<IProjectMilestoneService, ProjectMilestoneService>();
+        services.AddScoped<ISemesterService, SemesterService>();
+        services.AddScoped<ISensorService, SensorService>();
         services.AddScoped<IClassStatsService>(sp => new ClassStatsService(
             sp.GetRequiredService<IClassRepository>(),
             sp.GetRequiredService<IGroupRepository>(),

@@ -1,12 +1,12 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.SensorRepo
 {
     public class SensorRepository : GenericRepository<Sensor>, ISensorRepository
     {
-        public SensorRepository(IOTShowroomContext context) : base(context)
+        public SensorRepository(IotShowroomContext context) : base(context)
         {
         }
 

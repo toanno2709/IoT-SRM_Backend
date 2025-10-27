@@ -1,4 +1,4 @@
-ï»¿using AppBackend.BusinessObjects.Dtos.Group;
+using AppBackend.BusinessObjects.Dtos.Group;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories;
 using AppBackend.Services.ApiModels.Commons;
@@ -11,16 +11,16 @@ using System.Text;
 using System.Threading.Tasks;
 using GroupEntity = AppBackend.BusinessObjects.Models.Group;
 
-
+using AppBackend.BusinessObjects.Data;
 
 namespace AppBackend.Services.Services.Group
 {
     public class GroupService : IGroupService
     {
-        private readonly IOTShowroomContext _db;
+        private readonly IotShowroomContext _db;
         private readonly ILogger<GroupService> _logger;
 
-        public GroupService(IOTShowroomContext db, ILogger<GroupService> logger)
+        public GroupService(IotShowroomContext db, ILogger<GroupService> logger)
         {
             _db = db;
             _logger = logger;
@@ -124,7 +124,7 @@ namespace AppBackend.Services.Services.Group
             };
             _db.GroupMembers.Add(gm);
 
-            // optional: mark invite notification as read â€” try to find invite notification and mark read
+            // optional: mark invite notification as read — try to find invite notification and mark read
             var possibleInvite = await _db.Notifications
                 .Where(n => n.UserId == dto.UserId && n.Type == "invite" && n.Title != null && n.Title.Contains(group.GroupName!))
                 .OrderByDescending(n => n.CreatedAt)
@@ -224,7 +224,7 @@ namespace AppBackend.Services.Services.Group
             await _db.SaveChangesAsync();
         }
 
-        // 7. Delete group (Admin or Instructor or Leader depending policy) â€” here only Admin (role id 1) or Instructor (role id 3?) or leader
+        // 7. Delete group (Admin or Instructor or Leader depending policy) — here only Admin (role id 1) or Instructor (role id 3?) or leader
         public async Task DeleteGroupAsync(int groupId, int requesterUserId)
         {
             var group = await _db.Groups.Include(g => g.GroupMembers).FirstOrDefaultAsync(g => g.GroupId == groupId);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -27,19 +27,17 @@ public partial class MilestoneSubmission
     [Precision(0)]
     public DateTime? LastSubmittedAt { get; set; }
 
-    [ForeignKey("ProjectId")]
-    [InverseProperty("MilestoneSubmissions")]
-    public virtual Project Project { get; set; } = null!;
-
     [ForeignKey("MilestoneDefId")]
     [InverseProperty("MilestoneSubmissions")]
     public virtual ProjectMilestone MilestoneDef { get; set; } = null!;
 
-    [InverseProperty("Submission")]
-    public virtual ICollection<SubmissionFile> SubmissionFiles { get; set; } = new List<SubmissionFile>();
+    [ForeignKey("ProjectId")]
+    [InverseProperty("MilestoneSubmissions")]
+    public virtual Project Project { get; set; } = null!;
 
     [InverseProperty("Submission")]
     public virtual ICollection<ProjectApprovalHistory> ProjectApprovalHistories { get; set; } = new List<ProjectApprovalHistory>();
+
+    [InverseProperty("Submission")]
+    public virtual ICollection<SubmissionFile> SubmissionFiles { get; set; } = new List<SubmissionFile>();
 }
-
-

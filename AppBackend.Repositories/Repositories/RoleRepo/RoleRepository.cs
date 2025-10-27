@@ -1,14 +1,14 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.RoleRepo
 {
     public class RoleRepository : GenericRepository<Role>, IRoleRepository
     {
-        private readonly IOTShowroomContext _context;
+        private readonly IotShowroomContext _context;
 
-        public RoleRepository(IOTShowroomContext context) : base(context)
+        public RoleRepository(IotShowroomContext context) : base(context)
         {
             _context = context;
         }

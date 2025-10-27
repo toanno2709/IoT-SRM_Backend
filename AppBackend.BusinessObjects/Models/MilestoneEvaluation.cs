@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace AppBackend.BusinessObjects.Models;
 
 [Table("Milestone_Evaluations")]
-[Index("ProjectId", "MilestoneDefId", "InstructorId", Name = "uq_ME_Project_Milestone_Instructor", IsUnique = true)]
 [Index("ProjectId", "MilestoneDefId", "EvaluatedAt", Name = "IX_ME_Project_Milestone")]
+[Index("ProjectId", "MilestoneDefId", "InstructorId", Name = "uq_ME_Project_Milestone_Instructor", IsUnique = true)]
 public partial class MilestoneEvaluation
 {
     [Key]
@@ -37,17 +37,15 @@ public partial class MilestoneEvaluation
     [Precision(0)]
     public DateTime EvaluatedAt { get; set; }
 
-    [ForeignKey("ProjectId")]
+    [ForeignKey("InstructorId")]
     [InverseProperty("MilestoneEvaluations")]
-    public virtual Project Project { get; set; } = null!;
+    public virtual User Instructor { get; set; } = null!;
 
     [ForeignKey("MilestoneDefId")]
     [InverseProperty("MilestoneEvaluations")]
     public virtual ProjectMilestone MilestoneDef { get; set; } = null!;
 
-    [ForeignKey("InstructorId")]
+    [ForeignKey("ProjectId")]
     [InverseProperty("MilestoneEvaluations")]
-    public virtual User Instructor { get; set; } = null!;
+    public virtual Project Project { get; set; } = null!;
 }
-
-

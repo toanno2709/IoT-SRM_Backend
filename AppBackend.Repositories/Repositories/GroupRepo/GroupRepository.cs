@@ -1,18 +1,18 @@
-ï»¿using AppBackend.BusinessObjects.Models;
+using AppBackend.BusinessObjects.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.GroupRepo
 {
     public class GroupRepository : IGroupRepository
     {
-        private readonly IOTShowroomContext _context;
+        private readonly IotShowroomContext _context;
 
-        public GroupRepository(IOTShowroomContext context)
+        public GroupRepository(IotShowroomContext context)
         {
             _context = context;
         }
@@ -37,10 +37,10 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
 
         public async Task<Group> CreateGroupAsync(Group group, int leaderId)
         {
-            // Kiá»ƒm tra leader Ä‘Ã£ cÃ³ nhÃ³m trong class nÃ y chÆ°a
+            // Ki?m tra leader dã có nhóm trong class này chua
             var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId, leaderId);
             if (alreadyInGroup)
-                throw new InvalidOperationException("Leader Ä‘Ã£ thuá»™c má»™t nhÃ³m khÃ¡c trong cÃ¹ng lá»›p.");
+                throw new InvalidOperationException("Leader dã thu?c m?t nhóm khác trong cùng l?p.");
 
             group.LeaderId = leaderId;
             group.CreatedAt = DateTime.UtcNow;
@@ -48,7 +48,7 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
             _context.Groups.Add(group);
             await _context.SaveChangesAsync();
 
-            // ThÃªm leader vÃ o GroupMembers
+            // Thêm leader vào GroupMembers
             var leaderMember = new GroupMember
             {
                 GroupId = group.GroupId,
@@ -69,10 +69,10 @@ namespace AppBackend.Repositories.Repositories.GroupRepo
             if (group == null)
                 throw new KeyNotFoundException("Group not found.");
 
-            // Kiá»ƒm tra sinh viÃªn Ä‘Ã£ thuá»™c nhÃ³m khÃ¡c trong cÃ¹ng class chÆ°a
+            // Ki?m tra sinh viên dã thu?c nhóm khác trong cùng class chua
             var alreadyInGroup = await CheckStudentInClassGroupAsync(group.ClassId, userId);
             if (alreadyInGroup)
-                throw new InvalidOperationException("Sinh viÃªn Ä‘Ã£ thuá»™c má»™t nhÃ³m khÃ¡c trong cÃ¹ng lá»›p.");
+                throw new InvalidOperationException("Sinh viên dã thu?c m?t nhóm khác trong cùng l?p.");
 
             var member = new GroupMember
             {

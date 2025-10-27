@@ -1,3 +1,4 @@
+using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,7 +9,7 @@ namespace AppBackend.Extensions
         public static void Initialize(IApplicationBuilder app)
         {
             using var scope = app.ApplicationServices.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<IOTShowroomContext>();
+            var context = scope.ServiceProvider.GetRequiredService<IotShowroomContext>();
 
             //// Run migrations if needed
             //context.Database.Migrate();

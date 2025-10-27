@@ -17,8 +17,18 @@ namespace AppBackend.Services.Mappers
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
 
-            // Map User -> UserDto for responses
+            // Map CreateUserRequest -> User (Admin creates user)
+            CreateMap<CreateUserRequest, User>()
+                .ForMember(dest => dest.PasswordHash, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
+
+            // Map User -> UserDto for responses (legacy)
             CreateMap<User, UserDto>();
+
+            // Map User -> UserResponseDto (detailed response with role)
+            CreateMap<User, UserResponseDto>()
+                .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role != null ? src.Role.RoleName : null));
             #endregion
 
             #region Account

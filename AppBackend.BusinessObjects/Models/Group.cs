@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.BusinessObjects.Models;
 
-[Table("Groups")]
 [Index("ClassId", "GroupName", Name = "uq_group_class_name", IsUnique = true)]
 public partial class Group
 {
@@ -39,15 +38,13 @@ public partial class Group
     [InverseProperty("Groups")]
     public virtual Class Class { get; set; } = null!;
 
+    [InverseProperty("Group")]
+    public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
+
     [ForeignKey("LeaderId")]
     [InverseProperty("Groups")]
     public virtual User? Leader { get; set; }
 
     [InverseProperty("Group")]
-    public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
-
-    [InverseProperty("Group")]
     public virtual ICollection<Project> Projects { get; set; } = new List<Project>();
 }
-
-

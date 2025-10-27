@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
+
 namespace AppBackend.BusinessObjects.Models;
 
 public partial class Class
@@ -29,27 +30,18 @@ public partial class Class
     [Column("semester_id")]
     public int? SemesterId { get; set; }
 
-    [Column("max_groups")]
-    public int? MaxGroups { get; set; }
-
-    [Column("max_members_per_group")]
-    public int? MaxMembersPerGroup { get; set; }
-
-    [Column("min_members_per_group")]
-    public int? MinMembersPerGroup { get; set; }
-
     [InverseProperty("Class")]
     public virtual ICollection<ClassEnrollment> ClassEnrollments { get; set; } = new List<ClassEnrollment>();
 
-    [ForeignKey("InstructorId")]
-    [InverseProperty("Classes")]
-    public virtual User? Instructor { get; set; }
+    [InverseProperty("Class")]
+    public virtual ICollection<ClassMessage> ClassMessages { get; set; } = new List<ClassMessage>();
 
     [InverseProperty("Class")]
     public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
 
-    [InverseProperty("Class")]
-    public virtual ICollection<ClassMessage> ClassMessages { get; set; } = new List<ClassMessage>();
+    [ForeignKey("InstructorId")]
+    [InverseProperty("Classes")]
+    public virtual User? Instructor { get; set; }
 
     [InverseProperty("Class")]
     public virtual ICollection<RubricWeight> RubricWeights { get; set; } = new List<RubricWeight>();

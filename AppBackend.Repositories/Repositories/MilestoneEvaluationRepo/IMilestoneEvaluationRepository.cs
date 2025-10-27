@@ -1,7 +1,7 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 
 public interface IMilestoneEvaluationRepository : IGenericRepository<MilestoneEvaluation>
@@ -12,7 +12,7 @@ public interface IMilestoneEvaluationRepository : IGenericRepository<MilestoneEv
 
 public class MilestoneEvaluationRepository : GenericRepository<MilestoneEvaluation>, IMilestoneEvaluationRepository
 {
-    public MilestoneEvaluationRepository(IOTShowroomContext context) : base(context)
+    public MilestoneEvaluationRepository(IotShowroomContext context) : base(context)
     {
     }
 

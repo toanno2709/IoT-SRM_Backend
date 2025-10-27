@@ -45,14 +45,13 @@ public partial class Project
     public virtual ICollection<LiveDemo> LiveDemos { get; set; } = new List<LiveDemo>();
 
     [InverseProperty("Project")]
-    public virtual ICollection<MilestoneSubmission> MilestoneSubmissions { get; set; } = new List<MilestoneSubmission>();
-
-    [InverseProperty("Project")]
     public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
 
     [InverseProperty("Project")]
-    public virtual ICollection<ProjectMilestone> ProjectMilestones { get; set; } = new List<ProjectMilestone>();
+    public virtual ICollection<MilestoneSubmission> MilestoneSubmissions { get; set; } = new List<MilestoneSubmission>();
 
+    [InverseProperty("Project")]
+    public virtual ICollection<ProjectMilestone> ProjectMilestones { get; set; } = new List<ProjectMilestone>();
 
     [InverseProperty("Project")]
     public virtual ICollection<Sensor> Sensors { get; set; } = new List<Sensor>();

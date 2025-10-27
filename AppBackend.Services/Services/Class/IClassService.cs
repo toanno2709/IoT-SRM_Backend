@@ -14,6 +14,4 @@ public interface IClassService
     Task<ResultModel<ClassResponseDto>> UpdateClassAsync(int classId, UpdateClassRequestDto request);
     Task<ResultModel<bool>> DeleteClassAsync(int classId);
     Task<ResultModel<bool>> AssignInstructorAsync(int classId, int instructorId);
-    Task<ResultModel<ClassSettingsResponseDto>> UpdateClassSettingsAsync(int classId, ClassSettingsUpdateRequestDto request);
-    Task<ResultModel<ClassSettingsResponseDto>> GetClassSettingsAsync(int classId);
 }
