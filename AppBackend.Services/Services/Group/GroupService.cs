@@ -25,6 +25,20 @@ namespace AppBackend.Services.Services.Group
             _logger = logger;
         }
 
+        private async Task SendNotificationAsync(int userId, string title, string message, string type = "system")
+        {
+            var note = new Notification
+            {
+                UserId = userId,
+                Title = title,
+                Message = message,
+                Type = type,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Notifications.Add(note);
+            await _db.SaveChangesAsync();
+        }
         // 1. Create group: check user not in any group in same class -> create group and add leader as GroupMember role "Leader"
         public async Task<GroupCreateResultDto> CreateGroupAsync(GroupCreateDto dto, int creatorUserId)
         {
@@ -59,6 +73,8 @@ namespace AppBackend.Services.Services.Group
             };
             _db.GroupMembers.Add(gm);
             await _db.SaveChangesAsync();
+            // send notification to creator
+            await SendNotificationAsync(creatorUserId, "Group Created", $"You have successfully created group '{group.GroupName}'.", "group_create");
 
             return new GroupCreateResultDto(group.GroupId, group.GroupName, group.LeaderId, group.ClassId);
         }
@@ -85,17 +101,21 @@ namespace AppBackend.Services.Services.Group
             if (alreadyIn) throw new InvalidOperationException("Invited user already in a group in this class.");
 
             // create a notification row (simple invite model)
-            var note = new Notification
-            {
-                UserId = dto.InvitedUserId,
-                Title = $"Invitation to join group {group.GroupName}",
-                Message = $"You have been invited to join group '{group.GroupName}' in class {group.ClassId} by user {dto.InviterUserId}.",
-                Type = "invite",
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Notifications.Add(note);
-            await _db.SaveChangesAsync();
+            //var note = new Notification
+            //{
+            //    UserId = dto.InvitedUserId,
+            //    Title = $"Invitation to join group {group.GroupName}",
+            //    Message = $"You have been invited to join group '{group.GroupName}' in class {group.ClassId} by user {dto.InviterUserId}.",
+            //    Type = "invite",
+            //    IsRead = false,
+            //    CreatedAt = DateTime.UtcNow
+            //};
+            //_db.Notifications.Add(note);
+            //await _db.SaveChangesAsync();
+            await SendNotificationAsync(dto.InvitedUserId,
+                $"Invitation to join group {group.GroupName}",
+                $"You have been invited to join group '{group.GroupName}' in class {group.ClassId} by {dto.InviterUserId}.",
+                "invite");
         }
 
         // 3. Accept invite: add to group if not in other group in same class, remove any previous invite-notif? (we keep simple)
@@ -135,6 +155,11 @@ namespace AppBackend.Services.Services.Group
             }
 
             await _db.SaveChangesAsync();
+            // send notification to group leader
+            await SendNotificationAsync(group.LeaderId ?? 0,
+                "Member Joined Group",
+                $"A new member has joined your group '{group.GroupName}'.",
+                "group_update");
         }
 
         // 4. Leave group
@@ -174,6 +199,11 @@ namespace AppBackend.Services.Services.Group
             }
 
             await _db.SaveChangesAsync();
+            // send notification to group leader
+            await SendNotificationAsync(group.LeaderId ?? 0,
+               "Member Left Group",
+               $"A member has left your group '{group.GroupName}'.",
+               "group_update");
         }
 
         // 5. Kick member (leader only)
@@ -192,19 +222,24 @@ namespace AppBackend.Services.Services.Group
 
             _db.GroupMembers.Remove(gm);
 
-            // send notification to kicked user
-            var note = new Notification
-            {
-                UserId = dto.TargetUserId,
-                Title = $"Removed from group {group.GroupName}",
-                Message = $"You have been removed from group '{group.GroupName}'.",
-                Type = "group_removed",
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Notifications.Add(note);
+            
+            //var note = new Notification
+            //{
+            //    UserId = dto.TargetUserId,
+            //    Title = $"Removed from group {group.GroupName}",
+            //    Message = $"You have been removed from group '{group.GroupName}'.",
+            //    Type = "group_removed",
+            //    IsRead = false,
+            //    CreatedAt = DateTime.UtcNow
+            //};
+            //_db.Notifications.Add(note);
 
             await _db.SaveChangesAsync();
+// send notification to kicked user
+            await SendNotificationAsync(dto.TargetUserId,
+                $"Removed from group {group.GroupName}",
+                $"You have been removed from group '{group.GroupName}'.",
+                "group_removed");
         }
 
         // 6. Update group (leader only)
@@ -221,6 +256,14 @@ namespace AppBackend.Services.Services.Group
 
             _db.Groups.Update(group);
             await _db.SaveChangesAsync();
+            var memberIds = await _db.GroupMembers
+                .Where(m => m.GroupId == group.GroupId && m.UserId != group.LeaderId)
+                .Select(m => m.UserId)
+                .ToListAsync();
+
+            foreach (var uid in memberIds)
+                await SendNotificationAsync(uid, "Group Updated", $"Group '{group.GroupName}' information has been updated.", "group_update");
+
         }
 
         // 7. Delete group (Admin or Instructor or Leader depending policy) — here only Admin (role id 1) or Instructor (role id 3?) or leader
@@ -242,10 +285,16 @@ namespace AppBackend.Services.Services.Group
             var hasProject = await _db.Projects.AnyAsync(p => p.GroupId == groupId);
             if (hasProject) throw new InvalidOperationException("Cannot delete group with an associated project.");
 
+            var memberIds = group.GroupMembers.Select(m => m.UserId).ToList();
+
             // remove members and group
             _db.GroupMembers.RemoveRange(group.GroupMembers);
             _db.Groups.Remove(group);
             await _db.SaveChangesAsync();
+
+            foreach (var uid in memberIds)
+                await SendNotificationAsync(uid, "Group Deleted", $"Your group '{group.GroupName}' has been deleted.", "group_deleted");
+
         }
 
         // 8. Get groups by class
