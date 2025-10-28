@@ -1,7 +1,7 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.GroupMemberRepo;
 
 public interface IGroupMemberRepository : IGenericRepository<GroupMember>
@@ -14,7 +14,7 @@ public interface IGroupMemberRepository : IGenericRepository<GroupMember>
 
 public class GroupMemberRepository : GenericRepository<GroupMember>, IGroupMemberRepository
 {
-    public GroupMemberRepository(IOTShowroomContext context) : base(context)
+    public GroupMemberRepository(IotShowroomContext context) : base(context)
     {
     }
 

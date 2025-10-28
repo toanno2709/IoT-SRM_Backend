@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -35,5 +35,3 @@ public partial class ClassMessage
     [InverseProperty("ClassMessages")]
     public virtual User Sender { get; set; } = null!;
 }
-
-

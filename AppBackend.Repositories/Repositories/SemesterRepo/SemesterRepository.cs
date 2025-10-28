@@ -1,14 +1,14 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.SemesterRepo
 {
     public class SemesterRepository : GenericRepository<Semester>, ISemesterRepository
     {
-        private readonly IOTShowroomContext _context;
+        private readonly IotShowroomContext _context;
 
-        public SemesterRepository(IOTShowroomContext context) : base(context)
+        public SemesterRepository(IotShowroomContext context) : base(context)
         {
             _context = context;
         }

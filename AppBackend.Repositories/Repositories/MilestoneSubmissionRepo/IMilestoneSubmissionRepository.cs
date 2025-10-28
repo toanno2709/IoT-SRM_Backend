@@ -1,7 +1,7 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
 
 public interface IMilestoneSubmissionRepository : IGenericRepository<MilestoneSubmission>
@@ -12,7 +12,7 @@ public interface IMilestoneSubmissionRepository : IGenericRepository<MilestoneSu
 
 public class MilestoneSubmissionRepository : GenericRepository<MilestoneSubmission>, IMilestoneSubmissionRepository
 {
-    public MilestoneSubmissionRepository(IOTShowroomContext context) : base(context)
+    public MilestoneSubmissionRepository(IotShowroomContext context) : base(context)
     {
     }
 

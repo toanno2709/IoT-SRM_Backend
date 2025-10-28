@@ -121,41 +121,6 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy cấu hình class settings (max groups, max/min members)
-    /// </summary>
-    [HttpGet("classes/{classId}/settings")]
-    public async Task<ActionResult<ResultModel<ClassSettingsResponseDto>>> GetClassSettings([FromRoute] int classId)
-    {
-        var result = await _classService.GetClassSettingsAsync(classId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Cập nhật cấu hình class settings (max groups, max/min members per group)
-    /// </summary>
-    [HttpPut("classes/{classId}/settings")]
-    public async Task<ActionResult<ResultModel<ClassSettingsResponseDto>>> UpdateClassSettings(
-        [FromRoute] int classId,
-        [FromBody] ClassSettingsUpdateRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<ClassSettingsResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                Data = null
-            });
-        }
-
-        var result = await _classService.UpdateClassSettingsAsync(classId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-
-    /// <summary>
     /// Chấm điểm milestone (UPDATED - dùng MilestoneEvaluation)
     /// </summary>
     [HttpPost("milestones/grade")]

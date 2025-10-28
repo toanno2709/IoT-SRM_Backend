@@ -48,7 +48,8 @@ namespace AppBackend.ApiCore.Controllers
             }
 
             var currentUserId = GetCurrentUserId();
-            var result = await _sensorService.CreateSensorAsync(projectId, currentUserId, request);
+            var userRole = GetCurrentUserRole();
+            var result = await _sensorService.CreateSensorAsync(projectId, currentUserId, userRole, request);
             
             if (result.IsSuccess)
                 return CreatedAtAction(
@@ -80,7 +81,8 @@ namespace AppBackend.ApiCore.Controllers
             [FromQuery] int pageSize = 50)
         {
             var currentUserId = GetCurrentUserId();
-            var result = await _sensorService.GetSensorsByProjectAsync(projectId, currentUserId, q, page, pageSize);
+            var userRole = GetCurrentUserRole();
+            var result = await _sensorService.GetSensorsByProjectAsync(projectId, currentUserId, userRole, q, page, pageSize);
             
             if (result.IsSuccess)
                 return Ok(result);
@@ -105,7 +107,8 @@ namespace AppBackend.ApiCore.Controllers
             int sensorId)
         {
             var currentUserId = GetCurrentUserId();
-            var result = await _sensorService.GetSensorByIdAsync(projectId, sensorId, currentUserId);
+            var userRole = GetCurrentUserRole();
+            var result = await _sensorService.GetSensorByIdAsync(projectId, sensorId, currentUserId, userRole);
             
             if (result.IsSuccess)
                 return Ok(result);
@@ -145,7 +148,8 @@ namespace AppBackend.ApiCore.Controllers
             }
 
             var currentUserId = GetCurrentUserId();
-            var result = await _sensorService.UpdateSensorAsync(projectId, sensorId, currentUserId, request);
+            var userRole = GetCurrentUserRole();
+            var result = await _sensorService.UpdateSensorAsync(projectId, sensorId, currentUserId, userRole, request);
             
             if (result.IsSuccess)
                 return Ok(result);
@@ -171,7 +175,8 @@ namespace AppBackend.ApiCore.Controllers
             int sensorId)
         {
             var currentUserId = GetCurrentUserId();
-            var result = await _sensorService.DeleteSensorAsync(projectId, sensorId, currentUserId);
+            var userRole = GetCurrentUserRole();
+            var result = await _sensorService.DeleteSensorAsync(projectId, sensorId, currentUserId, userRole);
             
             if (result.IsSuccess)
                 return NoContent();
@@ -188,8 +193,13 @@ namespace AppBackend.ApiCore.Controllers
             {
                 return userId;
             }
-            // TODO: Handle this properly - for now returning 0 for testing
-            return 1; // Temporary for testing
+            return 0;
+        }
+
+        private string GetCurrentUserRole()
+        {
+            var roleClaim = User.FindFirst(ClaimTypes.Role)?.Value;
+            return roleClaim ?? "Student"; // Default to Student if no role found
         }
 
         #endregion

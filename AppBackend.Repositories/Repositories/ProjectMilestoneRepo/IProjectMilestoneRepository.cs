@@ -1,7 +1,7 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
 
 public interface IProjectMilestoneRepository : IGenericRepository<ProjectMilestone>
@@ -12,7 +12,7 @@ public interface IProjectMilestoneRepository : IGenericRepository<ProjectMilesto
 
 public class ProjectMilestoneRepository : GenericRepository<ProjectMilestone>, IProjectMilestoneRepository
 {
-    public ProjectMilestoneRepository(IOTShowroomContext context) : base(context)
+    public ProjectMilestoneRepository(IotShowroomContext context) : base(context)
     {
     }
 

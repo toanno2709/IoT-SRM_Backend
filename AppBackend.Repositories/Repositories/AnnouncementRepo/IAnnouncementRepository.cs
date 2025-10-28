@@ -1,3 +1,4 @@
+using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ public interface IAnnouncementRepository : IGenericRepository<Announcement>
 
 public class AnnouncementRepository : GenericRepository<Announcement>, IAnnouncementRepository
 {
-    public AnnouncementRepository(IOTShowroomContext context) : base(context)
+    public AnnouncementRepository(IotShowroomContext context) : base(context)
     {
     }
 

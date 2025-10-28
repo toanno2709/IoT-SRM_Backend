@@ -1,0 +1,270 @@
+using AppBackend.BusinessObjects.Constants;
+using AppBackend.BusinessObjects.Exceptions;
+using AppBackend.BusinessObjects.Models;
+using AppBackend.Repositories.Repositories.UserRepo;
+using AppBackend.Services.ApiModels;
+using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services.ServicesHelpers;
+using AutoMapper;
+using Microsoft.AspNetCore.Http;
+
+namespace AppBackend.Services.Services.Authentication
+{
+    public class AuthenticationService : IAuthenticationService
+    {
+        private readonly IUserRepository _userRepository;
+        private readonly IMapper _mapper;
+        private readonly UserHelper _userHelper;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public AuthenticationService(
+            IUserRepository userRepository,
+            IMapper mapper,
+            UserHelper userHelper,
+            IHttpContextAccessor httpContextAccessor)
+        {
+            _userRepository = userRepository;
+            _mapper = mapper;
+            _userHelper = userHelper;
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public async Task<ResultModel> RegisterAsync(RegisterRequest request)
+        {
+            // Check email duplication
+            var existing = await _userRepository.GetByEmailAsync(request.Email);
+            if (existing != null)
+                throw new AppException(
+                    CommonMessageConstants.EXISTED,
+                    string.Format(CommonMessageConstants.VALUE_DUPLICATED, "Email"),
+                    StatusCodes.Status400BadRequest
+                );
+
+            // Map & hash password
+            var newUser = _mapper.Map<User>(request);
+            newUser.PasswordHash = _userHelper.HashPassword(request.Password);
+            newUser.CreatedAt = DateTime.UtcNow;
+            newUser.UpdatedAt = DateTime.UtcNow;
+
+            await _userRepository.AddAsync(newUser);
+            await _userRepository.SaveChangesAsync();
+            
+            // Generate tokens
+            var accessToken = _userHelper.CreateToken(newUser);
+            var refreshToken = _userHelper.GenerateRefreshToken();
+            var refreshExpiry = _userHelper.GetRefreshTokenExpiry();
+
+            SaveRefreshTokenToSession(newUser.UserId, refreshToken, refreshExpiry);
+
+            return new ResultModel
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = CommonMessageConstants.REGISTER_SUCCESS,
+                Data = new
+                {
+                    UserId = newUser.UserId,
+                    Email = newUser.Email,
+                    FullName = newUser.FullName,
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken,
+                    RefreshTokenExpiry = refreshExpiry
+                },
+                StatusCode = StatusCodes.Status201Created
+            };
+        }
+
+        public async Task<ResultModel> LoginAsync(LoginRequest request)
+        {
+            var user = await _userRepository.GetByEmailAsync(request.Email);
+            if (user == null || !_userHelper.VerifyPassword(request.Password, user.PasswordHash ?? ""))
+                throw new AppException(
+                    CommonMessageConstants.UNAUTHORIZED,
+                    CommonMessageConstants.PASSWORD_INCORRECT,
+                    StatusCodes.Status401Unauthorized
+                );
+
+            var accessToken = _userHelper.CreateToken(user);
+            var refreshToken = _userHelper.GenerateRefreshToken();
+            var refreshExpiry = _userHelper.GetRefreshTokenExpiry();
+
+            SaveRefreshTokenToSession(user.UserId, refreshToken, refreshExpiry);
+
+            return new ResultModel
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = CommonMessageConstants.LOGIN_SUCCESS,
+                Data = new
+                {
+                    UserId = user.UserId,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    RoleId = user.RoleId,
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken,
+                    RefreshTokenExpiry = refreshExpiry
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+
+        public async Task<ResultModel> LogoutAsync(int userId)
+        {
+            try
+            {
+                // Verify user exists
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "User not found",
+                        StatusCodes.Status404NotFound
+                    );
+
+                // Clear refresh token from session
+                ClearRefreshTokenFromSession(userId);
+
+                // Optional: Add logic to blacklist the current token or store it in a revoked tokens list
+                // This would require additional implementation with a database table or cache
+
+                return new ResultModel
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Logout successful",
+                    Data = new
+                    {
+                        UserId = userId,
+                        LogoutTime = DateTime.UtcNow
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (AppException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    $"Logout failed: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
+        }
+
+        public async Task<ResultModel> RefreshTokenAsync(string refreshToken)
+        {
+            try
+            {
+                var httpContext = _httpContextAccessor.HttpContext;
+                if (httpContext?.Session == null)
+                    throw new AppException(
+                        CommonMessageConstants.UNAUTHORIZED,
+                        "Session not found",
+                        StatusCodes.Status401Unauthorized
+                    );
+
+                // Get stored refresh token from session
+                var storedRefreshToken = httpContext.Session.GetString("RefreshToken");
+                var userIdString = httpContext.Session.GetString("UserId");
+                var expiryString = httpContext.Session.GetString("RefreshExpiry");
+
+                if (string.IsNullOrEmpty(storedRefreshToken) || 
+                    string.IsNullOrEmpty(userIdString) || 
+                    refreshToken != storedRefreshToken)
+                    throw new AppException(
+                        CommonMessageConstants.UNAUTHORIZED,
+                        "Invalid refresh token",
+                        StatusCodes.Status401Unauthorized
+                    );
+
+                // Check if refresh token is expired
+                if (!string.IsNullOrEmpty(expiryString) && 
+                    DateTime.TryParse(expiryString, out var expiry) && 
+                    expiry < DateTime.UtcNow)
+                    throw new AppException(
+                        CommonMessageConstants.UNAUTHORIZED,
+                        "Refresh token expired",
+                        StatusCodes.Status401Unauthorized
+                    );
+
+                // Get user and generate new tokens
+                if (!int.TryParse(userIdString, out var userId))
+                    throw new AppException(
+                        CommonMessageConstants.UNAUTHORIZED,
+                        "Invalid user session",
+                        StatusCodes.Status401Unauthorized
+                    );
+
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "User not found",
+                        StatusCodes.Status404NotFound
+                    );
+
+                var newAccessToken = _userHelper.CreateToken(user);
+                var newRefreshToken = _userHelper.GenerateRefreshToken();
+                var newRefreshExpiry = _userHelper.GetRefreshTokenExpiry();
+
+                SaveRefreshTokenToSession(user.UserId, newRefreshToken, newRefreshExpiry);
+
+                return new ResultModel
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Token refreshed successfully",
+                    Data = new
+                    {
+                        AccessToken = newAccessToken,
+                        RefreshToken = newRefreshToken,
+                        RefreshTokenExpiry = newRefreshExpiry
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (AppException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    $"Token refresh failed: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
+        }
+
+        // --- Private Helpers ---
+        
+        private void SaveRefreshTokenToSession(int userId, string refreshToken, DateTime expiry)
+        {
+            if (_httpContextAccessor.HttpContext?.Session == null) return;
+
+            _httpContextAccessor.HttpContext.Session.SetString("RefreshToken", refreshToken);
+            _httpContextAccessor.HttpContext.Session.SetString("UserId", userId.ToString());
+            _httpContextAccessor.HttpContext.Session.SetString("RefreshExpiry", expiry.ToString("O"));
+        }
+
+        private void ClearRefreshTokenFromSession(int userId)
+        {
+            if (_httpContextAccessor.HttpContext?.Session == null) return;
+
+            // Verify userId matches before clearing
+            var storedUserId = _httpContextAccessor.HttpContext.Session.GetString("UserId");
+            if (storedUserId == userId.ToString())
+            {
+                _httpContextAccessor.HttpContext.Session.Remove("RefreshToken");
+                _httpContextAccessor.HttpContext.Session.Remove("UserId");
+                _httpContextAccessor.HttpContext.Session.Remove("RefreshExpiry");
+                _httpContextAccessor.HttpContext.Session.Clear();
+            }
+        }
+    }
+}

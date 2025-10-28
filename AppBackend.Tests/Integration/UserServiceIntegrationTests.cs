@@ -15,7 +15,7 @@ namespace AppBackend.Tests.Integration
 {
     public class UserServiceIntegrationTests : IDisposable
     {
-        private readonly IOTShowroomContext _context;
+        private readonly IotShowroomContext _context;
         private readonly IUserService _userService;
         private readonly IUserRepository _userRepository;
         private readonly IRoleRepository _roleRepository;
@@ -23,11 +23,11 @@ namespace AppBackend.Tests.Integration
         public UserServiceIntegrationTests()
         {
             // Setup InMemory Database
-            var options = new DbContextOptionsBuilder<IOTShowroomContext>()
+            var options = new DbContextOptionsBuilder<IotShowroomContext>()
                 .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
                 .Options;
 
-            _context = new IOTShowroomContext(options);
+            _context = new IotShowroomContext(options);
 
             // Seed roles
             SeedRoles();

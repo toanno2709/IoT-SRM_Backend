@@ -31,9 +31,6 @@ public partial class ProjectMilestone
     [StringLength(255)]
     public string? Status { get; set; }
 
-    [Column("weight", TypeName = "decimal(5, 2)")]
-    public decimal? Weight { get; set; }
-
     [Column("created_at")]
     [Precision(0)]
     public DateTime? CreatedAt { get; set; }
@@ -42,13 +39,17 @@ public partial class ProjectMilestone
     [Precision(0)]
     public DateTime? UpdatedAt { get; set; }
 
-    [ForeignKey("ProjectId")]
-    [InverseProperty("ProjectMilestones")]
-    public virtual Project Project { get; set; } = null!;
+    [Column("weight")]
+    [Precision(10, 2)]
+    public decimal? Weight { get; set; }
+
+    [InverseProperty("MilestoneDef")]
+    public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
 
     [InverseProperty("MilestoneDef")]
     public virtual ICollection<MilestoneSubmission> MilestoneSubmissions { get; set; } = new List<MilestoneSubmission>();
 
-    [InverseProperty("MilestoneDef")]
-    public virtual ICollection<MilestoneEvaluation> MilestoneEvaluations { get; set; } = new List<MilestoneEvaluation>();
+    [ForeignKey("ProjectId")]
+    [InverseProperty("ProjectMilestones")]
+    public virtual Project Project { get; set; } = null!;
 }
