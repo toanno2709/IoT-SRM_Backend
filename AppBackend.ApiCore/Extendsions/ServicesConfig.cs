@@ -5,7 +5,6 @@ using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
 using AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
-using AppBackend.Services;
 using AppBackend.Services.RateLimiting;
 using AppBackend.Services.Services.Email;
 using AutoMapper;
@@ -51,7 +50,7 @@ public static class ServicesConfig
         #endregion
 
         #region Services
-        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<AppBackend.Services.IUserService, AppBackend.Services.UserService>();
         services.AddScoped<IClassService>(sp => new ClassService(
             sp.GetRequiredService<IClassRepository>(),
             sp.GetRequiredService<ISemesterRepository>(),
@@ -74,7 +73,7 @@ public static class ServicesConfig
         services.AddScoped<IInstructorDashboardService, InstructorDashboardService>();
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
-        services.AddScoped<ICloudinaryService, CloudinaryService>();
+        services.AddScoped<AppBackend.Services.ICloudinaryService, AppBackend.Services.CloudinaryService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion
