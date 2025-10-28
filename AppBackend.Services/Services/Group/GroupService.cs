@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GroupEntity = AppBackend.BusinessObjects.Models.Group;
+using NotificationEntity = AppBackend.BusinessObjects.Models.Notification;
 
 using AppBackend.BusinessObjects.Data;
 
@@ -86,7 +87,7 @@ namespace AppBackend.Services.Services.Group
             if (alreadyIn) throw new InvalidOperationException("Invited user already in a group in this class.");
 
             // create a notification row (simple invite model)
-            var note = new Notification
+            var note = new NotificationEntity
             {
                 UserId = dto.InvitedUserId,
                 Title = $"Invitation to join group {group.GroupName}",
@@ -124,7 +125,7 @@ namespace AppBackend.Services.Services.Group
             };
             _db.GroupMembers.Add(gm);
 
-            // optional: mark invite notification as read — try to find invite notification and mark read
+            // optional: mark invite notification as read ï¿½ try to find invite notification and mark read
             var possibleInvite = await _db.Notifications
                 .Where(n => n.UserId == dto.UserId && n.Type == "invite" && n.Title != null && n.Title.Contains(group.GroupName!))
                 .OrderByDescending(n => n.CreatedAt)
@@ -194,7 +195,7 @@ namespace AppBackend.Services.Services.Group
             _db.GroupMembers.Remove(gm);
 
             // send notification to kicked user
-            var note = new Notification
+            var note = new NotificationEntity
             {
                 UserId = dto.TargetUserId,
                 Title = $"Removed from group {group.GroupName}",
@@ -224,7 +225,7 @@ namespace AppBackend.Services.Services.Group
             await _db.SaveChangesAsync();
         }
 
-        // 7. Delete group (Admin or Instructor or Leader depending policy) — here only Admin (role id 1) or Instructor (role id 3?) or leader
+        // 7. Delete group (Admin or Instructor or Leader depending policy) ï¿½ here only Admin (role id 1) or Instructor (role id 3?) or leader
         public async Task DeleteGroupAsync(int groupId, int requesterUserId)
         {
             var group = await _db.Groups.Include(g => g.GroupMembers).FirstOrDefaultAsync(g => g.GroupId == groupId);

@@ -28,6 +28,8 @@ using AppBackend.Services.Services.Authentication;
 using AppBackend.Services.Services.Semester;
 using AppBackend.Services.Services.Sensor;
 using AppBackend.Repositories.Repositories.SensorRepo;
+using AppBackend.Services.Services.Notification;
+using AppBackend.Repositories.Repositories.NotificationRepo;
 
 namespace AppBackend.Extensions;
 
@@ -52,6 +54,7 @@ public static class ServicesConfig
         services.AddScoped<IProjectApprovalHistoryRepository, ProjectApprovalHistoryRepository>();
         services.AddScoped<IGroupMemberRepository, GroupMemberRepository>();
         services.AddScoped<ISensorRepository, SensorRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
         #endregion
 
         #region Services
@@ -82,6 +85,7 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<AppBackend.Services.ICloudinaryService, AppBackend.Services.CloudinaryService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion
