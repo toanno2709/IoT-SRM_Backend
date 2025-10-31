@@ -1,14 +1,14 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.UserRepo
 {
     public class UserRepository : GenericRepository<User>, IUserRepository
     {
-        private new readonly IOTShowroomContext _context;
+        private new readonly IotShowroomContext _context;
 
-        public UserRepository(IOTShowroomContext context) : base(context)
+        public UserRepository(IotShowroomContext context) : base(context)
         {
             _context = context;
         }

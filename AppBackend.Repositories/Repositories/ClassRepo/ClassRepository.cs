@@ -1,12 +1,12 @@
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Generic;
 using Microsoft.EntityFrameworkCore;
-
+using AppBackend.BusinessObjects.Data;
 namespace AppBackend.Repositories.Repositories.ClassRepo;
 
 public class ClassRepository : GenericRepository<Class>, IClassRepository
 {
-    public ClassRepository(IOTShowroomContext context) : base(context)
+    public ClassRepository(IotShowroomContext context) : base(context)
     {
     }
 

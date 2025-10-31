@@ -1,6 +1,7 @@
 using AppBackend.BusinessObjects.Constants;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Repositories.ClassRepo;
+using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
 using AppBackend.Services.ApiModels.Commons;
@@ -14,17 +15,20 @@ public class ClassService : IClassService
     private readonly IClassRepository _classRepo;
     private readonly ISemesterRepository _semesterRepo;
     private readonly IUserRepository _userRepo;
+    private readonly IGroupRepository _groupRepo;
     private readonly IMapper _mapper;
 
     public ClassService(
         IClassRepository classRepo, 
         ISemesterRepository semesterRepo,
         IUserRepository userRepo,
+        IGroupRepository groupRepo,
         IMapper mapper)
     {
         _classRepo = classRepo;
         _semesterRepo = semesterRepo;
         _userRepo = userRepo;
+        _groupRepo = groupRepo;
         _mapper = mapper;
     }
 

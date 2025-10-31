@@ -1,28 +1,34 @@
 using AppBackend.Repositories.Generic;
 using AppBackend.Repositories.Repositories.UserRepo;
-using AppBackend.Repositories.Repositories.RoleRepo;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
 using AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
-using AppBackend.Repositories.Repositories.SubmissionRepo;
-using AppBackend.Repositories.Repositories.ApprovalHistoryRepo;
-using AppBackend.Repositories.Repositories.EvaluationRepo;
-using AppBackend.Repositories.Repositories.EvaluationDetailRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
-using AppBackend.Repositories.Repositories.SensorRepo;
 using AppBackend.Services;
 using AppBackend.Services.RateLimiting;
 using AppBackend.Services.Services.Email;
+using AutoMapper;
 using AppBackend.Services.Services.Class;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.Services.Announcement;
 using AppBackend.Services.Services.ProjectMilestone;
-using AppBackend.Services.Services.TopicReview;
-using AppBackend.Services.Services.Grading;
+using AppBackend.Services.Services.ClassStats;
+using AppBackend.Services.Services.Group;
+using AppBackend.Repositories.Repositories.GroupRepo;
+using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
+using AppBackend.Services.Services.MilestoneGrading;
+using AppBackend.Services.Services.TopicProposal;
+using AppBackend.Services.Services.InstructorDashboard;
+using AppBackend.Services.Services.GroupManagement;
+using AppBackend.Repositories.Repositories.GroupMemberRepo;
+using AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
+using AppBackend.Repositories.Repositories.ProjectApprovalHistoryRepo;
+using AppBackend.Services.ServicesHelpers;
+using AppBackend.Services.Services.Authentication;
 using AppBackend.Services.Services.Semester;
 using AppBackend.Services.Services.Sensor;
-using AppBackend.Services.ServicesHelpers;
+using AppBackend.Repositories.Repositories.SensorRepo;
 
 namespace AppBackend.Extensions;
 
@@ -36,31 +42,47 @@ public static class ServicesConfig
 
         #region Repositories
         services.AddScoped<IUserRepository, UserRepository>();
-        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IClassRepository, ClassRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
         services.AddScoped<IProjectMilestoneRepository, ProjectMilestoneRepository>();
-        services.AddScoped<ISubmissionRepository, SubmissionRepository>();
-        services.AddScoped<IApprovalHistoryRepository, ApprovalHistoryRepository>();
-        services.AddScoped<IEvaluationRepository, EvaluationRepository>();
-        services.AddScoped<IEvaluationDetailRepository, EvaluationDetailRepository>();
         services.AddScoped<ISemesterRepository, SemesterRepository>();
+        services.AddScoped<IGroupRepository, GroupRepository>();
+        services.AddScoped<IMilestoneEvaluationRepository, MilestoneEvaluationRepository>();
+        services.AddScoped<IMilestoneSubmissionRepository, MilestoneSubmissionRepository>();
+        services.AddScoped<IProjectApprovalHistoryRepository, ProjectApprovalHistoryRepository>();
+        services.AddScoped<IGroupMemberRepository, GroupMemberRepository>();
         services.AddScoped<ISensorRepository, SensorRepository>();
         #endregion
 
         #region Services
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IClassService, ClassService>();
+        services.AddScoped<IClassService>(sp => new ClassService(
+            sp.GetRequiredService<IClassRepository>(),
+            sp.GetRequiredService<ISemesterRepository>(),
+            sp.GetRequiredService<IUserRepository>(),
+            sp.GetRequiredService<IGroupRepository>(),
+            sp.GetRequiredService<IMapper>()
+        ));
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
         services.AddScoped<IProjectMilestoneService, ProjectMilestoneService>();
-        services.AddScoped<ITopicReviewService, TopicReviewService>();
-        services.AddScoped<IGradingService, GradingService>();
-        services.AddScoped<IEmailService, EmailService>();
-        services.AddScoped<ICloudinaryService, CloudinaryService>();
         services.AddScoped<ISemesterService, SemesterService>();
         services.AddScoped<ISensorService, SensorService>();
+        services.AddScoped<IClassStatsService>(sp => new ClassStatsService(
+            sp.GetRequiredService<IClassRepository>(),
+            sp.GetRequiredService<IGroupRepository>(),
+            sp.GetRequiredService<IProjectRepository>(),
+            sp.GetRequiredService<IMilestoneEvaluationRepository>()
+        ));
+        services.AddScoped<IGroupService, GroupService>();
+        services.AddScoped<IMilestoneGradingService, MilestoneGradingService>();
+        services.AddScoped<ITopicProposalService, TopicProposalService>();
+        services.AddScoped<IInstructorDashboardService, InstructorDashboardService>();
+        services.AddScoped<IGroupManagementService, GroupManagementService>();
+        services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<ICloudinaryService, CloudinaryService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion

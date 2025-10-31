@@ -3,8 +3,12 @@ using AppBackend.Services.Services.Class;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.Services.Announcement;
-using AppBackend.Services.Services.TopicReview;
-using AppBackend.Services.Services.Grading;
+using AppBackend.Services.Services.MilestoneGrading;
+using AppBackend.Services.Services.ClassStats;
+using AppBackend.Services.Services.Group;
+using AppBackend.Services.Services.TopicProposal;
+using AppBackend.Services.Services.InstructorDashboard;
+using AppBackend.Services.Services.GroupManagement;
 
 namespace AppBackend.ApiCore.Controllers;
 
@@ -15,16 +19,49 @@ public class InstructorController : ControllerBase
     private readonly IClassService _classService;
     private readonly IProjectService _projectService;
     private readonly IAnnouncementService _announcementService;
-    private readonly ITopicReviewService _topicReviewService;
-    private readonly IGradingService _gradingService;
+    private readonly IClassStatsService _classStatsService;
+    private readonly IGroupService _groupService;
+    private readonly IMilestoneGradingService _milestoneGradingService;
+    private readonly ITopicProposalService _topicProposalService;
+    private readonly IInstructorDashboardService _dashboardService;
+    private readonly IGroupManagementService _groupManagementService;
 
-    public InstructorController(IClassService classService, IProjectService projectService, IAnnouncementService announcementService, ITopicReviewService topicReviewService, IGradingService gradingService)
+    public InstructorController(IClassService classService, IProjectService projectService, IAnnouncementService announcementService, IClassStatsService classStatsService, IGroupService groupService, IMilestoneGradingService milestoneGradingService, ITopicProposalService topicProposalService, IInstructorDashboardService dashboardService, IGroupManagementService groupManagementService)
     {
         _classService = classService;
         _projectService = projectService;
         _announcementService = announcementService;
-        _topicReviewService = topicReviewService;
-        _gradingService = gradingService;
+        _classStatsService = classStatsService;
+        _groupService = groupService;
+        _milestoneGradingService = milestoneGradingService;
+        _topicProposalService = topicProposalService;
+        _dashboardService = dashboardService;
+        _groupManagementService = groupManagementService;
+    }
+
+    /// <summary>
+    /// Lấy dashboard overview cho instructor (tổng quan)
+    /// </summary>
+    [HttpGet("dashboard")]
+    public async Task<ActionResult<ResultModel<InstructorDashboardResponseDto>>> GetDashboard()
+    {
+        try
+        {
+            // TODO: Lấy instructorId từ JWT
+            var instructorId = 1;
+            var result = await _dashboardService.GetDashboardAsync(instructorId);
+            if (result.IsSuccess) return Ok(result);
+            return BadRequest(result);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ResultModel<InstructorDashboardResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Internal server error",
+                Data = null
+            });
+        }
     }
 
     /// <summary>
@@ -51,7 +88,6 @@ public class InstructorController : ControllerBase
             });
         }
     }
-    
     /// <summary>
     /// Get all classes assigned to the current instructor
     /// </summary>
@@ -84,64 +120,68 @@ public class InstructorController : ControllerBase
         }
     }
 
-    // TODO: Cần refactor các endpoints sau cho schema mới (MilestoneEvaluation)
-    /*
     /// <summary>
-    /// Chấm điểm và phản hồi cho project milestone
+    /// Chấm điểm milestone (UPDATED - dùng MilestoneEvaluation)
     /// </summary>
-    [HttpPost("grade")]
-    public async Task<ActionResult<ResultModel<GradeSubmissionResponseDto>>> Grade([FromBody] GradeSubmissionRequestDto request)
-    {
-        if (!ModelState.IsValid)
-            return BadRequest(new ResultModel<GradeSubmissionResponseDto> { IsSuccess = false, Message = "Invalid request" });
-
-        // TODO: override InstructorId từ JWT
-        if (request.InstructorId == 0) request.InstructorId = 1;
-        var result = await _gradingService.GradeSubmissionAsync(request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Lấy chi tiết evaluation theo id
-    /// </summary>
-    [HttpGet("evaluations/{evaluationId}")]
-    public async Task<ActionResult<ResultModel<GradeSubmissionResponseDto>>> GetEvaluation([FromRoute] int evaluationId)
-    {
-        var result = await _gradingService.GetEvaluationAsync(evaluationId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-    
-    /// <summary>
-    /// Danh sách đề tài chờ duyệt (pending)
-    /// </summary>
-    [HttpGet("pending-proposals")]
-    public async Task<ActionResult<ResultModel<List<ProposalSummaryDto>>>> GetPendingProposals()
-    {
-        // TODO: lấy instructorId từ JWT
-        var instructorId = 1;
-        var result = await _topicReviewService.GetPendingProposalsAsync(instructorId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Duyệt đề tài: Approve/Revision/Reject
-    /// </summary>
-    [HttpPost("proposals/{submissionId}/review")]
-    public async Task<ActionResult<ResultModel<ReviewResponseDto>>> ReviewProposal([FromRoute] int submissionId, [FromBody] ReviewRequestDto request)
+    [HttpPost("milestones/grade")]
+    public async Task<ActionResult<ResultModel<MilestoneGradeResponseDto>>> GradeMilestone([FromBody] MilestoneGradeRequestDto request)
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(new ResultModel<ReviewResponseDto> { IsSuccess = false, Message = "Invalid request" });
+            return BadRequest(new ResultModel<MilestoneGradeResponseDto> { IsSuccess = false, Message = "Invalid request" });
         }
-        var instructorId = 1; // TODO: từ JWT
-        var result = await _topicReviewService.ReviewProposalAsync(instructorId, submissionId, request);
+        var result = await _milestoneGradingService.GradeMilestoneAsync(request);
         if (result.IsSuccess) return Ok(result);
         return BadRequest(result);
     }
-    */
+
+    /// <summary>
+    /// Lấy tất cả điểm milestone của một project
+    /// </summary>
+    [HttpGet("projects/{projectId}/grades")]
+    public async Task<ActionResult<ResultModel<List<MilestoneGradeResponseDto>>>> GetProjectGrades([FromRoute] int projectId)
+    {
+        var result = await _milestoneGradingService.GetGradesByProjectAsync(projectId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Lấy danh sách topic proposal chờ duyệt
+    /// </summary>
+    [HttpGet("pending-proposals")]
+    public async Task<ActionResult<ResultModel<List<TopicProposalResponseDto>>>> GetPendingProposals()
+    {
+        // TODO: lấy instructorId từ JWT
+        var instructorId = 1;
+        var result = await _topicProposalService.GetPendingProposalsAsync(instructorId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Duyệt topic proposal: Approve/Revision/Reject
+    /// </summary>
+    [HttpPost("proposals/{submissionId}/review")]
+    public async Task<ActionResult<ResultModel<TopicProposalReviewResponseDto>>> ReviewProposal(
+        [FromRoute] int submissionId, 
+        [FromBody] TopicProposalReviewRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<TopicProposalReviewResponseDto> 
+            { 
+                IsSuccess = false, 
+                Message = "Invalid request" 
+            });
+        }
+
+        // TODO: lấy instructorId từ JWT
+        var instructorId = 1;
+        var result = await _topicProposalService.ReviewProposalAsync(instructorId, submissionId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
 
     /// <summary>
     /// Gửi thông báo mới (giảng viên)
@@ -177,18 +217,17 @@ public class InstructorController : ControllerBase
             });
         }
     }
-    
     /// <summary>
-    /// Get all groups (projects) in a class
+    /// Get all groups in a class
     /// </summary>
     /// <param name="classId">Class Id</param>
-    /// <returns>List of project groups</returns>
-    [HttpGet("classes/{classId}/projects")]
-    public async Task<ActionResult<ResultModel<List<ProjectGroupResponseDto>>>> GetProjectsInClass([FromRoute] int classId)
+    /// <returns>List of groups</returns>
+    [HttpGet("classes/{classId}/groups")]
+    public async Task<ActionResult<ResultModel<List<GroupResponseDto>>>> GetGroupsInClass([FromRoute] int classId)
     {
         try
         {
-            var result = await _projectService.GetProjectsByClassAsync(classId);
+            var result = await _groupService.GetGroupsByClassAsync(classId);
             if (result.IsSuccess)
             {
                 return Ok(result);
@@ -197,7 +236,113 @@ public class InstructorController : ControllerBase
         }
         catch (Exception)
         {
-            return StatusCode(500, new ResultModel<List<ProjectGroupResponseDto>>
+            return StatusCode(500, new ResultModel<List<GroupResponseDto>>
+            {
+                IsSuccess = false,
+                Message = "Internal server error",
+                Data = null
+            });
+        }
+    }
+
+    /// <summary>
+    /// Cập nhật thông tin group (tên, mô tả)
+    /// </summary>
+    [HttpPut("groups/{groupId}")]
+    public async Task<ActionResult<ResultModel<GroupResponseDto>>> UpdateGroup(
+        [FromRoute] int groupId,
+        [FromBody] GroupUpdateRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.UpdateGroupInfoAsync(groupId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Thêm member vào group
+    /// </summary>
+    [HttpPost("groups/{groupId}/members")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> AddGroupMember(
+        [FromRoute] int groupId,
+        [FromBody] AddGroupMemberRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.AddMemberAsync(groupId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Xóa member khỏi group
+    /// </summary>
+    [HttpDelete("groups/{groupId}/members/{userId}")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> RemoveGroupMember(
+        [FromRoute] int groupId,
+        [FromRoute] int userId)
+    {
+        var result = await _groupManagementService.RemoveMemberAsync(groupId, userId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Cập nhật role của member trong group
+    /// </summary>
+    [HttpPut("groups/{groupId}/members/{userId}/role")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> UpdateMemberRole(
+        [FromRoute] int groupId,
+        [FromRoute] int userId,
+        [FromBody] UpdateMemberRoleRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.UpdateMemberRoleAsync(groupId, userId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Lấy thống kê lớp học (submission rate, average score, etc.)
+    /// </summary>
+    [HttpGet("classes/{classId}/stats")]
+    public async Task<ActionResult<ResultModel<ClassStatsResponseDto>>> GetClassStats([FromRoute] int classId)
+    {
+        try
+        {
+            var result = await _classStatsService.GetClassStatsAsync(classId);
+            if (result.IsSuccess) return Ok(result);
+            return BadRequest(result);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ResultModel<ClassStatsResponseDto>
             {
                 IsSuccess = false,
                 Message = "Internal server error",
