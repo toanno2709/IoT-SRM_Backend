@@ -34,8 +34,4 @@
     <PackageReference Include="System.Drawing.Common" Version="9.0.4" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Models\" />
-  </ItemGroup>
-
 </Project>

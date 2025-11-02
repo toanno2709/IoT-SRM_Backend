@@ -9,6 +9,8 @@ using AppBackend.Services.Services.Group;
 using AppBackend.Services.Services.TopicProposal;
 using AppBackend.Services.Services.InstructorDashboard;
 using AppBackend.Services.Services.GroupManagement;
+using AppBackend.Services.Services.FinalProject;
+using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
 
@@ -25,8 +27,19 @@ public class InstructorController : ControllerBase
     private readonly ITopicProposalService _topicProposalService;
     private readonly IInstructorDashboardService _dashboardService;
     private readonly IGroupManagementService _groupManagementService;
+    private readonly IFinalProjectService _finalProjectService;
 
-    public InstructorController(IClassService classService, IProjectService projectService, IAnnouncementService announcementService, IClassStatsService classStatsService, IGroupService groupService, IMilestoneGradingService milestoneGradingService, ITopicProposalService topicProposalService, IInstructorDashboardService dashboardService, IGroupManagementService groupManagementService)
+    public InstructorController(
+        IClassService classService, 
+        IProjectService projectService, 
+        IAnnouncementService announcementService, 
+        IClassStatsService classStatsService, 
+        IGroupService groupService, 
+        IMilestoneGradingService milestoneGradingService, 
+        ITopicProposalService topicProposalService, 
+        IInstructorDashboardService dashboardService, 
+        IGroupManagementService groupManagementService,
+        IFinalProjectService finalProjectService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -37,6 +50,7 @@ public class InstructorController : ControllerBase
         _topicProposalService = topicProposalService;
         _dashboardService = dashboardService;
         _groupManagementService = groupManagementService;
+        _finalProjectService = finalProjectService;
     }
 
     /// <summary>
@@ -279,6 +293,41 @@ public class InstructorController : ControllerBase
         var result = await _classStatsService.GetClassStatsAsync(classId);
         if (result.IsSuccess) return Ok(result);
         return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Grade final project submission (Instructor only)
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="request">Grade and feedback</param>
+    /// <returns>Graded submission</returns>
+    [HttpPost("projects/{projectId}/final-grade")]
+    public async Task<ActionResult<ResultModel<FinalProjectSubmissionResponseDto>>> GradeFinalProject(
+        [FromRoute] int projectId,
+        [FromBody] FinalProjectGradeRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<FinalProjectSubmissionResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            // TODO: Get from JWT - temporary fallback
+            instructorId = 1;
+        }
+
+        var result = await _finalProjectService.GradeFinalProjectAsync(projectId, request, instructorId);
+        
+        if (result.IsSuccess) 
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
     }
 }
 
