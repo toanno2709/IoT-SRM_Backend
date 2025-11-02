@@ -80,4 +80,10 @@ public partial class User
 
     [InverseProperty("UploadedByNavigation")]
     public virtual ICollection<SubmissionFile> SubmissionFiles { get; set; } = new List<SubmissionFile>();
+
+    [InverseProperty("SubmittedByNavigation")]
+    public virtual ICollection<FinalProjectSubmission> FinalProjectSubmissionsSubmitted { get; set; } = new List<FinalProjectSubmission>();
+
+    [InverseProperty("GradedByNavigation")]
+    public virtual ICollection<FinalProjectSubmission> FinalProjectSubmissionsGraded { get; set; } = new List<FinalProjectSubmission>();
 }

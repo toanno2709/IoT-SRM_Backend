@@ -62,6 +62,8 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<SubmissionFile> SubmissionFiles { get; set; }
 
+    public virtual DbSet<FinalProjectSubmission> FinalProjectSubmissions { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -302,6 +304,28 @@ public partial class IotShowroomContext : DbContext
                 .HasConstraintName("FK_SubFiles_Submission");
 
             entity.HasOne(d => d.UploadedByNavigation).WithMany(p => p.SubmissionFiles).HasConstraintName("FK_SubFiles_Uploader");
+        });
+
+        modelBuilder.Entity<FinalProjectSubmission>(entity =>
+        {
+            entity.HasKey(e => e.FinalSubmissionId).HasName("PK__Final_Pr__8E8F3A1BC7E9D0E4");
+
+            entity.Property(e => e.SubmittedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Submitted");
+
+            entity.HasOne(d => d.Project).WithOne(p => p.FinalProjectSubmission)
+                .HasForeignKey<FinalProjectSubmission>(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_Project");
+
+            entity.HasOne(d => d.SubmittedByNavigation).WithMany(p => p.FinalProjectSubmissionsSubmitted)
+                .HasForeignKey(d => d.SubmittedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_SubmittedBy");
+
+            entity.HasOne(d => d.GradedByNavigation).WithMany(p => p.FinalProjectSubmissionsGraded)
+                .HasForeignKey(d => d.GradedBy)
+                .HasConstraintName("FK_FinalSubmission_GradedBy");
         });
 
         modelBuilder.Entity<User>(entity =>

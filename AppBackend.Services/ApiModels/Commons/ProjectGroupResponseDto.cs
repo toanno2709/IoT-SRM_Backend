@@ -20,8 +20,16 @@ public class ProjectGroupResponseDto
 
     public string? Description { get; set; }
 
+    /// <summary>
+    /// Project status: Pending, Approved, Revision, Rejected, InProgress, Completed
+    /// </summary>
+    public string? Status { get; set; }
+
     public int? LeaderId { get; set; }
     public string? LeaderName { get; set; }
+
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
 
     public int? ClassId { get; set; }
 

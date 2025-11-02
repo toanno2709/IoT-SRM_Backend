@@ -55,4 +55,7 @@ public partial class Project
 
     [InverseProperty("Project")]
     public virtual ICollection<Sensor> Sensors { get; set; } = new List<Sensor>();
+
+    [InverseProperty("Project")]
+    public virtual FinalProjectSubmission? FinalProjectSubmission { get; set; }
 }
