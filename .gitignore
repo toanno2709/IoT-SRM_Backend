@@ -412,3 +412,4 @@ FodyWeavers.xsd
 CLASS_SETTINGS_API.md
 AppBackend.ApiCore/appsettings.json
 AppBackend.BusinessObjects/Migrations/20251013121206_InitialCreate.cs
+.DS_Store
