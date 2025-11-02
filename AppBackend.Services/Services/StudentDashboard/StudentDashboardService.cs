@@ -499,11 +499,20 @@ public class StudentDashboardService : IStudentDashboardService
                        m.DueDate > today)
             .OrderBy(m => m.DueDate)
             .Take(10)
+            .Select(m => new
+            {
+                m.MilestoneId,
+                m.ProjectId,
+                m.Title,
+                m.DueDate,
+                ProjectTitle = m.Project.Title,
+                Weight = m.Weight
+            })
             .ToListAsync();
 
         foreach (var milestone in milestones)
         {
-            if (milestone.Project == null || !milestone.DueDate.HasValue) continue;
+            if (milestone.ProjectTitle == null || !milestone.DueDate.HasValue) continue;
 
             // Check submission status
             var submission = await _context.MilestoneSubmissions
@@ -522,7 +531,7 @@ public class StudentDashboardService : IStudentDashboardService
             deadlines.Add(new UpcomingDeadlineDto
             {
                 ProjectId = milestone.ProjectId,
-                ProjectTitle = milestone.Project.Title ?? "Unknown",
+                ProjectTitle = milestone.ProjectTitle,
                 MilestoneId = milestone.MilestoneId,
                 MilestoneTitle = milestone.Title ?? "Untitled Milestone",
                 Deadline = milestone.DueDate.Value.ToDateTime(TimeOnly.MinValue),
