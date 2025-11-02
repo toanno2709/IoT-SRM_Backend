@@ -10,6 +10,7 @@ using AppBackend.Services.Services.TopicProposal;
 using AppBackend.Services.Services.InstructorDashboard;
 using AppBackend.Services.Services.GroupManagement;
 using AppBackend.Services.Services.FinalProject;
+using AppBackend.Services.Services.ClassConfig;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -28,6 +29,7 @@ public class InstructorController : ControllerBase
     private readonly IInstructorDashboardService _dashboardService;
     private readonly IGroupManagementService _groupManagementService;
     private readonly IFinalProjectService _finalProjectService;
+    private readonly IClassConfigService _classConfigService;
 
     public InstructorController(
         IClassService classService, 
@@ -39,7 +41,8 @@ public class InstructorController : ControllerBase
         ITopicProposalService topicProposalService, 
         IInstructorDashboardService dashboardService, 
         IGroupManagementService groupManagementService,
-        IFinalProjectService finalProjectService)
+        IFinalProjectService finalProjectService,
+        IClassConfigService classConfigService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -51,6 +54,7 @@ public class InstructorController : ControllerBase
         _dashboardService = dashboardService;
         _groupManagementService = groupManagementService;
         _finalProjectService = finalProjectService;
+        _classConfigService = classConfigService;
     }
 
     /// <summary>
@@ -325,6 +329,64 @@ public class InstructorController : ControllerBase
         var result = await _finalProjectService.GradeFinalProjectAsync(projectId, request, instructorId);
         
         if (result.IsSuccess) 
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get class configuration (max groups, member limits, deadlines)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Class configuration</returns>
+    [HttpGet("classes/{classId}/config")]
+    public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> GetClassConfig([FromRoute] int classId)
+    {
+        var result = await _classConfigService.GetConfigAsync(classId);
+        
+        if (result.IsSuccess)
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Update class configuration (max groups, member limits, deadlines)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="request">Configuration update data</param>
+    /// <returns>Updated configuration</returns>
+    /// <remarks>
+    /// Allows instructor to configure:
+    /// - Max groups allowed in class
+    /// - Min/max members per group
+    /// - Group formation deadline
+    /// - Whether students can create groups
+    /// </remarks>
+    [HttpPut("classes/{classId}/config")]
+    public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> UpdateClassConfig(
+        [FromRoute] int classId,
+        [FromBody] ClassConfigUpdateDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ClassConfigResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            // TODO: Get from JWT - temporary fallback
+            instructorId = 1;
+        }
+
+        var result = await _classConfigService.UpdateConfigAsync(classId, request, instructorId);
+        
+        if (result.IsSuccess)
             return Ok(result);
         
         return StatusCode(result.StatusCode, result);
