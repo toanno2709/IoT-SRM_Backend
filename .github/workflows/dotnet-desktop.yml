@@ -17,8 +17,7 @@ jobs:
         run: echo "dckr_pat_E9YPo8VCEmZuzqIpbWmwDFGOgCw" | docker login -u toanntse --password-stdin
 
       - name: 🐳 Build Docker image
-        working-directory: ./AppBackend.ApiCore
-        run: docker build -t toanntse/iot_be:latest .
+        run: docker build -t toanntse/iot_be:latest -f Dockerfile .
 
       - name: 📤 Push Docker image
         run: docker push toanntse/iot_be:latest
