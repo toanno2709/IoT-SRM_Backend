@@ -36,6 +36,9 @@ using AppBackend.Services.Services.FinalProject;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
 using AppBackend.Services;
 using AppBackend.Services.Services.StudentDashboard;
+using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Repositories.Repositories.ClassConfigRepo;
+using AppBackend.Services.Services.InstructorSubmissionView;
 
 namespace AppBackend.Extensions;
 
@@ -62,6 +65,7 @@ public static class ServicesConfig
         services.AddScoped<ISensorRepository, SensorRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
+        services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
         #endregion
 
         #region Services
@@ -100,6 +104,8 @@ public static class ServicesConfig
         services.AddScoped<IStudentGradeService, StudentGradeService>();
         services.AddScoped<IFinalProjectService, FinalProjectService>();
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
+        services.AddScoped<IClassConfigService, ClassConfigService>();
+        services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
         #endregion
 
         #region Helpers

@@ -49,4 +49,7 @@ public partial class Class
     [ForeignKey("SemesterId")]
     [InverseProperty("Classes")]
     public virtual Semester? Semester { get; set; }
+
+    [InverseProperty("Class")]
+    public virtual ClassConfiguration? ClassConfiguration { get; set; }
 }

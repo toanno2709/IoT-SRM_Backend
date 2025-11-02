@@ -10,6 +10,8 @@ using AppBackend.Services.Services.TopicProposal;
 using AppBackend.Services.Services.InstructorDashboard;
 using AppBackend.Services.Services.GroupManagement;
 using AppBackend.Services.Services.FinalProject;
+using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Services.Services.InstructorSubmissionView;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -28,6 +30,8 @@ public class InstructorController : ControllerBase
     private readonly IInstructorDashboardService _dashboardService;
     private readonly IGroupManagementService _groupManagementService;
     private readonly IFinalProjectService _finalProjectService;
+    private readonly IClassConfigService _classConfigService;
+    private readonly IInstructorSubmissionViewService _submissionViewService;
 
     public InstructorController(
         IClassService classService, 
@@ -39,7 +43,9 @@ public class InstructorController : ControllerBase
         ITopicProposalService topicProposalService, 
         IInstructorDashboardService dashboardService, 
         IGroupManagementService groupManagementService,
-        IFinalProjectService finalProjectService)
+        IFinalProjectService finalProjectService,
+        IClassConfigService classConfigService,
+        IInstructorSubmissionViewService submissionViewService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -51,6 +57,8 @@ public class InstructorController : ControllerBase
         _dashboardService = dashboardService;
         _groupManagementService = groupManagementService;
         _finalProjectService = finalProjectService;
+        _classConfigService = classConfigService;
+        _submissionViewService = submissionViewService;
     }
 
     /// <summary>
@@ -327,6 +335,182 @@ public class InstructorController : ControllerBase
         if (result.IsSuccess) 
             return Ok(result);
         
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get class configuration (max groups, member limits, deadlines)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Class configuration</returns>
+    [HttpGet("classes/{classId}/config")]
+    public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> GetClassConfig([FromRoute] int classId)
+    {
+        var result = await _classConfigService.GetConfigAsync(classId);
+        
+        if (result.IsSuccess)
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Update class configuration (max groups, member limits, deadlines)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="request">Configuration update data</param>
+    /// <returns>Updated configuration</returns>
+    /// <remarks>
+    /// Allows instructor to configure:
+    /// - Max groups allowed in class
+    /// - Min/max members per group
+    /// - Group formation deadline
+    /// - Whether students can create groups
+    /// </remarks>
+    [HttpPut("classes/{classId}/config")]
+    public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> UpdateClassConfig(
+        [FromRoute] int classId,
+        [FromBody] ClassConfigUpdateDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ClassConfigResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            // TODO: Get from JWT - temporary fallback
+            instructorId = 1;
+        }
+
+        var result = await _classConfigService.UpdateConfigAsync(classId, request, instructorId);
+        
+        if (result.IsSuccess)
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all submissions for a specific milestone (all groups)
+    /// </summary>
+    /// <param name="milestoneId">Milestone ID</param>
+    /// <param name="isGraded">Filter by grading status (optional)</param>
+    /// <param name="isLate">Filter by late submissions (optional)</param>
+    /// <param name="sortBy">Sort field: SubmittedAt, GroupName, Grade (optional)</param>
+    /// <param name="sortOrder">Sort order: asc or desc (optional)</param>
+    /// <returns>List of all submissions for the milestone</returns>
+    [HttpGet("milestones/{milestoneId}/submissions")]
+    public async Task<ActionResult<ResultModel<List<InstructorSubmissionViewDto>>>> GetMilestoneSubmissions(
+        [FromRoute] int milestoneId,
+        [FromQuery] bool? isGraded = null,
+        [FromQuery] bool? isLate = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortOrder = null)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var filter = new SubmissionFilterDto
+        {
+            IsGraded = isGraded,
+            IsLate = isLate,
+            SortBy = sortBy,
+            SortOrder = sortOrder
+        };
+
+        var result = await _submissionViewService.GetSubmissionsByMilestoneAsync(milestoneId, instructorId, filter);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all submissions in a class, grouped by milestone
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="milestoneId">Filter by milestone ID (optional)</param>
+    /// <param name="isGraded">Filter by grading status (optional)</param>
+    /// <returns>Class submission overview with statistics</returns>
+    [HttpGet("classes/{classId}/submissions")]
+    public async Task<ActionResult<ResultModel<ClassSubmissionOverviewDto>>> GetClassSubmissions(
+        [FromRoute] int classId,
+        [FromQuery] int? milestoneId = null,
+        [FromQuery] bool? isGraded = null)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var filter = new SubmissionFilterDto
+        {
+            MilestoneDefId = milestoneId,
+            IsGraded = isGraded
+        };
+
+        var result = await _submissionViewService.GetClassSubmissionsAsync(classId, instructorId, filter);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get detailed files for a specific submission (for grading)
+    /// </summary>
+    /// <param name="submissionId">Submission ID</param>
+    /// <returns>Submission details with all files and download URLs</returns>
+    [HttpGet("submissions/{submissionId}/files")]
+    public async Task<ActionResult<ResultModel<InstructorSubmissionFilesDto>>> GetSubmissionFiles(
+        [FromRoute] int submissionId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var result = await _submissionViewService.GetSubmissionFilesAsync(submissionId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all submissions that need grading (across all classes or specific class)
+    /// </summary>
+    /// <param name="classId">Filter by class ID (optional)</param>
+    /// <returns>List of submissions pending grading</returns>
+    [HttpGet("submissions/pending-grading")]
+    public async Task<ActionResult<ResultModel<List<InstructorSubmissionViewDto>>>> GetPendingGradingSubmissions(
+        [FromQuery] int? classId = null)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var result = await _submissionViewService.GetPendingGradingSubmissionsAsync(instructorId, classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
         return StatusCode(result.StatusCode, result);
     }
 }
