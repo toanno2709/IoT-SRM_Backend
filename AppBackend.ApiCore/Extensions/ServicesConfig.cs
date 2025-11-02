@@ -35,6 +35,7 @@ using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Services.Services.FinalProject;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
 using AppBackend.Services;
+using AppBackend.Services.Services.StudentDashboard;
 
 namespace AppBackend.Extensions;
 
@@ -98,6 +99,7 @@ public static class ServicesConfig
         services.AddScoped<ISubmissionService, SubmissionService>();
         services.AddScoped<IStudentGradeService, StudentGradeService>();
         services.AddScoped<IFinalProjectService, FinalProjectService>();
+        services.AddScoped<IStudentDashboardService, StudentDashboardService>();
         #endregion
 
         #region Helpers
