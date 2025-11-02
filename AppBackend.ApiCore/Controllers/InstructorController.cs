@@ -45,23 +45,11 @@ public class InstructorController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<ResultModel<InstructorDashboardResponseDto>>> GetDashboard()
     {
-        try
-        {
-            // TODO: Lấy instructorId từ JWT
-            var instructorId = 1;
-            var result = await _dashboardService.GetDashboardAsync(instructorId);
-            if (result.IsSuccess) return Ok(result);
-            return BadRequest(result);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<InstructorDashboardResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Internal server error",
-                Data = null
-            });
-        }
+        // TODO: Lấy instructorId từ JWT
+        var instructorId = 1;
+        var result = await _dashboardService.GetDashboardAsync(instructorId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
     }
 
     /// <summary>
@@ -70,24 +58,13 @@ public class InstructorController : ControllerBase
     [HttpGet("announcements")]
     public async Task<ActionResult<ResultModel<List<AnnouncementResponseDto>>>> GetSentAnnouncements()
     {
-        try
-        {
-            // TODO: Lấy admin/instructor id từ JWT
-            var adminUserId = 1;
-            var result = await _announcementService.GetAnnouncementsByAdminAsync(adminUserId);
-            if (result.IsSuccess) return Ok(result);
-            return BadRequest(result);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<List<AnnouncementResponseDto>>
-            {
-                IsSuccess = false,
-                Message = "Internal server error",
-                Data = null
-            });
-        }
+        // TODO: Lấy admin/instructor id từ JWT
+        var adminUserId = 1;
+        var result = await _announcementService.GetAnnouncementsByAdminAsync(adminUserId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
     }
+
     /// <summary>
     /// Get all classes assigned to the current instructor
     /// </summary>
@@ -95,29 +72,17 @@ public class InstructorController : ControllerBase
     [HttpGet("classes")]
     public async Task<ActionResult<ResultModel<List<ClassResponseDto>>>> GetAssignedClasses()
     {
-        try
+        // TODO: Get instructor ID from JWT token
+        var instructorId = 1; // Temporary hardcoded for testing
+        
+        var result = await _classService.GetAssignedClassesAsync(instructorId);
+        
+        if (result.IsSuccess)
         {
-            // TODO: Get instructor ID from JWT token
-            var instructorId = 1; // Temporary hardcoded for testing
-            
-            var result = await _classService.GetAssignedClassesAsync(instructorId);
-            
-            if (result.IsSuccess)
-            {
-                return Ok(result);
-            }
-            
-            return BadRequest(result);
+            return Ok(result);
         }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<List<ClassResponseDto>>
-            {
-                IsSuccess = false,
-                Message = "Internal server error",
-                Data = null
-            });
-        }
+        
+        return BadRequest(result);
     }
 
     /// <summary>
@@ -189,34 +154,23 @@ public class InstructorController : ControllerBase
     [HttpPost("announcements")]
     public async Task<ActionResult<ResultModel<AnnouncementResponseDto>>> CreateAnnouncement([FromBody] AnnouncementCreateRequestDto request)
     {
-        try
+        if (!ModelState.IsValid)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new ResultModel<AnnouncementResponseDto>
-                {
-                    IsSuccess = false,
-                    Message = "Invalid request",
-                    Data = null
-                });
-            }
-
-            // TODO: Lấy admin id từ JWT
-            var adminUserId = 1;
-            var result = await _announcementService.CreateAnnouncementAsync(adminUserId, request);
-            if (result.IsSuccess) return Ok(result);
-            return BadRequest(result);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<AnnouncementResponseDto>
+            return BadRequest(new ResultModel<AnnouncementResponseDto>
             {
                 IsSuccess = false,
-                Message = "Internal server error",
+                Message = "Invalid request",
                 Data = null
             });
         }
+
+        // TODO: Lấy admin id từ JWT
+        var adminUserId = 1;
+        var result = await _announcementService.CreateAnnouncementAsync(adminUserId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
     }
+
     /// <summary>
     /// Get all groups in a class
     /// </summary>
@@ -225,24 +179,12 @@ public class InstructorController : ControllerBase
     [HttpGet("classes/{classId}/groups")]
     public async Task<ActionResult<ResultModel<List<GroupResponseDto>>>> GetGroupsInClass([FromRoute] int classId)
     {
-        try
+        var result = await _groupService.GetGroupsByClassAsync(classId);
+        if (result.IsSuccess)
         {
-            var result = await _groupService.GetGroupsByClassAsync(classId);
-            if (result.IsSuccess)
-            {
-                return Ok(result);
-            }
-            return BadRequest(result);
+            return Ok(result);
         }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<List<GroupResponseDto>>
-            {
-                IsSuccess = false,
-                Message = "Internal server error",
-                Data = null
-            });
-        }
+        return BadRequest(result);
     }
 
     /// <summary>
@@ -334,21 +276,9 @@ public class InstructorController : ControllerBase
     [HttpGet("classes/{classId}/stats")]
     public async Task<ActionResult<ResultModel<ClassStatsResponseDto>>> GetClassStats([FromRoute] int classId)
     {
-        try
-        {
-            var result = await _classStatsService.GetClassStatsAsync(classId);
-            if (result.IsSuccess) return Ok(result);
-            return BadRequest(result);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new ResultModel<ClassStatsResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Internal server error",
-                Data = null
-            });
-        }
+        var result = await _classStatsService.GetClassStatsAsync(classId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
     }
 }
 

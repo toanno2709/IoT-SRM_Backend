@@ -51,6 +51,13 @@ namespace AppBackend.BusinessObjects.Constants
         public const string TOKEN_EXPIRED = "Token expired.";
         public const string REFRESH_TOKEN_SUCCESS = "Refresh token successful.";
         public const string REFRESH_TOKEN_FAILED = "Refresh token failed.";
+        public const string USER_NOT_FOUND = "User not found with this email address.";
+        public const string ACCOUNT_INACTIVE = "Your account has been deactivated. Please contact administrator.";
+        public const string EMAIL_ALREADY_EXISTS = "Email already exists.";
+        public const string SESSION_NOT_FOUND = "Session not found.";
+        public const string REFRESH_TOKEN_INVALID = "Invalid refresh token.";
+        public const string REFRESH_TOKEN_EXPIRED = "Refresh token expired.";
+        public const string USER_SESSION_INVALID = "Invalid user session.";
         #endregion
     }
 }
