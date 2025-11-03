@@ -39,6 +39,7 @@ using AppBackend.Services.Services.StudentDashboard;
 using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Repositories.Repositories.ClassConfigRepo;
 using AppBackend.Services.Services.InstructorSubmissionView;
+using AppBackend.Services.Services.AdminDashboard;
 
 namespace AppBackend.Extensions;
 
@@ -106,6 +107,9 @@ public static class ServicesConfig
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
         services.AddScoped<IClassConfigService, ClassConfigService>();
         services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
+        
+        // Admin services
+        services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         #endregion
 
         #region Helpers
