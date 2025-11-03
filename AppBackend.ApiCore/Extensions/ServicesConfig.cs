@@ -39,6 +39,10 @@ using AppBackend.Services.Services.StudentDashboard;
 using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Repositories.Repositories.ClassConfigRepo;
 using AppBackend.Services.Services.InstructorSubmissionView;
+using AppBackend.Services.Services.AdminDashboard;
+using AppBackend.Repositories.Repositories.HallOfFameRepo;
+using AppBackend.Services.Services.HallOfFame;
+using AppBackend.Services.Services.AdminReport;
 
 namespace AppBackend.Extensions;
 
@@ -66,6 +70,7 @@ public static class ServicesConfig
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
         services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
+        services.AddScoped<IHallOfFameRepository, HallOfFameRepository>();
         #endregion
 
         #region Services
@@ -106,6 +111,11 @@ public static class ServicesConfig
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
         services.AddScoped<IClassConfigService, ClassConfigService>();
         services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
+        
+        // Admin services
+        services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+        services.AddScoped<IHallOfFameService, HallOfFameService>();
+        services.AddScoped<IAdminReportService, AdminReportService>();
         #endregion
 
         #region Helpers
