@@ -5,7 +5,6 @@ using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
 using AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
-using AppBackend.Services;
 using AppBackend.Services.RateLimiting;
 using AppBackend.Services.Services.Email;
 using AutoMapper;
@@ -29,6 +28,17 @@ using AppBackend.Services.Services.Authentication;
 using AppBackend.Services.Services.Semester;
 using AppBackend.Services.Services.Sensor;
 using AppBackend.Repositories.Repositories.SensorRepo;
+using AppBackend.Services.Services.Notification;
+using AppBackend.Repositories.Repositories.NotificationRepo;
+using AppBackend.Services.Services.Submission;
+using AppBackend.Services.Services.StudentGrade;
+using AppBackend.Services.Services.FinalProject;
+using AppBackend.Repositories.Repositories.FinalProjectRepo;
+using AppBackend.Services;
+using AppBackend.Services.Services.StudentDashboard;
+using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Repositories.Repositories.ClassConfigRepo;
+using AppBackend.Services.Services.InstructorSubmissionView;
 
 namespace AppBackend.Extensions;
 
@@ -53,11 +63,14 @@ public static class ServicesConfig
         services.AddScoped<IProjectApprovalHistoryRepository, ProjectApprovalHistoryRepository>();
         services.AddScoped<IGroupMemberRepository, GroupMemberRepository>();
         services.AddScoped<ISensorRepository, SensorRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
+        services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
         #endregion
 
         #region Services
         services.AddScoped<IAuthenticationService, AuthenticationService>();
-        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<AppBackend.Services.IUserService, AppBackend.Services.UserService>();
         services.AddScoped<IClassService>(sp => new ClassService(
             sp.GetRequiredService<IClassRepository>(),
             sp.GetRequiredService<ISemesterRepository>(),
@@ -83,8 +96,16 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<RateLimiterStore>();
-
+        
+        // Student services
+        services.AddScoped<ISubmissionService, SubmissionService>();
+        services.AddScoped<IStudentGradeService, StudentGradeService>();
+        services.AddScoped<IFinalProjectService, FinalProjectService>();
+        services.AddScoped<IStudentDashboardService, StudentDashboardService>();
+        services.AddScoped<IClassConfigService, ClassConfigService>();
+        services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
         #endregion
 
         #region Helpers

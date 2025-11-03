@@ -1,5 +1,6 @@
 using AppBackend.Extensions;
 using AppBackend.Services.Services.Group;
+using AppBackend.ApiCore.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +35,9 @@ var app = builder.Build();
 SeedData.Initialize(app);
 
 // Middleware
+// Add global exception handler as the first middleware (after app.Build)
+app.UseGlobalExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

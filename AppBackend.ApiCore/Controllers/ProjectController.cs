@@ -1,119 +1,197 @@
 ﻿using AppBackend.BusinessObjects.Dtos.Project;
 using AppBackend.Services.Services.Project;
+using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers
 {
-    
-        [Route("api/[controller]")]
-        [ApiController]
-        public class ProjectController : ControllerBase
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize]
+    public class ProjectController : ControllerBase
+    {
+        private readonly IProjectService _projectService;
+
+        public ProjectController(IProjectService projectService)
         {
-            private readonly IProjectService _projectService;
-            private readonly ILogger<ProjectController> _logger;
+            _projectService = projectService;
+        }
 
-            public ProjectController(IProjectService projectService, ILogger<ProjectController> logger)
+        /// <summary>
+        /// Get all projects in a class with full details (Group, Leader, Members, Status)
+        /// </summary>
+        /// <param name="classId">Class ID</param>
+        /// <returns>List of projects with complete information</returns>
+        [HttpGet("class/{classId}")]
+        [Authorize(Roles = "Admin,Instructor,Student")]
+        public async Task<ActionResult<ResultModel<List<ProjectGroupResponseDto>>>> GetProjectsByClass(int classId)
+        {
+            var result = await _projectService.GetProjectsByClassAsync(classId);
+            if (result.IsSuccess)
+                return Ok(result);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Get project by group ID
+        /// </summary>
+        /// <param name="groupId">Group ID</param>
+        /// <returns>Project details including members</returns>
+        [HttpGet("group/{groupId}")]
+        [Authorize(Roles = "Admin,Instructor,Student")]
+        public async Task<ActionResult<ProjectDetailDto>> GetProjectByGroup(int groupId)
+        {
+            var result = await _projectService.GetProjectByGroupAsync(groupId);
+            return Ok(new { status = "success", data = result });
+        }
+
+        /// <summary>
+        /// Create a new project (Group Leader only)
+        /// </summary>
+        /// <param name="dto">Project creation data (GroupId, Title, Description)</param>
+        /// <returns>Created project information with auto-assigned "Pending" status</returns>
+        /// <remarks>
+        /// Business Rules:
+        /// - Only group leader can create project
+        /// - Group must not already have a project
+        /// - Status automatically set to "Pending"
+        /// - Notification sent to class instructor
+        /// </remarks>
+        [HttpPost]
+        [Authorize(Roles = "Student")]
+        public async Task<ActionResult<ProjectCreateResultDto>> CreateProject([FromBody] ProjectCreateDto dto)
+        {
+            if (!ModelState.IsValid)
             {
-                _projectService = projectService;
-                _logger = logger;
+                return BadRequest(new 
+                { 
+                    status = "error", 
+                    message = "Invalid input data"
+                });
             }
 
-            [HttpPost("create")]
-            public async Task<IActionResult> CreateProject([FromBody] ProjectCreateDto dto)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var leaderId))
             {
-                try
-                {
-                    var userIdClaim = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
-                    if (!int.TryParse(userIdClaim, out var leaderId))
-                        return Unauthorized(new { status = "error", message = "Invalid user" });
-
-                    var result = await _projectService.CreateProjectAsync(dto, leaderId);
-                    return Ok(new { status = "success", data = result });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "CreateProject");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+                return Unauthorized(new 
+                { 
+                    status = "error", 
+                    message = "User not authenticated"
+                });
             }
 
-            [HttpPut("update")]
-            public async Task<IActionResult> UpdateProject([FromBody] ProjectUpdateDto dto)
+            var result = await _projectService.CreateProjectAsync(dto, leaderId);
+            return CreatedAtAction(nameof(GetProjectByGroup), new { groupId = dto.GroupId }, new { status = "success", data = result });
+        }
+
+        /// <summary>
+        /// Update project information (Group Leader only)
+        /// </summary>
+        /// <param name="projectId">Project ID</param>
+        /// <param name="dto">Project update data (Title, Description)</param>
+        /// <returns>Success status</returns>
+        [HttpPut("{projectId}")]
+        [Authorize(Roles = "Student")]
+        public async Task<ActionResult> UpdateProject(int projectId, [FromBody] ProjectUpdateDto dto)
+        {
+            if (!ModelState.IsValid)
             {
-                try
-                {
-                    await _projectService.UpdateProjectAsync(dto);
-                    return Ok(new { status = "success", message = "Project updated" });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "UpdateProject");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+                return BadRequest(new 
+                { 
+                    status = "error", 
+                    message = "Invalid input data"
+                });
             }
 
-            [HttpGet("by-group/{groupId}")]
-            public async Task<IActionResult> GetByGroup(int groupId)
+            // Get current user ID from JWT
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
             {
-                try
-                {
-                    var result = await _projectService.GetProjectByGroupAsync(groupId);
-                    return Ok(new { status = "success", data = result });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "GetByGroup");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+                return Unauthorized(new 
+                { 
+                    status = "error", 
+                    message = "User not authenticated"
+                });
             }
 
-            [HttpGet("by-class/{classId}")]
-            public async Task<IActionResult> GetByClass(int classId)
+            dto.ProjectId = projectId;
+            dto.RequesterUserId = userId;
+
+            await _projectService.UpdateProjectAsync(dto);
+            return Ok(new { status = "success", message = "Project updated successfully" });
+        }
+
+        /// <summary>
+        /// Change project status (Instructor only)
+        /// </summary>
+        /// <param name="projectId">Project ID</param>
+        /// <param name="dto">Status change data (Status: Pending/Approved/Revision/Rejected, Comment)</param>
+        /// <returns>Success status</returns>
+        /// <remarks>
+        /// Valid statuses: Pending, Approved, Revision, Rejected, InProgress, Completed
+        /// Creates entry in ProjectApprovalHistory
+        /// Sends notifications to all group members
+        /// </remarks>
+        [HttpPut("{projectId}/status")]
+        [Authorize(Roles = "Instructor")]
+        public async Task<ActionResult> ChangeProjectStatus(int projectId, [FromBody] ProjectStatusDto dto)
+        {
+            if (!ModelState.IsValid)
             {
-                try
-                {
-                    var result = await _projectService.GetProjectsByClassAsync1(classId);
-                    return Ok(new { status = "success", data = result });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "GetByClass");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+                return BadRequest(new 
+                { 
+                    status = "error", 
+                    message = "Invalid input data"
+                });
             }
 
-            [HttpPut("change-status")]
-            public async Task<IActionResult> ChangeStatus([FromBody] ProjectStatusDto dto)
+            // Get current instructor ID from JWT
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var instructorId))
             {
-                try
-                {
-                    await _projectService.ChangeStatusAsync(dto);
-                    return Ok(new { status = "success", message = "Project status updated" });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "ChangeStatus");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+                return Unauthorized(new 
+                { 
+                    status = "error", 
+                    message = "User not authenticated"
+                });
             }
 
-            [HttpDelete("delete/{projectId}")]
-            public async Task<IActionResult> Delete(int projectId)
-            {
-                try
-                {
-                    var userIdClaim = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
-                    if (!int.TryParse(userIdClaim, out var userId))
-                        return Unauthorized(new { status = "error", message = "Invalid user" });
+            dto.ProjectId = projectId;
+            dto.InstructorId = instructorId;
 
-                    await _projectService.DeleteProjectAsync(projectId, userId);
-                    return Ok(new { status = "success", message = "Project deleted" });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "DeleteProject");
-                    return BadRequest(new { status = "error", message = ex.Message });
-                }
+            await _projectService.ChangeStatusAsync(dto);
+            return Ok(new { status = "success", message = "Project status updated successfully" });
+        }
+
+        /// <summary>
+        /// Delete a project
+        /// </summary>
+        /// <param name="projectId">Project ID to delete</param>
+        /// <returns>Success status</returns>
+        /// <remarks>
+        /// Authorized roles:
+        /// - Admin: Can delete any project
+        /// - Instructor: Can delete projects in their classes
+        /// - Student: Can only delete if they are the group leader
+        /// </remarks>
+        [HttpDelete("{projectId}")]
+        [Authorize(Roles = "Admin,Instructor,Student")]
+        public async Task<ActionResult> DeleteProject(int projectId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new 
+                { 
+                    status = "error", 
+                    message = "User not authenticated"
+                });
             }
+
+            await _projectService.DeleteProjectAsync(projectId, userId);
+            return Ok(new { status = "success", message = "Project deleted successfully" });
         }
     }
+}

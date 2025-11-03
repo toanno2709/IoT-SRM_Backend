@@ -1,0 +1,23 @@
+name: Build & Push Docker Image to Docker Hub
+
+on:
+  push:
+    branches:
+      - dev/deploy
+
+jobs:
+  docker-build-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Login to Docker Hub
+        run: echo "dckr_pat_E9YPo8VCEmZuzqIpbWmwDFGOgCw" | docker login -u toanntse --password-stdin
+
+      - name: 🐳 Build Docker image
+        run: docker build -t toanntse/iot_be:latest -f Dockerfile .
+
+      - name: 📤 Push Docker image
+        run: docker push toanntse/iot_be:latest

@@ -28,7 +28,7 @@ namespace AppBackend.Services.Services.Group
 
         private async Task SendNotificationAsync(int userId, string title, string message, string type = "system")
         {
-            var note = new Notification
+            var note = new AppBackend.BusinessObjects.Models.Notification
             {
                 UserId = userId,
                 Title = title,

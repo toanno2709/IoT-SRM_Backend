@@ -36,25 +36,35 @@ namespace AppBackend.Services.Services.Authentication
             if (existing != null)
                 throw new AppException(
                     CommonMessageConstants.EXISTED,
-                    string.Format(CommonMessageConstants.VALUE_DUPLICATED, "Email"),
-                    StatusCodes.Status400BadRequest
+                    CommonMessageConstants.EMAIL_ALREADY_EXISTS,
+                    StatusCodes.Status409Conflict
                 );
 
             // Map & hash password
             var newUser = _mapper.Map<User>(request);
             newUser.PasswordHash = _userHelper.HashPassword(request.Password);
+            newUser.RoleId = 3; // Default role: Student
             newUser.CreatedAt = DateTime.UtcNow;
             newUser.UpdatedAt = DateTime.UtcNow;
 
             await _userRepository.AddAsync(newUser);
             await _userRepository.SaveChangesAsync();
             
+            // Get user with role information
+            var userWithRole = await _userRepository.GetByIdWithRoleAsync(newUser.UserId);
+            if (userWithRole == null)
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    "Failed to retrieve user information after registration",
+                    StatusCodes.Status500InternalServerError
+                );
+
             // Generate tokens
-            var accessToken = _userHelper.CreateToken(newUser);
+            var accessToken = _userHelper.CreateToken(userWithRole);
             var refreshToken = _userHelper.GenerateRefreshToken();
             var refreshExpiry = _userHelper.GetRefreshTokenExpiry();
 
-            SaveRefreshTokenToSession(newUser.UserId, refreshToken, refreshExpiry);
+            SaveRefreshTokenToSession(userWithRole.UserId, refreshToken, refreshExpiry);
 
             return new ResultModel
             {
@@ -63,9 +73,11 @@ namespace AppBackend.Services.Services.Authentication
                 Message = CommonMessageConstants.REGISTER_SUCCESS,
                 Data = new
                 {
-                    UserId = newUser.UserId,
-                    Email = newUser.Email,
-                    FullName = newUser.FullName,
+                    UserId = userWithRole.UserId,
+                    Email = userWithRole.Email,
+                    FullName = userWithRole.FullName,
+                    RoleId = userWithRole.RoleId,
+                    RoleName = userWithRole.Role?.RoleName,
                     AccessToken = accessToken,
                     RefreshToken = refreshToken,
                     RefreshTokenExpiry = refreshExpiry
@@ -76,13 +88,31 @@ namespace AppBackend.Services.Services.Authentication
 
         public async Task<ResultModel> LoginAsync(LoginRequest request)
         {
+            // Check if user exists (already includes Role via GetByEmailAsync)
             var user = await _userRepository.GetByEmailAsync(request.Email);
-            if (user == null || !_userHelper.VerifyPassword(request.Password, user.PasswordHash ?? ""))
+            if (user == null)
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    CommonMessageConstants.USER_NOT_FOUND,
+                    StatusCodes.Status404NotFound
+                );
+
+            // Verify password
+            if (!_userHelper.VerifyPassword(request.Password, user.PasswordHash ?? ""))
                 throw new AppException(
                     CommonMessageConstants.UNAUTHORIZED,
                     CommonMessageConstants.PASSWORD_INCORRECT,
                     StatusCodes.Status401Unauthorized
                 );
+
+            // Check if user account is active (if you have an IsActive field)
+            // Uncomment if your User model has an IsActive property
+            // if (user.IsActive == false)
+            //     throw new AppException(
+            //         CommonMessageConstants.FORBIDDEN,
+            //         CommonMessageConstants.ACCOUNT_INACTIVE,
+            //         StatusCodes.Status403Forbidden
+            //     );
 
             var accessToken = _userHelper.CreateToken(user);
             var refreshToken = _userHelper.GenerateRefreshToken();
@@ -101,6 +131,7 @@ namespace AppBackend.Services.Services.Authentication
                     Email = user.Email,
                     FullName = user.FullName,
                     RoleId = user.RoleId,
+                    RoleName = user.Role?.RoleName,
                     AccessToken = accessToken,
                     RefreshToken = refreshToken,
                     RefreshTokenExpiry = refreshExpiry
@@ -163,7 +194,7 @@ namespace AppBackend.Services.Services.Authentication
                 if (httpContext?.Session == null)
                     throw new AppException(
                         CommonMessageConstants.UNAUTHORIZED,
-                        "Session not found",
+                        CommonMessageConstants.SESSION_NOT_FOUND,
                         StatusCodes.Status401Unauthorized
                     );
 
@@ -177,7 +208,7 @@ namespace AppBackend.Services.Services.Authentication
                     refreshToken != storedRefreshToken)
                     throw new AppException(
                         CommonMessageConstants.UNAUTHORIZED,
-                        "Invalid refresh token",
+                        CommonMessageConstants.REFRESH_TOKEN_INVALID,
                         StatusCodes.Status401Unauthorized
                     );
 
@@ -187,7 +218,7 @@ namespace AppBackend.Services.Services.Authentication
                     expiry < DateTime.UtcNow)
                     throw new AppException(
                         CommonMessageConstants.UNAUTHORIZED,
-                        "Refresh token expired",
+                        CommonMessageConstants.REFRESH_TOKEN_EXPIRED,
                         StatusCodes.Status401Unauthorized
                     );
 
@@ -195,7 +226,7 @@ namespace AppBackend.Services.Services.Authentication
                 if (!int.TryParse(userIdString, out var userId))
                     throw new AppException(
                         CommonMessageConstants.UNAUTHORIZED,
-                        "Invalid user session",
+                        CommonMessageConstants.USER_SESSION_INVALID,
                         StatusCodes.Status401Unauthorized
                     );
 
@@ -203,7 +234,7 @@ namespace AppBackend.Services.Services.Authentication
                 if (user == null)
                     throw new AppException(
                         CommonMessageConstants.NOT_FOUND,
-                        "User not found",
+                        CommonMessageConstants.USER_NOT_FOUND,
                         StatusCodes.Status404NotFound
                     );
 
@@ -217,7 +248,7 @@ namespace AppBackend.Services.Services.Authentication
                 {
                     IsSuccess = true,
                     ResponseCode = CommonMessageConstants.SUCCESS,
-                    Message = "Token refreshed successfully",
+                    Message = CommonMessageConstants.REFRESH_TOKEN_SUCCESS,
                     Data = new
                     {
                         AccessToken = newAccessToken,

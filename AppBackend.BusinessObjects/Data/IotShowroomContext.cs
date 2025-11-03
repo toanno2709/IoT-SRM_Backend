@@ -62,6 +62,10 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<SubmissionFile> SubmissionFiles { get; set; }
 
+    public virtual DbSet<FinalProjectSubmission> FinalProjectSubmissions { get; set; }
+
+    public virtual DbSet<ClassConfiguration> ClassConfigurations { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -302,6 +306,46 @@ public partial class IotShowroomContext : DbContext
                 .HasConstraintName("FK_SubFiles_Submission");
 
             entity.HasOne(d => d.UploadedByNavigation).WithMany(p => p.SubmissionFiles).HasConstraintName("FK_SubFiles_Uploader");
+        });
+
+        modelBuilder.Entity<FinalProjectSubmission>(entity =>
+        {
+            entity.HasKey(e => e.FinalSubmissionId).HasName("PK__Final_Pr__8E8F3A1BC7E9D0E4");
+
+            entity.Property(e => e.SubmittedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Submitted");
+
+            entity.HasOne(d => d.Project).WithOne(p => p.FinalProjectSubmission)
+                .HasForeignKey<FinalProjectSubmission>(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_Project");
+
+            entity.HasOne(d => d.SubmittedByNavigation).WithMany(p => p.FinalProjectSubmissionsSubmitted)
+                .HasForeignKey(d => d.SubmittedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_SubmittedBy");
+
+            entity.HasOne(d => d.GradedByNavigation).WithMany(p => p.FinalProjectSubmissionsGraded)
+                .HasForeignKey(d => d.GradedBy)
+                .HasConstraintName("FK_FinalSubmission_GradedBy");
+        });
+
+        modelBuilder.Entity<ClassConfiguration>(entity =>
+        {
+            entity.HasKey(e => e.ConfigId).HasName("PK__Class_Co__EA3469AF8B9C5C1D");
+
+            entity.HasIndex(e => e.ClassId, "UX_ClassConfig_ClassId").IsUnique();
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.MaxGroupsAllowed).HasDefaultValue(20);
+            entity.Property(e => e.MinMembersPerGroup).HasDefaultValue(2);
+            entity.Property(e => e.MaxMembersPerGroup).HasDefaultValue(5);
+            entity.Property(e => e.AllowStudentCreateGroup).HasDefaultValue(true);
+
+            entity.HasOne(d => d.Class).WithOne(p => p.ClassConfiguration)
+                .HasForeignKey<ClassConfiguration>(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ClassConfigurations_Classes");
         });
 
         modelBuilder.Entity<User>(entity =>

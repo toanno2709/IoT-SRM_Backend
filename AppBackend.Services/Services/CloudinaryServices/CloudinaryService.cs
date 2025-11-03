@@ -2,6 +2,7 @@ using AppBackend.BusinessObjects.Dtos;
 using AppBackend.Services.ApiModels.Commons;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Http;
 
 namespace AppBackend.Services;
 
@@ -70,5 +71,56 @@ public class CloudinaryService : ICloudinaryService
             Message = delResult.Result == "ok" ? "Delete successful" : "Delete failed",
             Data = response
         };
+    }
+
+    // Helper method for simpler file upload
+    public async Task<CloudinaryUploadResponseDto?> UploadFileAsync(IFormFile file, string? folder = null)
+    {
+        var request = new CloudinaryUploadRequestDto
+        {
+            File = file,
+            Folder = folder ?? "SWP391/submissions"
+        };
+
+        var result = await UploadAsync(request);
+        return result.IsSuccess ? result.Data : null;
+    }
+
+    // Helper method for simpler file deletion
+    public async Task<bool> DeleteFileAsync(string fileUrl)
+    {
+        if (string.IsNullOrEmpty(fileUrl))
+            return false;
+
+        try
+        {
+            // Extract public ID from Cloudinary URL
+            var uri = new Uri(fileUrl);
+            var pathSegments = uri.AbsolutePath.Split('/');
+            
+            // Cloudinary URL format: .../upload/v{version}/{folder}/{publicId}.{format}
+            var uploadIndex = Array.IndexOf(pathSegments, "upload");
+            if (uploadIndex >= 0 && uploadIndex + 2 < pathSegments.Length)
+            {
+                // Get segments after version number
+                var publicIdParts = pathSegments.Skip(uploadIndex + 2).ToArray();
+                var publicIdWithExtension = string.Join("/", publicIdParts);
+                
+                // Remove file extension
+                var lastDotIndex = publicIdWithExtension.LastIndexOf('.');
+                var publicId = lastDotIndex > 0 
+                    ? publicIdWithExtension.Substring(0, lastDotIndex) 
+                    : publicIdWithExtension;
+
+                var result = await DeleteAsync(publicId);
+                return result.IsSuccess;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
