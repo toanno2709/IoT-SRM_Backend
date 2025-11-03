@@ -9,6 +9,7 @@ public interface IProjectRepository : IGenericRepository<Project>
     Task<List<Project>> GetProjectsByGroupAsync(int groupId);
     Task<Project?> GetProjectWithDetailsAsync(int projectId);
     Task<Project?> GetByIdWithDetailsAsync(int projectId);
+    Task<List<Project>> GetProjectsBySemesterAsync(int semesterId);
 }
 
 
