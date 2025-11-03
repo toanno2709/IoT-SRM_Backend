@@ -125,6 +125,46 @@ namespace AppBackend.Api.Controllers
         }
 
         /// <summary>
+        /// Import multiple users from Excel file (Admin only)
+        /// </summary>
+        /// <param name="request">Excel file and import configuration</param>
+        /// <returns>Import result with successful and failed user counts</returns>
+        /// <response code="200">Import completed with detailed results</response>
+        /// <response code="400">Invalid file format or content</response>
+        /// <response code="403">Forbidden - only Admin can import users</response>
+        /// <remarks>
+        /// Expected Excel format:
+        /// - Column A: No (row number)
+        /// - Column B: Fullname (required)
+        /// - Column C: Email (required, must be unique)
+        /// - Column D: Phone (optional, must be unique if provided)
+        /// - Column E: Role (Student/Instructor/Admin, defaults to Student)
+        /// - Column F: Password (optional, defaults to "12345678")
+        /// 
+        /// File constraints:
+        /// - Max file size: 10MB
+        /// - Supported formats: .xlsx, .xls
+        /// - First row must be header (will be skipped)
+        /// 
+        /// Duplicate handling:
+        /// - Email and phone numbers are checked against existing database records
+        /// - Duplicate entries in the same file are also detected
+        /// - Duplicates will be skipped and reported in the response
+        /// </remarks>
+        [HttpPost("import-from-excel")]
+        [Authorize(Roles = "Admin")]
+        [RateLimit(permitLimit: 2, windowSeconds: 300)]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ImportUsersFromExcel([FromForm] ImportUsersFromExcelRequestDto request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _userService.ImportUsersFromExcelAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
         /// Update user information (Admin can update any user, users can update their own information)
         /// </summary>
         /// <param name="id">User ID to update</param>
