@@ -12,5 +12,6 @@ namespace AppBackend.Services
         Task<ResultModel> UpdateUserAsync(int id, UpdateUserRequest request, int requesterId, bool isAdmin);
         Task<ResultModel> DeleteUserAsync(int id);
         Task<ResultModel> GetUsersByRoleAsync(int? roleId);
+        Task<ResultModel<ImportUsersResponseDto>> ImportUsersFromExcelAsync(ImportUsersFromExcelRequestDto request);
     }
 }
