@@ -5,6 +5,7 @@ using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Attributes;
 using AppBackend.Services.Services.HallOfFame;
 using AppBackend.Services.Services.AdminReport;
+using AppBackend.Services.Services.ClassEnrollment;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -20,15 +21,18 @@ public class AdminController : ControllerBase
     private readonly IAdminDashboardService _dashboardService;
     private readonly IHallOfFameService _hallOfFameService;
     private readonly IAdminReportService _reportService;
+    private readonly IClassEnrollmentService _classEnrollmentService;
 
     public AdminController(
         IAdminDashboardService dashboardService,
         IHallOfFameService hallOfFameService,
-        IAdminReportService reportService)
+        IAdminReportService reportService,
+        IClassEnrollmentService classEnrollmentService)
     {
         _dashboardService = dashboardService;
         _hallOfFameService = hallOfFameService;
         _reportService = reportService;
+        _classEnrollmentService = classEnrollmentService;
     }
 
     #region Dashboard APIs
@@ -569,6 +573,145 @@ public class AdminController : ControllerBase
         }
 
         var result = await _reportService.ExportReportAsync(request);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Class Enrollment Management APIs
+
+    /// <summary>
+    /// Bulk add students to a class automatically
+    /// </summary>
+    /// <param name="request">Request with class ID and max members limit</param>
+    /// <returns>Bulk enrollment result with added students list</returns>
+    /// <remarks>
+    /// This endpoint automatically finds available students (role_id = 3) who are NOT already enrolled in the class,
+    /// and adds them up to the specified max members limit.
+    /// 
+    /// Logic:
+    /// 1. Checks current enrollment count in the class
+    /// 2. Calculates how many more students needed (maxMembers - currentCount)
+    /// 3. Finds available students with role_id = 3 who are not in this class
+    /// 4. Adds them to Class_Enrollments table
+    /// 5. Returns detailed report of additions
+    /// 
+    /// Example:
+    /// - Class currently has 20 students
+    /// - Request maxMembers = 50
+    /// - System will try to add 30 students automatically
+    /// </remarks>
+    [HttpPost("classes/bulk-add-students")]
+    [RateLimit(permitLimit: 10, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<BulkAddStudentsResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<BulkAddStudentsResponseDto>>> BulkAddStudents([FromBody] BulkAddStudentsRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<BulkAddStudentsResponseDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Invalid request data"
+            });
+        }
+
+        var result = await _classEnrollmentService.BulkAddStudentsAsync(request);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Add a specific student to a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="request">Student ID to add</param>
+    /// <returns>Enrollment result</returns>
+    [HttpPost("classes/{classId}/students")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<AddStudentToClassResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ResultModel<AddStudentToClassResponseDto>>> AddStudentToClass(
+        [FromRoute] int classId,
+        [FromBody] AddStudentToClassRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<AddStudentToClassResponseDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Invalid request data"
+            });
+        }
+
+        var result = await _classEnrollmentService.AddStudentToClassAsync(classId, request.StudentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all students in a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of enrolled students</returns>
+    [HttpGet("classes/{classId}/students")]
+    [RateLimit(permitLimit: 30, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ClassStudentsResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ResultModel<ClassStudentsResponseDto>>> GetClassStudents([FromRoute] int classId)
+    {
+        var result = await _classEnrollmentService.GetClassStudentsAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Remove a student from a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="studentId">Student ID to remove</param>
+    /// <returns>Removal result</returns>
+    /// <remarks>
+    /// Will fail if student is a member of any group in this class.
+    /// Remove student from groups first before removing from class.
+    /// </remarks>
+    [HttpDelete("classes/{classId}/students/{studentId}")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ResultModel<bool>>> RemoveStudentFromClass(
+        [FromRoute] int classId,
+        [FromRoute] int studentId)
+    {
+        var result = await _classEnrollmentService.RemoveStudentFromClassAsync(classId, studentId);
 
         if (result.IsSuccess)
             return Ok(result);
