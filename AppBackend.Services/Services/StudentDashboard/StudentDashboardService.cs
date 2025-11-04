@@ -455,13 +455,16 @@ public class StudentDashboardService : IStudentDashboardService
             .CountAsync();
 
         // Calculate average grade from milestone evaluations
-        // Score is decimal, not decimal?
-        var scores = await _context.MilestoneEvaluations
+        // Score is decimal (not nullable)
+        decimal? averageGrade = null;
+        var evaluations = await _context.MilestoneEvaluations
             .Where(e => projectIds.Contains(e.ProjectId))
-            .Select(e => e.Score)
             .ToListAsync();
 
-        decimal? averageGrade = scores.Any() ? (decimal)scores.Average() : null;
+        if (evaluations.Any())
+        {
+            averageGrade = evaluations.Average(e => e.Score);
+        }
 
         // Count pending submissions
         var allMilestones = await _context.ProjectMilestones
@@ -489,56 +492,59 @@ public class StudentDashboardService : IStudentDashboardService
 
     private async Task<List<UpcomingDeadlineDto>> GetUpcomingDeadlinesAsync(List<int> projectIds)
     {
+        if (!projectIds.Any())
+        {
+            return new List<UpcomingDeadlineDto>();
+        }
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var deadlines = new List<UpcomingDeadlineDto>();
 
-        var milestones = await _context.ProjectMilestones
-            .Include(m => m.Project)
-            .Where(m => projectIds.Contains(m.ProjectId) && 
-                       m.DueDate != null &&
-                       m.DueDate > today)
-            .OrderBy(m => m.DueDate)
-            .Take(10)
-            .Select(m => new
-            {
-                m.MilestoneId,
-                m.ProjectId,
-                m.Title,
-                m.DueDate,
-                ProjectTitle = m.Project.Title,
-                Weight = m.Weight
-            })
-            .ToListAsync();
-
-        foreach (var milestone in milestones)
+        try
         {
-            if (milestone.ProjectTitle == null || !milestone.DueDate.HasValue) continue;
+            var milestones = await _context.ProjectMilestones
+                .Include(m => m.Project)
+                .Where(m => projectIds.Contains(m.ProjectId) && 
+                           m.DueDate != null &&
+                           m.DueDate > today)
+                .OrderBy(m => m.DueDate)
+                .Take(10)
+                .ToListAsync();
 
-            // Check submission status
-            var submission = await _context.MilestoneSubmissions
-                .FirstOrDefaultAsync(s => s.ProjectId == milestone.ProjectId &&
-                                         s.MilestoneDefId == milestone.MilestoneId);
-
-            var evaluation = await _context.MilestoneEvaluations
-                .FirstOrDefaultAsync(e => e.ProjectId == milestone.ProjectId &&
-                                         e.MilestoneDefId == milestone.MilestoneId);
-
-            var status = evaluation != null ? "Graded" :
-                        submission != null ? "Submitted" : "NotSubmitted";
-
-            var daysRemaining = milestone.DueDate.Value.DayNumber - today.DayNumber;
-
-            deadlines.Add(new UpcomingDeadlineDto
+            foreach (var milestone in milestones)
             {
-                ProjectId = milestone.ProjectId,
-                ProjectTitle = milestone.ProjectTitle,
-                MilestoneId = milestone.MilestoneId,
-                MilestoneTitle = milestone.Title ?? "Untitled Milestone",
-                Deadline = milestone.DueDate.Value.ToDateTime(TimeOnly.MinValue),
-                DaysRemaining = daysRemaining,
-                Status = status,
-                Weight = milestone.Weight
-            });
+                if (milestone.Project == null || !milestone.DueDate.HasValue) continue;
+
+                // Check submission status
+                var submission = await _context.MilestoneSubmissions
+                    .FirstOrDefaultAsync(s => s.ProjectId == milestone.ProjectId &&
+                                             s.MilestoneDefId == milestone.MilestoneId);
+
+                var evaluation = await _context.MilestoneEvaluations
+                    .FirstOrDefaultAsync(e => e.ProjectId == milestone.ProjectId &&
+                                             e.MilestoneDefId == milestone.MilestoneId);
+
+                var status = evaluation != null ? "Graded" :
+                            submission != null ? "Submitted" : "NotSubmitted";
+
+                var daysRemaining = milestone.DueDate.Value.DayNumber - today.DayNumber;
+
+                deadlines.Add(new UpcomingDeadlineDto
+                {
+                    ProjectId = milestone.ProjectId,
+                    ProjectTitle = milestone.Project.Title ?? "Unknown Project",
+                    MilestoneId = milestone.MilestoneId,
+                    MilestoneTitle = milestone.Title ?? "Untitled Milestone",
+                    Deadline = milestone.DueDate.Value.ToDateTime(TimeOnly.MinValue),
+                    DaysRemaining = daysRemaining,
+                    Status = status,
+                    Weight = milestone.Weight
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting upcoming deadlines for projects");
         }
 
         return deadlines;
@@ -546,7 +552,12 @@ public class StudentDashboardService : IStudentDashboardService
 
     private async Task<List<RecentGradeDto>> GetRecentGradesAsync(List<int> projectIds)
     {
-        // Score is decimal, not decimal?
+        if (!projectIds.Any())
+        {
+            return new List<RecentGradeDto>();
+        }
+
+        // Score is decimal (not nullable)
         var recentEvaluations = await _context.MilestoneEvaluations
             .Include(e => e.Project)
             .Include(e => e.MilestoneDef)
@@ -563,7 +574,7 @@ public class StudentDashboardService : IStudentDashboardService
                 ProjectTitle = e.Project!.Title ?? "Unknown",
                 MilestoneId = e.MilestoneDefId,
                 MilestoneTitle = e.MilestoneDef!.Title ?? "Untitled Milestone",
-                Grade = e.Score,  // Score is decimal, not nullable
+                Grade = e.Score,  // Score is decimal (not nullable)
                 GradedAt = e.EvaluatedAt,
                 Feedback = e.Feedback
             })

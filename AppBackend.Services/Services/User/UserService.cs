@@ -408,16 +408,42 @@ namespace AppBackend.Services
                             }
                         }
 
-                        // Determine RoleId (default to Student = 3 if not specified)
-                        int roleId = request.DefaultRoleId;
+                        // Determine RoleId - ONLY accept Student role
+                        // Skip rows with Instructor or Admin role
+                        int roleId = 3; // Default to Student
                         if (!string.IsNullOrEmpty(role))
                         {
                             if (role.Equals("Student", StringComparison.OrdinalIgnoreCase))
-                                roleId = 3;
-                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase))
-                                roleId = 2;
-                            else if (role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
-                                roleId = 1;
+                            {
+                                roleId = 3; // Student
+                            }
+                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase) || 
+                                     role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Skip Instructor and Admin rows
+                                response.Errors.Add(new ImportErrorDto
+                                {
+                                    RowNumber = row,
+                                    FullName = fullName,
+                                    Email = email,
+                                    PhoneNumber = phone,
+                                    ErrorReason = $"Cannot import {role} role. Only Student role is allowed.",
+                                    ErrorType = "InvalidRole"
+                                });
+                                response.UsersSkipped++;
+                                continue;
+                            }
+                            else
+                            {
+                                // Unknown role - treat as warning but import as Student
+                                response.Warnings.Add($"Row {row}: Unknown role '{role}', imported as Student");
+                                roleId = 3; // Default to Student
+                            }
+                        }
+                        else
+                        {
+                            // No role specified - use default Student
+                            roleId = 3;
                         }
 
                         // Use provided password or default password
