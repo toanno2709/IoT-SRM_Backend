@@ -47,11 +47,17 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    // Use permissive CORS in development for easier testing
+    app.UseCors("AllowAllOrigins");
+}
+else
+{
+    // Use restricted CORS in production for security
+    app.UseCors("AllowSpecificOrigins");
 }
 
 app.UseRateLimiter();   
 app.UseHttpsRedirection();
-app.UseCors("AllowAllOrigins");
 app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
