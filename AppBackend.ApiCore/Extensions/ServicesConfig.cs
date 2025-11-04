@@ -41,6 +41,8 @@ using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Services.Services.InstructorSubmissionView;
 using AppBackend.Services.Services.Submission;
 using AppBackend.Services.Services.StudentGrade;
+using AppBackend.Repositories.Repositories.ClassConfigRepo;
+using AppBackend.Repositories.Repositories.NotificationRepo;
 
 namespace AppBackend.Extensions;
 
@@ -67,6 +69,8 @@ public static class ServicesConfig
         services.AddScoped<ISensorRepository, SensorRepository>();
         services.AddScoped<IHallOfFameRepository, HallOfFameRepository>();
         services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
+        services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
         #endregion
 
         #region Services
