@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.OpenApi.Models;
+using AppBackend.ApiCore.Swagger;
 
 namespace AppBackend.Extensions;
 
@@ -38,6 +39,9 @@ public static class SwaggerConfig
             {
                 { securityScheme, Array.Empty<string>() }
             });
+
+            // Add DateOnly schema filter for proper Swagger documentation
+            c.SchemaFilter<DateOnlySchemaFilter>();
 
             // Load XML comments for API doc
             var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";

@@ -1,3 +1,4 @@
+using AppBackend.ApiCore.JsonConverters;
 using AppBackend.Extensions;
 using AppBackend.Services.Services.Group;
 using AppBackend.ApiCore.Middlewares;
@@ -26,6 +27,10 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        
+        // Add custom DateOnly converters for proper ISO 8601 format handling
+        options.JsonSerializerOptions.Converters.Add(new DateOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableDateOnlyJsonConverter());
     });
 
 
