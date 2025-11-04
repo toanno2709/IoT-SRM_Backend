@@ -32,7 +32,6 @@ namespace AppBackend.ApiCore.Controllers
         /// <response code="409">Email already exists</response>
         [HttpPost("register")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 3, windowSeconds: 60, queueLimit: 1, strategy: "fixed")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
             if (!ModelState.IsValid)
@@ -58,7 +57,6 @@ namespace AppBackend.ApiCore.Controllers
         /// <response code="404">User not found with this email</response>
         [HttpPost("login")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 5, windowSeconds: 60, queueLimit: 2, strategy: "sliding")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             if (!ModelState.IsValid)
@@ -83,7 +81,6 @@ namespace AppBackend.ApiCore.Controllers
         /// <response code="404">User not found</response>
         [HttpPost("logout")]
         [Authorize]
-        [RateLimit(permitLimit: 10, windowSeconds: 60, strategy: "fixed")]
         public async Task<IActionResult> Logout()
         {
             // Get user ID from JWT claims
@@ -113,7 +110,6 @@ namespace AppBackend.ApiCore.Controllers
         /// <response code="401">Invalid or expired refresh token</response>
         [HttpPost("refresh-token")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 10, windowSeconds: 60, strategy: "fixed")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
         {
             if (!ModelState.IsValid || string.IsNullOrEmpty(request.RefreshToken))
