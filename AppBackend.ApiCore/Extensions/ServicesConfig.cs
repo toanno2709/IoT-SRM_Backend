@@ -35,6 +35,12 @@ using AppBackend.Services.Services.HallOfFame;
 using AppBackend.Services.Services.AdminReport;
 using AppBackend.Repositories.Repositories.HallOfFameRepo;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
+using AppBackend.Services.Services.StudentDashboard;
+using AppBackend.Services.Services.FinalProject;
+using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Services.Services.InstructorSubmissionView;
+using AppBackend.Services.Services.Submission;
+using AppBackend.Services.Services.StudentGrade;
 
 namespace AppBackend.Extensions;
 
@@ -97,6 +103,18 @@ public static class ServicesConfig
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IHallOfFameService, HallOfFameService>();
         services.AddScoped<IAdminReportService, AdminReportService>();
+        
+        // Student services
+        services.AddScoped<IStudentDashboardService, StudentDashboardService>();
+        services.AddScoped<IStudentGradeService, StudentGradeService>();
+        
+        // Instructor services
+        services.AddScoped<IFinalProjectService, FinalProjectService>();
+        services.AddScoped<IClassConfigService, ClassConfigService>();
+        services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
+        
+        // Submission services
+        services.AddScoped<ISubmissionService, SubmissionService>();
         
         services.AddSingleton<RateLimiterStore>();
 
