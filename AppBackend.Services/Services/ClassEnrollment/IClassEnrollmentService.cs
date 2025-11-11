@@ -35,4 +35,13 @@ public interface IClassEnrollmentService
     /// <param name="classId">Class ID</param>
     /// <returns>List of students in the class</returns>
     Task<ResultModel<ClassStudentsResponseDto>> GetClassStudentsAsync(int classId);
+    
+    /// <summary>
+    /// Get students in a class who are not assigned to any group
+    /// Supports optional search query to filter by name or email
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="searchQuery">Optional search query for student name or email</param>
+    /// <returns>List of unassigned students</returns>
+    Task<ResultModel<UnassignedStudentsResponseDto>> GetUnassignedStudentsAsync(int classId, string? searchQuery = null);
 }

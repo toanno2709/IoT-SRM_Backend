@@ -101,22 +101,15 @@ namespace AppBackend.Services.Services.Group
 
             if (alreadyIn) throw new InvalidOperationException("Invited user already in a group in this class.");
 
-            // create a notification row (simple invite model)
-            //var note = new Notification
-            //{
-            //    UserId = dto.InvitedUserId,
-            //    Title = $"Invitation to join group {group.GroupName}",
-            //    Message = $"You have been invited to join group '{group.GroupName}' in class {group.ClassId} by user {dto.InviterUserId}.",
-            //    Type = "invite",
-            //    IsRead = false,
-            //    CreatedAt = DateTime.UtcNow
-            //};
-            //_db.Notifications.Add(note);
-            //await _db.SaveChangesAsync();
+            // Get inviter name for better notification
+            var inviter = await _db.Users.FindAsync(dto.InviterUserId);
+            var inviterName = inviter?.FullName ?? "A group leader";
+
+            // Create notification with proper format including groupId
             await SendNotificationAsync(dto.InvitedUserId,
                 $"Invitation to join group {group.GroupName}",
-                $"You have been invited to join group '{group.GroupName}' in class {group.ClassId} by {dto.InviterUserId}.",
-                "invite");
+                $"You have been invited by {inviterName} to join group '{group.GroupName}' (ID: {group.ClassId}). [groupId:{dto.GroupId}]",
+                "group_invitation");
         }
 
         // 3. Accept invite: add to group if not in other group in same class, remove any previous invite-notif? (we keep simple)
@@ -144,9 +137,11 @@ namespace AppBackend.Services.Services.Group
             };
             _db.GroupMembers.Add(gm);
 
-            // optional: mark invite notification as read — try to find invite notification and mark read
+            // Mark invite notification as read - check both old "invite" type and new "group_invitation" type
             var possibleInvite = await _db.Notifications
-                .Where(n => n.UserId == dto.UserId && n.Type == "invite" && n.Title != null && n.Title.Contains(group.GroupName!))
+                .Where(n => n.UserId == dto.UserId && 
+                       (n.Type == "invite" || n.Type == "group_invitation") && 
+                       n.Title != null && n.Title.Contains(group.GroupName!))
                 .OrderByDescending(n => n.CreatedAt)
                 .FirstOrDefaultAsync();
 
@@ -156,10 +151,14 @@ namespace AppBackend.Services.Services.Group
             }
 
             await _db.SaveChangesAsync();
+            
             // send notification to group leader
+            var acceptingUser = await _db.Users.FindAsync(dto.UserId);
+            var userName = acceptingUser?.FullName ?? "A new member";
+            
             await SendNotificationAsync(group.LeaderId ?? 0,
                 "Member Joined Group",
-                $"A new member has joined your group '{group.GroupName}'.",
+                $"{userName} has joined your group '{group.GroupName}'.",
                 "group_update");
         }
 
@@ -374,6 +373,7 @@ namespace AppBackend.Services.Services.Group
         {
             var group = await _db.Groups
                 .Include(g => g.GroupMembers)
+                    .ThenInclude(gm => gm.User)
                 .Include(g => g.Projects)
                 .FirstOrDefaultAsync(g => g.GroupId == groupId);
 
@@ -392,6 +392,9 @@ namespace AppBackend.Services.Services.Group
                 {
                     GmId = m.GmId,
                     UserId = m.UserId,
+                    FullName = m.User?.FullName,
+                    Email = m.User?.Email,
+                    AvatarUrl = m.User?.AvatarUrl,
                     RoleInGroup = m.RoleInGroup,
                     JoinedAt = m.JoinedAt
                 }).ToList(),

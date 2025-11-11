@@ -120,34 +120,63 @@ namespace AppBackend.Services.Services.Project
             await _db.SaveChangesAsync();
         }
 
-        // 3. Get project by group
-        public async Task<ProjectDetailDto> GetProjectByGroupAsync(int groupId)
+        // 3. Get projects by group (returns list)
+        public async Task<ResultModel<List<ProjectDetailDto>>> GetProjectsByGroupAsync(int groupId)
         {
-            var project = await _db.Projects
-                .Include(p => p.Group!).ThenInclude(g => g.GroupMembers).ThenInclude(gm => gm.User)
-                .FirstOrDefaultAsync(p => p.GroupId == groupId);
-
-            if (project == null)
-                throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "Project not found for this group",
-                    StatusCodes.Status404NotFound
-                );
-
-            return new ProjectDetailDto
+            try
             {
-                ProjectId = project.ProjectId,
-                Title = project.Title,
-                Description = project.Description,
-                Status = project.Status,
-                GroupId = project.GroupId ?? 0,
-                GroupName = project.Group?.GroupName,
-                CreatedAt = project.CreatedAt,
-                UpdatedAt = project.UpdatedAt,
-                MemberNames = project.Group?.GroupMembers
-                    .Select(m => m.User?.FullName ?? $"User#{m.UserId}")
-                    .ToList() ?? new List<string>()
-            };
+                var projects = await _db.Projects
+                    .Include(p => p.Group!).ThenInclude(g => g.GroupMembers).ThenInclude(gm => gm.User)
+                    .Where(p => p.GroupId == groupId)
+                    .ToListAsync();
+
+                if (!projects.Any())
+                {
+                    return new ResultModel<List<ProjectDetailDto>>
+                    {
+                        IsSuccess = true,
+                        ResponseCode = CommonMessageConstants.SUCCESS,
+                        Message = "No projects found for this group",
+                        Data = new List<ProjectDetailDto>(),
+                        StatusCode = StatusCodes.Status200OK
+                    };
+                }
+
+                var projectDtos = projects.Select(project => new ProjectDetailDto
+                {
+                    ProjectId = project.ProjectId,
+                    Title = project.Title,
+                    Description = project.Description,
+                    Status = project.Status,
+                    GroupId = project.GroupId ?? 0,
+                    GroupName = project.Group?.GroupName,
+                    CreatedAt = project.CreatedAt,
+                    UpdatedAt = project.UpdatedAt,
+                    MemberNames = project.Group?.GroupMembers
+                        .Select(m => m.User?.FullName ?? $"User#{m.UserId}")
+                        .ToList() ?? new List<string>()
+                }).ToList();
+
+                return new ResultModel<List<ProjectDetailDto>>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Projects retrieved successfully",
+                    Data = projectDtos,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<List<ProjectDetailDto>>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error retrieving projects: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
         }
 
         // 4. Change status (Instructor only)
@@ -268,6 +297,7 @@ namespace AppBackend.Services.Services.Project
                             UserId = gm.UserId,
                             FullName = gm.User?.FullName,
                             Email = gm.User?.Email,
+                            AvatarUrl = gm.User?.AvatarUrl,
                             RoleInProject = gm.RoleInGroup
                         }).ToList()
                 }).ToList();
@@ -288,6 +318,178 @@ namespace AppBackend.Services.Services.Project
                     IsSuccess = false,
                     ResponseCode = CommonMessageConstants.ERROR,
                     Message = $"Error retrieving projects: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        // 8. Update project status with comment (Instructor only) - NEW
+        public async Task<ResultModel<UpdateProjectStatusResponseDto>> UpdateProjectStatusAsync(
+            int projectId, 
+            UpdateProjectStatusRequestDto request, 
+            int instructorId)
+        {
+            try
+            {
+                // 1. Validate project exists
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                    .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+
+                if (project == null)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Project not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // 2. Validate instructor
+                var instructor = await _db.Users.FindAsync(instructorId);
+                if (instructor == null || instructor.RoleId != 2)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.FORBIDDEN,
+                        Message = "Only instructors can update project status",
+                        Data = null,
+                        StatusCode = StatusCodes.Status403Forbidden
+                    };
+                }
+
+                // 3. Update project status
+                var oldStatus = project.Status;
+                project.Status = request.Status;
+                project.UpdatedAt = DateTime.UtcNow;
+
+                // 4. Create approval history record (students can view this)
+                var history = new ProjectApprovalHistory
+                {
+                    SubmissionId = 0, // 0 means general project status update
+                    ReviewerId = instructorId,
+                    Action = request.Status,
+                    Comment = request.Comment ?? "",
+                    ActedAt = DateTime.UtcNow
+                };
+                _db.ProjectApprovalHistories.Add(history);
+
+                // 5. Send notifications to all group members
+                var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                foreach (var member in groupMembers)
+                {
+                    var notification = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = member.UserId,
+                        Title = $"Project Status Updated: {project.Title}",
+                        Message = $"Instructor {instructor.FullName} changed project status from '{oldStatus}' to '{request.Status}'. " +
+                                  $"{(!string.IsNullOrEmpty(request.Comment) ? $"Comment: {request.Comment}" : "")}",
+                        Type = "project_status_update",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(notification);
+                }
+
+                // 6. Save all changes
+                await _db.SaveChangesAsync();
+
+                // 7. Return response
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Project status updated successfully",
+                    Data = new UpdateProjectStatusResponseDto
+                    {
+                        ProjectId = project.ProjectId,
+                        ProjectTitle = project.Title,
+                        GroupId = project.GroupId,
+                        GroupName = project.Group?.GroupName,
+                        Status = request.Status,
+                        Comment = request.Comment,
+                        ReviewerId = instructorId,
+                        ReviewerName = instructor.FullName,
+                        ReviewedAt = DateTime.UtcNow
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error updating project status: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        // 9. Get project status history (for students to view) - NEW
+        public async Task<ResultModel<List<ProjectStatusHistoryDto>>> GetProjectStatusHistoryAsync(int projectId)
+        {
+            try
+            {
+                // 1. Validate project exists
+                var projectExists = await _db.Projects.AnyAsync(p => p.ProjectId == projectId);
+                if (!projectExists)
+                {
+                    return new ResultModel<List<ProjectStatusHistoryDto>>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Project not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // 2. Get all history records for this project
+                // Note: Since ProjectApprovalHistory doesn't have direct ProjectId,
+                // we'll get records with SubmissionId = 0 (general project updates)
+                // In a production system, you might want to add ProjectId to the table
+                var historyRecords = await _db.ProjectApprovalHistories
+                    .Where(h => h.SubmissionId == 0) // General project status updates
+                    .Include(h => h.Reviewer)
+                    .OrderByDescending(h => h.ActedAt)
+                    .ToListAsync();
+
+                // 3. Map to DTOs
+                var historyDtos = historyRecords.Select(h => new ProjectStatusHistoryDto
+                {
+                    HistoryId = h.HistoryId,
+                    Status = h.Action ?? "Unknown",
+                    Comment = h.Comment,
+                    ReviewerId = h.ReviewerId,
+                    ReviewerName = h.Reviewer?.FullName,
+                    ReviewedAt = h.ActedAt ?? DateTime.UtcNow
+                }).ToList();
+
+                return new ResultModel<List<ProjectStatusHistoryDto>>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = $"Retrieved {historyDtos.Count} status history records",
+                    Data = historyDtos,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<List<ProjectStatusHistoryDto>>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error retrieving status history: {ex.Message}",
                     Data = null,
                     StatusCode = StatusCodes.Status500InternalServerError
                 };

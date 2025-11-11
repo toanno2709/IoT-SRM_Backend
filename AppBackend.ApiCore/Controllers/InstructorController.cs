@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.Class;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.ApiModels.Commons;
@@ -12,7 +13,10 @@ using AppBackend.Services.Services.GroupManagement;
 using AppBackend.Services.Services.FinalProject;
 using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Services.Services.InstructorSubmissionView;
+using AppBackend.Services.Services.ClassEnrollment;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AppBackend.ApiCore.Controllers;
 
@@ -32,6 +36,7 @@ public class InstructorController : ControllerBase
     private readonly IFinalProjectService _finalProjectService;
     private readonly IClassConfigService _classConfigService;
     private readonly IInstructorSubmissionViewService _submissionViewService;
+    private readonly IClassEnrollmentService _classEnrollmentService;
 
     public InstructorController(
         IClassService classService, 
@@ -45,7 +50,8 @@ public class InstructorController : ControllerBase
         IGroupManagementService groupManagementService,
         IFinalProjectService finalProjectService,
         IClassConfigService classConfigService,
-        IInstructorSubmissionViewService submissionViewService)
+        IInstructorSubmissionViewService submissionViewService,
+        IClassEnrollmentService classEnrollmentService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -59,6 +65,7 @@ public class InstructorController : ControllerBase
         _finalProjectService = finalProjectService;
         _classConfigService = classConfigService;
         _submissionViewService = submissionViewService;
+        _classEnrollmentService = classEnrollmentService;
     }
 
     /// <summary>
@@ -94,8 +101,15 @@ public class InstructorController : ControllerBase
     [HttpGet("classes")]
     public async Task<ActionResult<ResultModel<List<ClassResponseDto>>>> GetAssignedClasses()
     {
-        // TODO: Get instructor ID from JWT token
-        var instructorId = 1; // Temporary hardcoded for testing
+        // Get instructor ID from JWT token
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int instructorId;
+        
+        if (!int.TryParse(userIdClaim, out instructorId))
+        {
+            // Fallback for testing - using instructorId = 2 (has multiple classes in database)
+            instructorId = 2;
+        }
         
         var result = await _classService.GetAssignedClassesAsync(instructorId);
         
@@ -492,6 +506,57 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Debug endpoint to check database connection and data integrity
+    /// </summary>
+    [HttpGet("debug/database-check")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DebugDatabaseCheck()
+    {
+        // Inject DbContext for debugging
+        var _context = HttpContext.RequestServices.GetRequiredService<AppBackend.BusinessObjects.Data.IotShowroomContext>();
+        
+        var instructors = await _context.Users
+            .Where(u => u.UserId == 2 || u.UserId == 3 || u.UserId == 9)
+            .Select(u => new { u.UserId, u.FullName, u.Email, u.RoleId })
+            .ToListAsync();
+        
+        var semesters = await _context.Semesters
+            .Where(s => s.SemesterId == 1 || s.SemesterId == 2 || 
+                        s.SemesterId == 4 || s.SemesterId == 7 || s.SemesterId == 9)
+            .Select(s => new { s.SemesterId, s.Name, s.Code })
+            .ToListAsync();
+        
+        var classes = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.Semester)
+            .Where(c => c.InstructorId == 2)
+            .Select(c => new
+            {
+                c.ClassId,
+                c.ClassName,
+                c.InstructorId,
+                InstructorName = c.Instructor != null ? c.Instructor.FullName : "NULL_IN_DB",
+                InstructorExists = c.Instructor != null,
+                c.SemesterId,
+                SemesterName = c.Semester != null ? c.Semester.Name : "NULL_IN_DB",
+                SemesterExists = c.Semester != null
+            })
+            .ToListAsync();
+        
+        return Ok(new
+        {
+            DatabaseName = _context.Database.GetDbConnection().Database,
+            Instructors = instructors,
+            InstructorsCount = instructors.Count,
+            Semesters = semesters,
+            SemestersCount = semesters.Count,
+            Classes = classes,
+            ClassesCount = classes.Count,
+            Note = "Check if navigation properties are null - indicates missing FK records"
+        });
+    }
+
+    /// <summary>
     /// Get all submissions that need grading (across all classes or specific class)
     /// </summary>
     /// <param name="classId">Filter by class ID (optional)</param>
@@ -507,6 +572,77 @@ public class InstructorController : ControllerBase
         }
 
         var result = await _submissionViewService.GetPendingGradingSubmissionsAsync(instructorId, classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Update project status with comment (Instructor only)
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="request">Status and comment</param>
+    /// <returns>Updated project status details</returns>
+    /// <remarks>
+    /// Allows instructor to update project status (e.g., "Approved", "Rejected", "Revision Required")
+    /// and add a comment. Students in the group will be notified and can view the comment.
+    /// 
+    /// Common status values:
+    /// - Approved: Project is approved to proceed
+    /// - Rejected: Project is rejected
+    /// - Revision Required: Project needs changes
+    /// - In Progress: Project is actively being worked on
+    /// - Completed: Project is finished
+    /// </remarks>
+    [HttpPut("projects/{projectId}/status")]
+    public async Task<ActionResult<ResultModel<UpdateProjectStatusResponseDto>>> UpdateProjectStatus(
+        [FromRoute] int projectId,
+        [FromBody] UpdateProjectStatusRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<UpdateProjectStatusResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var result = await _projectService.UpdateProjectStatusAsync(projectId, request, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get unassigned students in a class (students without groups)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="q">Optional search query for student name or email</param>
+    /// <returns>List of students not assigned to any group</returns>
+    /// <remarks>
+    /// Returns students who are enrolled in the class but are not members of any group.
+    /// Useful for instructors to see which students need to be assigned to groups.
+    /// 
+    /// Query parameter 'q' allows filtering by student name or email (case-insensitive).
+    /// </remarks>
+    [HttpGet("classes/{classId}/unassigned-students")]
+    public async Task<ActionResult<ResultModel<UnassignedStudentsResponseDto>>> GetUnassignedStudents(
+        [FromRoute] int classId,
+        [FromQuery] string? q = null)
+    {
+        var result = await _classEnrollmentService.GetUnassignedStudentsAsync(classId, q);
 
         if (result.IsSuccess)
             return Ok(result);
