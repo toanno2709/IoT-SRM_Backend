@@ -14,8 +14,13 @@ public static class SwaggerConfig
             c.SwaggerDoc("v1", new OpenApiInfo
             {
                 Title = "AppBackend.ApiCore",
-                Version = "v1",
-                Description = "API documentation for AppBackend"
+                Version = "v1.1.0", // Incremented version to force Swagger UI refresh
+                Description = "API documentation for AppBackend - Updated with latest instructor and project APIs",
+                Contact = new OpenApiContact
+                {
+                    Name = "IoT Showroom Team",
+                    Email = "support@iotshowroom.com"
+                }
             });
 
             // JWT Security Definition
