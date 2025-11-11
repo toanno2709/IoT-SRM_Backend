@@ -35,16 +35,20 @@ namespace AppBackend.ApiCore.Controllers
         }
 
         /// <summary>
-        /// Get project by group ID
+        /// Get projects by group ID
         /// </summary>
         /// <param name="groupId">Group ID</param>
-        /// <returns>Project details including members</returns>
+        /// <returns>List of projects for the group</returns>
         [HttpGet("group/{groupId}")]
         [Authorize(Roles = "Admin,Instructor,Student")]
-        public async Task<ActionResult<ProjectDetailDto>> GetProjectByGroup(int groupId)
+        public async Task<ActionResult<ResultModel<List<ProjectDetailDto>>>> GetProjectsByGroup(int groupId)
         {
-            var result = await _projectService.GetProjectByGroupAsync(groupId);
-            return Ok(new { status = "success", data = result });
+            var result = await _projectService.GetProjectsByGroupAsync(groupId);
+            
+            if (result.IsSuccess)
+                return Ok(result);
+            
+            return StatusCode(result.StatusCode, result);
         }
 
         /// <summary>
@@ -83,7 +87,7 @@ namespace AppBackend.ApiCore.Controllers
             }
 
             var result = await _projectService.CreateProjectAsync(dto, leaderId);
-            return CreatedAtAction(nameof(GetProjectByGroup), new { groupId = dto.GroupId }, new { status = "success", data = result });
+            return CreatedAtAction(nameof(GetProjectsByGroup), new { groupId = dto.GroupId }, new { status = "success", data = result });
         }
 
         /// <summary>
@@ -192,6 +196,32 @@ namespace AppBackend.ApiCore.Controllers
 
             await _projectService.DeleteProjectAsync(projectId, userId);
             return Ok(new { status = "success", message = "Project deleted successfully" });
+        }
+
+        /// <summary>
+        /// Get project status history with instructor comments
+        /// </summary>
+        /// <param name="projectId">Project ID</param>
+        /// <returns>List of status changes with comments</returns>
+        /// <remarks>
+        /// Shows all status updates made by instructors including:
+        /// - Status (Approved, Rejected, Revision Required, etc.)
+        /// - Instructor comments
+        /// - Reviewer name
+        /// - Date of review
+        /// 
+        /// This allows students to see feedback from instructors on their project.
+        /// </remarks>
+        [HttpGet("{projectId}/status-history")]
+        [Authorize(Roles = "Admin,Instructor,Student")]
+        public async Task<ActionResult<ResultModel<List<ProjectStatusHistoryDto>>>> GetProjectStatusHistory(int projectId)
+        {
+            var result = await _projectService.GetProjectStatusHistoryAsync(projectId);
+            
+            if (result.IsSuccess)
+                return Ok(result);
+            
+            return StatusCode(result.StatusCode, result);
         }
     }
 }

@@ -19,6 +19,9 @@ namespace AppBackend.BusinessObjects.Dtos.Group
     {
         public int GmId { get; set; }
         public int? UserId { get; set; }
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public string? AvatarUrl { get; set; }
         public string? RoleInGroup { get; set; }
         public DateTime? JoinedAt { get; set; }
     }

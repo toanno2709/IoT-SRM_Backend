@@ -397,4 +397,99 @@ public class ClassEnrollmentService : IClassEnrollmentService
             };
         }
     }
+
+    public async Task<ResultModel<UnassignedStudentsResponseDto>> GetUnassignedStudentsAsync(int classId, string? searchQuery = null)
+    {
+        try
+        {
+            // 1. Ki?m tra class có t?n t?i
+            var classEntity = await _classRepo.GetByIdAsync(classId);
+            if (classEntity == null)
+            {
+                return new ResultModel<UnassignedStudentsResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "CLASS_NOT_FOUND",
+                    Message = "Class not found",
+                    Data = null,
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // 2. L?y danh sách student IDs trong class
+            var enrolledStudentIds = await _context.ClassEnrollments
+                .Where(ce => ce.ClassId == classId)
+                .Select(ce => ce.StudentId)
+                .ToListAsync();
+
+            // 3. L?y danh sách student IDs ?ã có nhóm trong class này
+            var assignedStudentIds = await _context.GroupMembers
+                .Where(gm => gm.Group!.ClassId == classId)
+                .Select(gm => gm.UserId)
+                .Distinct()
+                .ToListAsync();
+
+            // 4. Tìm students enrolled nh?ng ch?a có group
+            var unassignedStudentIds = enrolledStudentIds
+                .Where(id => id.HasValue && !assignedStudentIds.Contains(id.Value))
+                .Select(id => id!.Value)
+                .ToList();
+
+            // 5. Query students v?i search filter (n?u có)
+            var query = _context.Users
+                .Where(u => unassignedStudentIds.Contains(u.UserId));
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                var search = searchQuery.ToLower();
+                query = query.Where(u =>
+                    (u.FullName != null && u.FullName.ToLower().Contains(search)) ||
+                    (u.Email != null && u.Email.ToLower().Contains(search)));
+            }
+
+            var unassignedStudents = await query
+                .OrderBy(u => u.FullName)
+                .ToListAsync();
+
+            // 6. L?y enrollment date cho m?i student
+            var enrollmentDates = await _context.ClassEnrollments
+                .Where(ce => ce.ClassId == classId && unassignedStudentIds.Contains(ce.StudentId!.Value))
+                .ToDictionaryAsync(ce => ce.StudentId!.Value, ce => ce.EnrolledAt);
+
+            // 7. Map to DTOs
+            var studentDtos = unassignedStudents.Select(s => new UnassignedStudentDto
+            {
+                UserId = s.UserId,
+                FullName = s.FullName,
+                Email = s.Email,
+                EnrolledAt = enrollmentDates.ContainsKey(s.UserId) ? enrollmentDates[s.UserId] : null
+            }).ToList();
+
+            return new ResultModel<UnassignedStudentsResponseDto>
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = $"Found {studentDtos.Count} unassigned students",
+                Data = new UnassignedStudentsResponseDto
+                {
+                    ClassId = classId,
+                    ClassName = classEntity.ClassName,
+                    TotalUnassignedStudents = studentDtos.Count,
+                    Students = studentDtos
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<UnassignedStudentsResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = "INTERNAL_ERROR",
+                Message = $"Error retrieving unassigned students: {ex.Message}",
+                Data = null,
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
 }
