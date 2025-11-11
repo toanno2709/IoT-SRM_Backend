@@ -129,6 +129,7 @@ public class ProjectMilestoneService : IProjectMilestoneService
             Description = m.Description,
             DueDate = m.DueDate,
             Status = m.Status,
+            Weight = m.Weight, // FIX: Add Weight mapping
             CreatedAt = m.CreatedAt,
             UpdatedAt = m.UpdatedAt
         };

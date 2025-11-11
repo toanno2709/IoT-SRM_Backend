@@ -205,7 +205,7 @@ namespace AppBackend.ApiCore.Controllers
         /// <returns>List of status changes with comments</returns>
         /// <remarks>
         /// Shows all status updates made by instructors including:
-        /// - Status (Approved, Rejected, Revision Required, etc.)
+        /// - Status (Approved, Rejected, Revision, etc.)
         /// - Instructor comments
         /// - Reviewer name
         /// - Date of review

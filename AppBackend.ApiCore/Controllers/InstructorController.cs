@@ -557,6 +557,74 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Debug endpoint to check submission data and relationships
+    /// </summary>
+    [HttpGet("debug/submissions/{milestoneId}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DebugSubmissionData([FromRoute] int milestoneId)
+    {
+        var _context = HttpContext.RequestServices.GetRequiredService<AppBackend.BusinessObjects.Data.IotShowroomContext>();
+        
+        // Check milestone
+        var milestone = await _context.ProjectMilestones
+            .FirstOrDefaultAsync(m => m.MilestoneId == milestoneId);
+        
+        // Check submissions with all related data
+        var submissions = await _context.MilestoneSubmissions
+            .Include(s => s.Project)
+                .ThenInclude(p => p.Group)
+                    .ThenInclude(g => g!.Class)
+            .Include(s => s.SubmissionFiles)
+            .Include(s => s.MilestoneDef)
+            .Where(s => s.MilestoneDefId == milestoneId)
+            .Select(s => new
+            {
+                SubmissionId = s.SubmissionId,
+                ProjectId = s.ProjectId,
+                ProjectTitle = s.Project != null ? s.Project.Title : "NULL",
+                GroupId = s.Project != null && s.Project.Group != null ? s.Project.Group.GroupId : 0,
+                GroupName = s.Project != null && s.Project.Group != null ? s.Project.Group.GroupName : "NULL",
+                ClassId = s.Project != null && s.Project.Group != null && s.Project.Group.Class != null ? s.Project.Group.Class.ClassId : 0,
+                ClassName = s.Project != null && s.Project.Group != null && s.Project.Group.Class != null ? s.Project.Group.Class.ClassName : "NULL",
+                InstructorId = s.Project != null && s.Project.Group != null && s.Project.Group.Class != null ? s.Project.Group.Class.InstructorId : null,
+                FileCount = s.SubmissionFiles != null ? s.SubmissionFiles.Count : 0,
+                LastSubmittedAt = s.LastSubmittedAt,
+                VersionNo = s.LastVersionNo
+            })
+            .ToListAsync();
+        
+        // Check all instructors
+        var instructors = await _context.Users
+            .Where(u => u.RoleId == 2) // Assuming role_id 2 is instructor
+            .Select(u => new { u.UserId, u.FullName, u.Email })
+            .ToListAsync();
+        
+        // Check classes
+        var classes = await _context.Classes
+            .Include(c => c.Instructor)
+            .Select(c => new
+            {
+                c.ClassId,
+                c.ClassName,
+                c.InstructorId,
+                InstructorName = c.Instructor != null ? c.Instructor.FullName : "NULL"
+            })
+            .ToListAsync();
+        
+        return Ok(new
+        {
+            MilestoneId = milestoneId,
+            MilestoneExists = milestone != null,
+            MilestoneTitle = milestone?.Title,
+            TotalSubmissions = submissions.Count,
+            Submissions = submissions,
+            Instructors = instructors,
+            Classes = classes,
+            Note = "Check if submissions have valid project->group->class->instructor chain"
+        });
+    }
+
+    /// <summary>
     /// Get all submissions that need grading (across all classes or specific class)
     /// </summary>
     /// <param name="classId">Filter by class ID (optional)</param>
@@ -586,13 +654,13 @@ public class InstructorController : ControllerBase
     /// <param name="request">Status and comment</param>
     /// <returns>Updated project status details</returns>
     /// <remarks>
-    /// Allows instructor to update project status (e.g., "Approved", "Rejected", "Revision Required")
-    /// and add a comment. Students in the group will be notified and can view the comment.
+    /// Allows instructor to update project status and add a comment. 
+    /// Students in the group will be notified and can view the comment.
     /// 
     /// Common status values:
     /// - Approved: Project is approved to proceed
     /// - Rejected: Project is rejected
-    /// - Revision Required: Project needs changes
+    /// - Revision: Project needs changes (use this instead of deprecated 'Revision Required')
     /// - In Progress: Project is actively being worked on
     /// - Completed: Project is finished
     /// </remarks>
