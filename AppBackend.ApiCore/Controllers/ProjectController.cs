@@ -206,11 +206,11 @@ namespace AppBackend.ApiCore.Controllers
         /// <remarks>
         /// Shows all status updates made by instructors including:
         /// - Status (Approved, Rejected, Revision, etc.)
-        /// - Instructor comments
+        /// - Instructor comments and feedback
         /// - Reviewer name
         /// - Date of review
         /// 
-        /// This allows students to see feedback from instructors on their project.
+        /// This allows students to track feedback history on their project.
         /// </remarks>
         [HttpGet("{projectId}/status-history")]
         [Authorize(Roles = "Admin,Instructor,Student")]
