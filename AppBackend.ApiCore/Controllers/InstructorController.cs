@@ -654,7 +654,7 @@ public class InstructorController : ControllerBase
     /// <param name="request">Status and comment</param>
     /// <returns>Updated project status details</returns>
     /// <remarks>
-    /// Allows instructor to update project status and add a comment. 
+    /// Allows instructor to update project status and add comment. 
     /// Students in the group will be notified and can view the comment.
     /// 
     /// Common status values:
@@ -701,7 +701,7 @@ public class InstructorController : ControllerBase
     /// <returns>List of students not assigned to any group</returns>
     /// <remarks>
     /// Returns students who are enrolled in the class but are not members of any group.
-    /// Useful for instructors to identify which students need to be assigned to groups.
+    /// Useful for instructors to identify which students need group assignments.
     /// 
     /// Query parameter 'q' allows filtering by student name or email (case-insensitive).
     /// </remarks>
