@@ -601,12 +601,27 @@ public class FinalProjectService : IFinalProjectService
     {
         try
         {
+            _logger.LogInformation("Attempting to upload file: {FileName}, Size: {Size} bytes, ContentType: {ContentType}, Folder: {Folder}",
+                file.FileName, file.Length, file.ContentType, folder);
+
             var result = await _cloudinaryService.UploadFileAsync(file, $"SWP391/{folder}");
-            return result?.SecureUrl;
+            
+            if (result != null)
+            {
+                _logger.LogInformation("File uploaded successfully: {FileName} -> {Url}", 
+                    file.FileName, result.SecureUrl);
+                return result.SecureUrl;
+            }
+            else
+            {
+                _logger.LogError("Upload result is null for file: {FileName}", file.FileName);
+                return null;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Failed to upload file to Cloudinary: {file.FileName}");
+            _logger.LogError(ex, "Failed to upload file to Cloudinary: {FileName}, ContentType: {ContentType}", 
+                file.FileName, file.ContentType);
             return null;
         }
     }

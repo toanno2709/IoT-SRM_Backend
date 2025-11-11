@@ -7,6 +7,8 @@ using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using AppBackend.BusinessObjects.Data;
 
 namespace AppBackend.Services.Services.InstructorSubmissionView;
 
@@ -18,6 +20,8 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
     private readonly IProjectRepository _projectRepository;
     private readonly IGroupRepository _groupRepository;
     private readonly IMilestoneEvaluationRepository _evaluationRepository;
+    private readonly IotShowroomContext _context;
+    private readonly ILogger<InstructorSubmissionViewService> _logger;
 
     public InstructorSubmissionViewService(
         IMilestoneSubmissionRepository submissionRepository,
@@ -25,7 +29,9 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
         IClassRepository classRepository,
         IProjectRepository projectRepository,
         IGroupRepository groupRepository,
-        IMilestoneEvaluationRepository evaluationRepository)
+        IMilestoneEvaluationRepository evaluationRepository,
+        IotShowroomContext context,
+        ILogger<InstructorSubmissionViewService> logger)
     {
         _submissionRepository = submissionRepository;
         _milestoneRepository = milestoneRepository;
@@ -33,6 +39,8 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
         _projectRepository = projectRepository;
         _groupRepository = groupRepository;
         _evaluationRepository = evaluationRepository;
+        _context = context;
+        _logger = logger;
     }
 
     public async Task<ResultModel<List<InstructorSubmissionViewDto>>> GetSubmissionsByMilestoneAsync(
@@ -42,10 +50,14 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
     {
         try
         {
+            _logger.LogInformation("Getting submissions for milestone {MilestoneId} by instructor {InstructorId}", 
+                milestoneId, instructorId);
+
             // Get milestone details
             var milestone = await _milestoneRepository.GetByIdAsync(milestoneId);
             if (milestone == null)
             {
+                _logger.LogWarning("Milestone {MilestoneId} not found", milestoneId);
                 return new ResultModel<List<InstructorSubmissionViewDto>>
                 {
                     IsSuccess = false,
@@ -54,23 +66,61 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
                 };
             }
 
-            // Get all submissions for this milestone
-            var submissions = await _submissionRepository.FindAsync(s => s.MilestoneDefId == milestoneId);
+            _logger.LogInformation("Found milestone: {MilestoneTitle}", milestone.Title);
+
+            // Get all submissions for this milestone with related data
+            var submissions = await _context.MilestoneSubmissions
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                .Include(s => s.SubmissionFiles)
+                    .ThenInclude(f => f.UploadedByNavigation)
+                .Include(s => s.MilestoneDef)
+                .Where(s => s.MilestoneDefId == milestoneId)
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} total submissions for milestone {MilestoneId}", 
+                submissions.Count, milestoneId);
             
             var result = new List<InstructorSubmissionViewDto>();
 
             foreach (var submission in submissions)
             {
-                // Load related entities
-                var project = await _projectRepository.GetByIdAsync(submission.ProjectId);
-                if (project == null || !project.GroupId.HasValue) continue;
+                _logger.LogDebug("Processing submission {SubmissionId} for project {ProjectId}", 
+                    submission.SubmissionId, submission.ProjectId);
 
-                var group = await _groupRepository.GetByIdAsync(project.GroupId.Value);
-                if (group == null) continue;
+                // Check if project exists
+                if (submission.Project == null)
+                {
+                    _logger.LogWarning("Submission {SubmissionId} has no project", submission.SubmissionId);
+                    continue;
+                }
+
+                // Check if group exists
+                if (submission.Project.Group == null)
+                {
+                    _logger.LogWarning("Project {ProjectId} has no group", submission.ProjectId);
+                    continue;
+                }
+
+                var group = submission.Project.Group;
 
                 // Verify instructor owns this class
-                var classEntity = await _classRepository.GetByIdAsync(group.ClassId);
-                if (classEntity?.InstructorId != instructorId) continue;
+                if (group.Class == null)
+                {
+                    _logger.LogWarning("Group {GroupId} has no class", group.GroupId);
+                    continue;
+                }
+
+                if (group.Class.InstructorId != instructorId)
+                {
+                    _logger.LogDebug("Skipping submission {SubmissionId} - class instructor {ClassInstructorId} != requested instructor {InstructorId}",
+                        submission.SubmissionId, group.Class.InstructorId, instructorId);
+                    continue;
+                }
+
+                _logger.LogDebug("Submission {SubmissionId} belongs to instructor {InstructorId}'s class", 
+                    submission.SubmissionId, instructorId);
 
                 // Get evaluation (grade)
                 var evaluation = await _evaluationRepository.GetByProjectMilestoneInstructorAsync(
@@ -111,7 +161,7 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
                 {
                     SubmissionId = submission.SubmissionId,
                     ProjectId = submission.ProjectId,
-                    ProjectTitle = project.Title,
+                    ProjectTitle = submission.Project.Title,
                     GroupId = group.GroupId,
                     GroupName = group.GroupName,
                     MilestoneDefId = submission.MilestoneDefId,
@@ -132,6 +182,9 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
 
                 result.Add(dto);
             }
+
+            _logger.LogInformation("Filtered to {Count} submissions for instructor {InstructorId}", 
+                result.Count, instructorId);
 
             // Apply filters
             if (filter != null)
@@ -170,6 +223,7 @@ public class InstructorSubmissionViewService : IInstructorSubmissionViewService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error retrieving submissions for milestone {MilestoneId}", milestoneId);
             return new ResultModel<List<InstructorSubmissionViewDto>>
             {
                 IsSuccess = false,
