@@ -659,8 +659,8 @@ public class InstructorController : ControllerBase
     /// 
     /// Common status values:
     /// - Approved: Project is approved to proceed
-    /// - Rejected: Project is rejected
-    /// - Revision: Project needs changes (use this instead of deprecated 'Revision Required')
+    /// - Rejected: Project is rejected  
+    /// - Revision: Project needs changes
     /// - In Progress: Project is actively being worked on
     /// - Completed: Project is finished
     /// </remarks>
@@ -701,7 +701,7 @@ public class InstructorController : ControllerBase
     /// <returns>List of students not assigned to any group</returns>
     /// <remarks>
     /// Returns students who are enrolled in the class but are not members of any group.
-    /// Useful for instructors to see which students need to be assigned to groups.
+    /// Useful for instructors to identify which students need to be assigned to groups.
     /// 
     /// Query parameter 'q' allows filtering by student name or email (case-insensitive).
     /// </remarks>
