@@ -2,8 +2,24 @@ using AppBackend.ApiCore.JsonConverters;
 using AppBackend.Extensions;
 using AppBackend.Services.Services.Group;
 using AppBackend.ApiCore.Middlewares;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Kestrel server to accept large file uploads (500MB)
+builder.Services.Configure<KestrelServerOptions>(options =>
+{
+    options.Limits.MaxRequestBodySize = 524288000; // 500 MB
+});
+
+// Configure form options for multipart/form-data uploads
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.ValueLengthLimit = int.MaxValue;
+    options.MultipartBodyLengthLimit = 524288000; // 500 MB
+    options.MultipartHeadersLengthLimit = int.MaxValue;
+});
 
 // Configs
 builder.Services.AddCloudinaryConfig(builder.Configuration);
