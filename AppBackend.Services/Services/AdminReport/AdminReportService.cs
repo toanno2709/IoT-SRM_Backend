@@ -1,12 +1,16 @@
+using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Constants;
+using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
 using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
-using AppBackend.Services.ApiModels.Commons;
 using Microsoft.EntityFrameworkCore;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System.Drawing;
 
 namespace AppBackend.Services.Services.AdminReport;
 
@@ -517,16 +521,128 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            // TODO: Implement actual export functionality
-            // This would require libraries like EPPlus for Excel or iTextSharp for PDF
-            
-            await Task.CompletedTask; // Placeholder to avoid warning
-            
+            // Set EPPlus license context
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            if (request.ExportFormat?.ToLower() == "pdf")
+            {
+                return new ResultModel<ReportExportResponseDto>
+                {
+                    IsSuccess = false,
+                    StatusCode = 501,
+                    Message = "PDF export not yet implemented. Please use Excel format."
+                };
+            }
+
+            // Generate Excel file based on report type
+            byte[] excelData;
+            string fileName;
+
+            switch (request.ReportType?.ToLower())
+            {
+                case "classes":
+                    var classesReport = await GetClassesSummaryAsync(request.SemesterId);
+                    if (!classesReport.IsSuccess || classesReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate classes report"
+                        };
+                    excelData = GenerateClassesExcel(classesReport.Data);
+                    fileName = $"Classes_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                case "instructors":
+                    var instructorsReport = await GetInstructorsWorkloadAsync(request.SemesterId);
+                    if (!instructorsReport.IsSuccess || instructorsReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate instructors report"
+                        };
+                    excelData = GenerateInstructorsExcel(instructorsReport.Data);
+                    fileName = $"Instructors_Workload_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                case "students":
+                    var studentsReport = await GetStudentsDistributionAsync(request.SemesterId);
+                    if (!studentsReport.IsSuccess || studentsReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate students report"
+                        };
+                    excelData = GenerateStudentsExcel(studentsReport.Data);
+                    fileName = $"Students_Distribution_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                case "projects":
+                    var projectsReport = await GetProjectsStatusAsync(request.SemesterId);
+                    if (!projectsReport.IsSuccess || projectsReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate projects report"
+                        };
+                    excelData = GenerateProjectsExcel(projectsReport.Data);
+                    fileName = $"Projects_Status_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                case "milestones":
+                    var milestonesReport = await GetMilestoneProgressAsync(request.SemesterId);
+                    if (!milestonesReport.IsSuccess || milestonesReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate milestones report"
+                        };
+                    excelData = GenerateMilestonesExcel(milestonesReport.Data);
+                    fileName = $"Milestone_Progress_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                case "grades":
+                    var gradesReport = await GetGradesDistributionAsync(request.SemesterId);
+                    if (!gradesReport.IsSuccess || gradesReport.Data == null)
+                        return new ResultModel<ReportExportResponseDto>
+                        {
+                            IsSuccess = false,
+                            StatusCode = 500,
+                            Message = "Failed to generate grades report"
+                        };
+                    excelData = GenerateGradesExcel(gradesReport.Data);
+                    fileName = $"Grades_Distribution_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                    break;
+
+                default:
+                    return new ResultModel<ReportExportResponseDto>
+                    {
+                        IsSuccess = false,
+                        StatusCode = 400,
+                        Message = "Invalid report type. Valid types: Classes, Instructors, Students, Projects, Milestones, Grades"
+                    };
+            }
+
+            // Convert to base64 for transmission
+            var base64Data = Convert.ToBase64String(excelData);
+
             return new ResultModel<ReportExportResponseDto>
             {
-                IsSuccess = false,
-                StatusCode = 501,
-                Message = "Export functionality not yet implemented. This would require EPPlus (Excel) or iTextSharp (PDF) libraries."
+                IsSuccess = true,
+                Data = new ReportExportResponseDto
+                {
+                    FileName = fileName,
+                    FileUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64Data}",
+                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    FileSizeBytes = excelData.Length,
+                    GeneratedAt = DateTime.UtcNow,
+                    ExportFormat = "Excel"
+                },
+                Message = "Report exported successfully"
             };
         }
         catch (Exception ex)
@@ -539,4 +655,344 @@ public class AdminReportService : IAdminReportService
             };
         }
     }
+
+    #region Excel Generation Methods
+
+    private byte[] GenerateClassesExcel(ClassesSummaryReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Classes Summary");
+
+        // Header
+        worksheet.Cells["A1:D1"].Merge = true;
+        worksheet.Cells["A1"].Value = "CLASSES SUMMARY REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+        // Summary statistics
+        worksheet.Cells["A3"].Value = "Total Classes:";
+        worksheet.Cells["B3"].Value = report.TotalClasses;
+        worksheet.Cells["A4"].Value = "Active Classes:";
+        worksheet.Cells["B4"].Value = report.ActiveClasses;
+        worksheet.Cells["A5"].Value = "Classes Without Instructor:";
+        worksheet.Cells["B5"].Value = report.ClassesWithoutInstructor;
+        worksheet.Cells["A6"].Value = "Average Class Size:";
+        worksheet.Cells["B6"].Value = report.AverageClassSize;
+
+        worksheet.Cells["A3:A6"].Style.Font.Bold = true;
+
+        // Classes by semester table
+        worksheet.Cells["A8"].Value = "Classes by Semester";
+        worksheet.Cells["A8"].Style.Font.Bold = true;
+        worksheet.Cells["A8"].Style.Font.Size = 14;
+
+        worksheet.Cells["A10"].Value = "Semester";
+        worksheet.Cells["B10"].Value = "Class Count";
+        worksheet.Cells["C10"].Value = "Total Students";
+        worksheet.Cells["D10"].Value = "Total Groups";
+        worksheet.Cells["E10"].Value = "Total Projects";
+        worksheet.Cells["A10:E10"].Style.Font.Bold = true;
+        worksheet.Cells["A10:E10"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A10:E10"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 11;
+        foreach (var item in report.ClassesBySemester)
+        {
+            worksheet.Cells[row, 1].Value = item.SemesterName;
+            worksheet.Cells[row, 2].Value = item.ClassCount;
+            worksheet.Cells[row, 3].Value = item.TotalStudents;
+            worksheet.Cells[row, 4].Value = item.TotalGroups;
+            worksheet.Cells[row, 5].Value = item.TotalProjects;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    private byte[] GenerateInstructorsExcel(InstructorsWorkloadReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Instructors Workload");
+
+        // Header
+        worksheet.Cells["A1:G1"].Merge = true;
+        worksheet.Cells["A1"].Value = "INSTRUCTORS WORKLOAD REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+        // Summary
+        worksheet.Cells["A3"].Value = "Total Instructors:";
+        worksheet.Cells["B3"].Value = report.TotalInstructors;
+        worksheet.Cells["A4"].Value = "Average Classes Per Instructor:";
+        worksheet.Cells["B4"].Value = report.AverageClassesPerInstructor;
+        worksheet.Cells["A5"].Value = "Instructors Without Classes:";
+        worksheet.Cells["B5"].Value = report.InstructorsWithNoClasses;
+        worksheet.Cells["A3:A5"].Style.Font.Bold = true;
+
+        // Workload table
+        worksheet.Cells["A7"].Value = "Instructor Workload Details";
+        worksheet.Cells["A7"].Style.Font.Bold = true;
+        worksheet.Cells["A7"].Style.Font.Size = 14;
+
+        worksheet.Cells["A9"].Value = "Instructor Name";
+        worksheet.Cells["B9"].Value = "Email";
+        worksheet.Cells["C9"].Value = "Classes";
+        worksheet.Cells["D9"].Value = "Students";
+        worksheet.Cells["E9"].Value = "Groups";
+        worksheet.Cells["F9"].Value = "Pending Proposals";
+        worksheet.Cells["G9"].Value = "Submissions to Grade";
+        worksheet.Cells["A9:G9"].Style.Font.Bold = true;
+        worksheet.Cells["A9:G9"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A9:G9"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 10;
+        foreach (var item in report.InstructorWorkloads)
+        {
+            worksheet.Cells[row, 1].Value = item.InstructorName;
+            worksheet.Cells[row, 2].Value = item.Email;
+            worksheet.Cells[row, 3].Value = item.ClassCount;
+            worksheet.Cells[row, 4].Value = item.TotalStudents;
+            worksheet.Cells[row, 5].Value = item.TotalGroups;
+            worksheet.Cells[row, 6].Value = item.PendingProposals;
+            worksheet.Cells[row, 7].Value = item.SubmissionsToGrade;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    private byte[] GenerateStudentsExcel(StudentsDistributionReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Students Distribution");
+
+        // Header
+        worksheet.Cells["A1"].Value = "STUDENTS DISTRIBUTION REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+
+        // Summary
+        worksheet.Cells["A3"].Value = "Total Students:";
+        worksheet.Cells["B3"].Value = report.TotalStudents;
+        worksheet.Cells["A4"].Value = "Students in Groups:";
+        worksheet.Cells["B4"].Value = report.StudentsInGroups;
+        worksheet.Cells["A5"].Value = "Students Without Groups:";
+        worksheet.Cells["B5"].Value = report.StudentsWithoutGroups;
+        worksheet.Cells["A6"].Value = "Group Participation Rate:";
+        worksheet.Cells["B6"].Value = $"{report.GroupParticipationRate}%";
+        worksheet.Cells["A3:A6"].Style.Font.Bold = true;
+
+        // Students by class
+        worksheet.Cells["A8"].Value = "Students by Class";
+        worksheet.Cells["A8"].Style.Font.Bold = true;
+        worksheet.Cells["A8"].Style.Font.Size = 14;
+
+        worksheet.Cells["A10"].Value = "Class Name";
+        worksheet.Cells["B10"].Value = "Semester";
+        worksheet.Cells["C10"].Value = "Student Count";
+        worksheet.Cells["D10"].Value = "Group Count";
+        worksheet.Cells["E10"].Value = "Avg Group Size";
+        worksheet.Cells["A10:E10"].Style.Font.Bold = true;
+        worksheet.Cells["A10:E10"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A10:E10"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 11;
+        foreach (var item in report.StudentsByClass)
+        {
+            worksheet.Cells[row, 1].Value = item.ClassName;
+            worksheet.Cells[row, 2].Value = item.SemesterName;
+            worksheet.Cells[row, 3].Value = item.StudentCount;
+            worksheet.Cells[row, 4].Value = item.GroupCount;
+            worksheet.Cells[row, 5].Value = item.AverageGroupSize;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    private byte[] GenerateProjectsExcel(ProjectsStatusReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Projects Status");
+
+        // Header
+        worksheet.Cells["A1"].Value = "PROJECTS STATUS REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+
+        // Summary
+        worksheet.Cells["A3"].Value = "Total Projects:";
+        worksheet.Cells["B3"].Value = report.TotalProjects;
+        worksheet.Cells["A4"].Value = "Pending:";
+        worksheet.Cells["B4"].Value = report.PendingProjects;
+        worksheet.Cells["A5"].Value = "Approved:";
+        worksheet.Cells["B5"].Value = report.ApprovedProjects;
+        worksheet.Cells["A6"].Value = "Completed:";
+        worksheet.Cells["B6"].Value = report.CompletedProjects;
+        worksheet.Cells["A7"].Value = "Rejected:";
+        worksheet.Cells["B7"].Value = report.RejectedProjects;
+        worksheet.Cells["A8"].Value = "Completion Rate:";
+        worksheet.Cells["B8"].Value = $"{report.CompletionRate}%";
+        worksheet.Cells["A3:A8"].Style.Font.Bold = true;
+
+        // Status breakdown
+        worksheet.Cells["A10"].Value = "Status Distribution";
+        worksheet.Cells["A10"].Style.Font.Bold = true;
+        worksheet.Cells["A10"].Style.Font.Size = 14;
+
+        worksheet.Cells["A12"].Value = "Status";
+        worksheet.Cells["B12"].Value = "Count";
+        worksheet.Cells["C12"].Value = "Percentage";
+        worksheet.Cells["A12:C12"].Style.Font.Bold = true;
+        worksheet.Cells["A12:C12"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A12:C12"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 13;
+        foreach (var item in report.ProjectsByStatus)
+        {
+            worksheet.Cells[row, 1].Value = item.Status;
+            worksheet.Cells[row, 2].Value = item.Count;
+            worksheet.Cells[row, 3].Value = $"{item.Percentage}%";
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    private byte[] GenerateMilestonesExcel(MilestoneProgressReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Milestone Progress");
+
+        // Header
+        worksheet.Cells["A1"].Value = "MILESTONE PROGRESS REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+
+        // Summary
+        worksheet.Cells["A3"].Value = "Total Milestones:";
+        worksheet.Cells["B3"].Value = report.TotalMilestones;
+        worksheet.Cells["A4"].Value = "Completed:";
+        worksheet.Cells["B4"].Value = report.CompletedMilestones;
+        worksheet.Cells["A5"].Value = "Pending:";
+        worksheet.Cells["B5"].Value = report.PendingMilestones;
+        worksheet.Cells["A6"].Value = "Completion Rate:";
+        worksheet.Cells["B6"].Value = $"{report.OverallCompletionRate}%";
+        worksheet.Cells["A7"].Value = "Average Grade:";
+        worksheet.Cells["B7"].Value = report.AverageGrade;
+        worksheet.Cells["A3:A7"].Style.Font.Bold = true;
+
+        // Completion by milestone
+        worksheet.Cells["A9"].Value = "Completion by Milestone Type";
+        worksheet.Cells["A9"].Style.Font.Bold = true;
+        worksheet.Cells["A9"].Style.Font.Size = 14;
+
+        worksheet.Cells["A11"].Value = "Milestone";
+        worksheet.Cells["B11"].Value = "Total";
+        worksheet.Cells["C11"].Value = "Graded";
+        worksheet.Cells["D11"].Value = "Pending";
+        worksheet.Cells["E11"].Value = "Rate %";
+        worksheet.Cells["F11"].Value = "Avg Grade";
+        worksheet.Cells["A11:F11"].Style.Font.Bold = true;
+        worksheet.Cells["A11:F11"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A11:F11"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 12;
+        foreach (var item in report.CompletionByMilestone)
+        {
+            worksheet.Cells[row, 1].Value = item.MilestoneName;
+            worksheet.Cells[row, 2].Value = item.TotalSubmissions;
+            worksheet.Cells[row, 3].Value = item.GradedSubmissions;
+            worksheet.Cells[row, 4].Value = item.PendingSubmissions;
+            worksheet.Cells[row, 5].Value = $"{item.CompletionRate}%";
+            worksheet.Cells[row, 6].Value = item.AverageGrade;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    private byte[] GenerateGradesExcel(GradesDistributionReportDto report)
+    {
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Grades Distribution");
+
+        // Header
+        worksheet.Cells["A1"].Value = "GRADES DISTRIBUTION REPORT";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+
+        // Summary
+        worksheet.Cells["A3"].Value = "Total Graded Projects:";
+        worksheet.Cells["B3"].Value = report.TotalGradedProjects;
+        worksheet.Cells["A4"].Value = "Average Grade:";
+        worksheet.Cells["B4"].Value = report.AverageGrade;
+        worksheet.Cells["A5"].Value = "Highest Grade:";
+        worksheet.Cells["B5"].Value = report.HighestGrade;
+        worksheet.Cells["A6"].Value = "Lowest Grade:";
+        worksheet.Cells["B6"].Value = report.LowestGrade;
+        worksheet.Cells["A7"].Value = "Median Grade:";
+        worksheet.Cells["B7"].Value = report.MedianGrade;
+        worksheet.Cells["A3:A7"].Style.Font.Bold = true;
+
+        // Grade ranges
+        worksheet.Cells["A9"].Value = "Grade Distribution";
+        worksheet.Cells["A9"].Style.Font.Bold = true;
+        worksheet.Cells["A9"].Style.Font.Size = 14;
+
+        worksheet.Cells["A11"].Value = "Range";
+        worksheet.Cells["B11"].Value = "Count";
+        worksheet.Cells["C11"].Value = "Percentage";
+        worksheet.Cells["A11:C11"].Style.Font.Bold = true;
+        worksheet.Cells["A11:C11"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A11:C11"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        int row = 12;
+        foreach (var item in report.GradeRanges)
+        {
+            worksheet.Cells[row, 1].Value = item.Range;
+            worksheet.Cells[row, 2].Value = item.Count;
+            worksheet.Cells[row, 3].Value = $"{item.Percentage}%";
+            row++;
+        }
+
+        // Top projects
+        row += 2;
+        worksheet.Cells[row, 1].Value = "Top Performing Projects";
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+        worksheet.Cells[row, 1].Style.Font.Size = 14;
+
+        row += 2;
+        worksheet.Cells[row, 1].Value = "Project Name";
+        worksheet.Cells[row, 2].Value = "Group";
+        worksheet.Cells[row, 3].Value = "Class";
+        worksheet.Cells[row, 4].Value = "Grade";
+        worksheet.Cells[row, 5].Value = "Semester";
+        worksheet.Cells[$"A{row}:E{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:E{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:E{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+        foreach (var item in report.TopProjects)
+        {
+            worksheet.Cells[row, 1].Value = item.ProjectName;
+            worksheet.Cells[row, 2].Value = item.GroupName;
+            worksheet.Cells[row, 3].Value = item.ClassName;
+            worksheet.Cells[row, 4].Value = item.Grade;
+            worksheet.Cells[row, 5].Value = item.SemesterName;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        return package.GetAsByteArray();
+    }
+
+    #endregion
 }
