@@ -59,6 +59,8 @@ namespace AppBackend.Services.Services.Project
                 GroupId = dto.GroupId,
                 Title = dto.Title,
                 Description = dto.Description,
+                Purpose = dto.Purpose,
+                ExpectedTechnology = dto.ExpectedTechnology,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
             };
@@ -115,6 +117,8 @@ namespace AppBackend.Services.Services.Project
 
             if (!string.IsNullOrWhiteSpace(dto.Title)) project.Title = dto.Title;
             if (dto.Description != null) project.Description = dto.Description;
+            if (dto.Purpose != null) project.Purpose = dto.Purpose;
+            if (dto.ExpectedTechnology != null) project.ExpectedTechnology = dto.ExpectedTechnology;
             project.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -147,6 +151,8 @@ namespace AppBackend.Services.Services.Project
                     ProjectId = project.ProjectId,
                     Title = project.Title,
                     Description = project.Description,
+                    Purpose = project.Purpose,
+                    ExpectedTechnology = project.ExpectedTechnology,
                     Status = project.Status,
                     GroupId = project.GroupId ?? 0,
                     GroupName = project.Group?.GroupName,
@@ -283,11 +289,14 @@ namespace AppBackend.Services.Services.Project
                     ProjectId = p.ProjectId,
                     Title = p.Title,
                     Description = p.Description,
+                    Purpose = p.Purpose,
+                    ExpectedTechnology = p.ExpectedTechnology,
                     Status = p.Status,
                     LeaderId = p.Group?.LeaderId,
                     LeaderName = p.Group?.Leader?.FullName,
                     GroupId = p.GroupId ?? 0,
                     GroupName = p.Group?.GroupName,
+                    ClassId = p.Group?.ClassId,  // ✅ FIX: Add ClassId from Group
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
                     MemberCount = p.Group?.GroupMembers?.Count ?? 0,
