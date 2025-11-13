@@ -291,6 +291,8 @@ public class StudentDashboardService : IStudentDashboardService
     {
         try
         {
+            _logger.LogInformation("Getting group invitations for user {UserId}", userId);
+            
             // Find unread notifications with type "group_invitation"
             var invitationNotifications = await _context.Notifications
                 .Where(n => n.UserId == userId &&
@@ -299,20 +301,40 @@ public class StudentDashboardService : IStudentDashboardService
                 .OrderByDescending(n => n.CreatedAt)
                 .ToListAsync();
 
+            _logger.LogInformation("Found {Count} invitation notifications for user {UserId}", 
+                invitationNotifications.Count, userId);
+
             var invitations = new List<GroupInvitationDto>();
 
             foreach (var notification in invitationNotifications)
             {
+                _logger.LogInformation("Processing notification {NotificationId}: {Message}", 
+                    notification.NotificationId, notification.Message);
+                    
                 // Parse notification message to extract group info
                 var groupId = ExtractGroupIdFromMessage(notification.Message ?? "");
-                if (groupId == null) continue;
+                
+                _logger.LogInformation("Extracted groupId: {GroupId} from message: {Message}", 
+                    groupId, notification.Message);
+                    
+                if (groupId == null)
+                {
+                    _logger.LogWarning("Could not extract groupId from notification {NotificationId}", 
+                        notification.NotificationId);
+                    continue;
+                }
 
                 var group = await _context.Groups
                     .Include(g => g.Class)
                     .Include(g => g.Leader)
                     .FirstOrDefaultAsync(g => g.GroupId == groupId);
 
-                if (group == null) continue;
+                if (group == null)
+                {
+                    _logger.LogWarning("Group {GroupId} not found for notification {NotificationId}", 
+                        groupId, notification.NotificationId);
+                    continue;
+                }
 
                 invitations.Add(new GroupInvitationDto
                 {
@@ -325,6 +347,9 @@ public class StudentDashboardService : IStudentDashboardService
                     NotificationId = notification.NotificationId
                 });
             }
+
+            _logger.LogInformation("Successfully processed {Count} invitations for user {UserId}", 
+                invitations.Count, userId);
 
             var response = new GroupInvitationsResponseDto
             {
@@ -727,18 +752,41 @@ public class StudentDashboardService : IStudentDashboardService
     {
         try
         {
-            if (message.Contains("groupId:"))
+            _logger.LogDebug("Attempting to extract groupId from message: {Message}", message);
+            
+            // Format 1: [groupId:X]
+            if (message.Contains("[groupId:"))
+            {
+                var startIndex = message.IndexOf("[groupId:") + 9;
+                var endIndex = message.IndexOf("]", startIndex);
+                
+                if (endIndex > startIndex)
+                {
+                    var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
+                    if (int.TryParse(idString, out var groupId))
+                    {
+                        _logger.LogDebug("Extracted groupId {GroupId} from format [groupId:X]", groupId);
+                        return groupId;
+                    }
+                }
+            }
+            
+            // Format 2: groupId:X (without brackets)
+            else if (message.Contains("groupId:"))
             {
                 var startIndex = message.IndexOf("groupId:") + 8;
-                var endIndex = message.IndexOf(")", startIndex);
+                var endIndex = message.IndexOfAny(new[] { ' ', ')', ']', '\n', '\r' }, startIndex);
                 if (endIndex == -1) endIndex = message.Length;
                 
                 var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
                 if (int.TryParse(idString, out var groupId))
                 {
+                    _logger.LogDebug("Extracted groupId {GroupId} from format groupId:X", groupId);
                     return groupId;
                 }
             }
+            
+            // Format 3: (ID: X) - This might be classId in current format, be careful
             else if (message.Contains("(ID: "))
             {
                 var startIndex = message.IndexOf("(ID: ") + 5;
@@ -747,17 +795,21 @@ public class StudentDashboardService : IStudentDashboardService
                 if (endIndex > startIndex)
                 {
                     var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
-                    if (int.TryParse(idString, out var groupId))
+                    if (int.TryParse(idString, out var id))
                     {
-                        return groupId;
+                        _logger.LogDebug("Extracted ID {Id} from format (ID: X) - may be classId", id);
+                        // Note: This might be classId, not groupId in current format
+                        // Only use if other formats fail
                     }
                 }
             }
 
+            _logger.LogWarning("Could not extract groupId from message: {Message}", message);
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Error extracting groupId from message: {Message}", message);
             return null;
         }
     }
