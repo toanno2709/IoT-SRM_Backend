@@ -5,6 +5,8 @@ using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 using AppBackend.Repositories.Repositories.AnnouncementRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.EntityFrameworkCore;
+using AppBackend.BusinessObjects.Data;
+using Microsoft.Extensions.Logging;
 
 namespace AppBackend.Services.Services.InstructorDashboard;
 
@@ -15,154 +17,189 @@ public class InstructorDashboardService : IInstructorDashboardService
     private readonly IMilestoneSubmissionRepository _submissionRepository;
     private readonly IMilestoneEvaluationRepository _evaluationRepository;
     private readonly IAnnouncementRepository _announcementRepository;
+    private readonly IotShowroomContext _context;
+    private readonly ILogger<InstructorDashboardService> _logger;
 
     public InstructorDashboardService(
         IClassRepository classRepository,
         IGroupRepository groupRepository,
         IMilestoneSubmissionRepository submissionRepository,
         IMilestoneEvaluationRepository evaluationRepository,
-        IAnnouncementRepository announcementRepository)
+        IAnnouncementRepository announcementRepository,
+        IotShowroomContext context,
+        ILogger<InstructorDashboardService> logger)
     {
         _classRepository = classRepository;
         _groupRepository = groupRepository;
         _submissionRepository = submissionRepository;
         _evaluationRepository = evaluationRepository;
         _announcementRepository = announcementRepository;
+        _context = context;
+        _logger = logger;
     }
 
     public async Task<ResultModel<InstructorDashboardResponseDto>> GetDashboardAsync(int instructorId)
     {
         try
         {
-            // 1. L?y t?t c? classes c?a instructor
-            var classes = await _classRepository.GetAssignedClassesAsync(instructorId);
-            var totalClasses = classes.Count;
+            _logger.LogInformation("Getting dashboard for instructor {InstructorId}", instructorId);
 
-            // 2. L?y t?t c? groups trong các classes
-            var allGroups = new List<AppBackend.BusinessObjects.Models.Group>();
-            var allProjects = new List<AppBackend.BusinessObjects.Models.Project>();
-            var totalStudents = 0;
+            // 1. Get total classes count
+            var totalClasses = await _context.Classes
+                .Where(c => c.InstructorId == instructorId)
+                .CountAsync();
 
-            foreach (var classEntity in classes)
-            {
-                var groups = await _groupRepository.GetGroupsByClassAsync(classEntity.ClassId);
-                allGroups.AddRange(groups);
-                
-                totalStudents += classEntity.ClassEnrollments?.Count ?? 0;
+            _logger.LogInformation("Total classes: {Count}", totalClasses);
 
-                // Get projects from groups
-                foreach (var group in groups)
-                {
-                    if (group.Projects != null)
-                    {
-                        allProjects.AddRange(group.Projects);
-                    }
-                }
-            }
+            // 2. Get total groups count
+            var totalGroups = await _context.Groups
+                .Where(g => g.Class!.InstructorId == instructorId)
+                .CountAsync();
 
-            // 3. ??m pending proposals (submissions có status Pending và milestone ch?a "Proposal")
-            var pendingProposals = await _submissionRepository.GetPendingProposalsByInstructorAsync(instructorId);
+            _logger.LogInformation("Total groups: {Count}", totalGroups);
 
-            // 4. ??m submissions c?n ch?m (submissions approved nh?ng ch?a có evaluation)
-            var allSubmissions = new List<AppBackend.BusinessObjects.Models.MilestoneSubmission>();
-            foreach (var project in allProjects)
-            {
-                var submissions = await _submissionRepository.FindAsync(s => 
-                    s.ProjectId == project.ProjectId);
-                // Filter approved submissions by checking ProjectApprovalHistory
-                var approvedSubmissions = submissions.Where(s => 
-                    s.ProjectApprovalHistories.Any(h => h.Action == "Approved")).ToList();
-                allSubmissions.AddRange(approvedSubmissions);
-            }
+            // 3. Get total projects count
+            var totalProjects = await _context.Projects
+                .Where(p => p.Group!.Class!.InstructorId == instructorId)
+                .CountAsync();
 
-            // Check which submissions don't have evaluations yet
-            var submissionsToGrade = 0;
-            foreach (var submission in allSubmissions)
-            {
-                var evaluation = await _evaluationRepository.GetByProjectMilestoneInstructorAsync(
-                    submission.ProjectId, 
-                    submission.MilestoneDefId, 
-                    instructorId);
-                if (evaluation == null)
-                {
-                    submissionsToGrade++;
-                }
-            }
+            _logger.LogInformation("Total projects: {Count}", totalProjects);
 
-            // 5. ??m announcements g?n ?ây (7 ngày g?n nh?t)
+            // 4. Get total students count (unique students across all classes)
+            var totalStudents = await _context.ClassEnrollments
+                .Where(ce => ce.Class!.InstructorId == instructorId)
+                .Select(ce => ce.StudentId)
+                .Distinct()
+                .CountAsync();
+
+            _logger.LogInformation("Total students: {Count}", totalStudents);
+
+            // 5. Get pending proposals count (submissions with Proposal milestone and no approval or pending approval)
+            var pendingProposals = await _context.MilestoneSubmissions
+                .Include(s => s.MilestoneDef)
+                .Include(s => s.ProjectApprovalHistories)
+                .Where(s => s.Project.Group!.Class!.InstructorId == instructorId
+                    && s.MilestoneDef.Title!.Contains("Proposal")
+                    && !s.ProjectApprovalHistories.Any(h => h.Action == "Approved" || h.Action == "Rejected"))
+                .CountAsync();
+
+            _logger.LogInformation("Pending proposals: {Count}", pendingProposals);
+
+            // 6. Get submissions to grade (approved submissions without evaluations)
+            var submissionsToGrade = await _context.MilestoneSubmissions
+                .Where(s => s.Project.Group!.Class!.InstructorId == instructorId
+                    && s.ProjectApprovalHistories.Any(h => h.Action == "Approved")
+                    && !_context.MilestoneEvaluations.Any(e => 
+                        e.ProjectId == s.ProjectId 
+                        && e.MilestoneDefId == s.MilestoneDefId
+                        && e.InstructorId == instructorId))
+                .CountAsync();
+
+            _logger.LogInformation("Submissions to grade: {Count}", submissionsToGrade);
+
+            // 7. Get recent announcements count (last 7 days)
             var recentDate = DateTime.UtcNow.AddDays(-7);
-            var announcements = await _announcementRepository.GetAnnouncementsByAdminAsync(instructorId);
-            var recentAnnouncements = announcements.Count(a => a.CreatedAt >= recentDate);
+            var recentAnnouncements = await _context.Announcements
+                .Where(a => a.AdminId == instructorId && a.CreatedAt >= recentDate)
+                .CountAsync();
 
-            // 6. T?o recent classes (top 5 classes có ho?t ??ng g?n nh?t)
-            var recentClasses = new List<RecentClassDto>();
-            foreach (var classEntity in classes.Take(5))
-            {
-                var groups = allGroups.Where(g => g.ClassId == classEntity.ClassId).ToList();
-                var projects = allProjects.Where(p => groups.Any(g => g.GroupId == p.GroupId)).ToList();
-                var classPendingProposals = pendingProposals.Count(p => 
-                    p.Project?.Group?.ClassId == classEntity.ClassId);
+            _logger.LogInformation("Recent announcements: {Count}", recentAnnouncements);
 
-                recentClasses.Add(new RecentClassDto
+            // 8. Get recent classes (top 5 with latest activity)
+            var recentClasses = await _context.Classes
+                .Where(c => c.InstructorId == instructorId)
+                .Select(c => new RecentClassDto
                 {
-                    ClassId = classEntity.ClassId,
-                    ClassName = classEntity.ClassName,
-                    SemesterName = classEntity.Semester?.Name,
-                    TotalStudents = classEntity.ClassEnrollments?.Count ?? 0,
-                    TotalGroups = groups.Count,
-                    TotalProjects = projects.Count,
-                    PendingProposals = classPendingProposals,
-                    LastActivity = projects.Any() ? projects.Max(p => p.UpdatedAt) : classEntity.CreatedAt
-                });
-            }
+                    ClassId = c.ClassId,
+                    ClassName = c.ClassName,
+                    SemesterName = c.Semester!.Name,
+                    TotalStudents = c.ClassEnrollments!.Count,
+                    TotalGroups = c.Groups!.Count,
+                    TotalProjects = c.Groups!.SelectMany(g => g.Projects).Count(),
+                    PendingProposals = c.Groups!
+                        .SelectMany(g => g.Projects)
+                        .SelectMany(p => p.MilestoneSubmissions)
+                        .Count(s => s.MilestoneDef.Title!.Contains("Proposal")
+                            && !s.ProjectApprovalHistories.Any(h => h.Action == "Approved" || h.Action == "Rejected")),
+                    LastActivity = c.Groups!
+                        .SelectMany(g => g.Projects)
+                        .Any() 
+                        ? c.Groups!.SelectMany(g => g.Projects).Max(p => p.UpdatedAt) 
+                        : c.CreatedAt
+                })
+                .OrderByDescending(c => c.LastActivity)
+                .Take(5)
+                .ToListAsync();
 
-            // 7. T?o recent activities (10 ho?t ??ng g?n nh?t)
+            _logger.LogInformation("Recent classes count: {Count}", recentClasses.Count);
+
+            // 9. Get recent activities (10 most recent)
             var recentActivities = new List<RecentActivityDto>();
 
-            // Recent proposals
-            foreach (var proposal in pendingProposals.Take(5))
-            {
-                recentActivities.Add(new RecentActivityDto
+            // Get recent proposals
+            var recentProposalActivities = await _context.MilestoneSubmissions
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                .Include(s => s.MilestoneDef)
+                .Include(s => s.ProjectApprovalHistories)
+                .Where(s => s.Project.Group!.Class!.InstructorId == instructorId
+                    && s.MilestoneDef.Title!.Contains("Proposal")
+                    && !s.ProjectApprovalHistories.Any(h => h.Action == "Approved" || h.Action == "Rejected"))
+                .OrderByDescending(s => s.LastSubmittedAt)
+                .Take(5)
+                .Select(s => new RecentActivityDto
                 {
                     ActivityType = "Proposal",
-                    Description = $"New proposal: {proposal.Project?.Title}",
-                    RelatedClass = proposal.Project?.Group?.Class?.ClassName,
-                    RelatedGroup = proposal.Project?.Group?.GroupName,
-                    ActivityDate = proposal.LastSubmittedAt
-                });
-            }
+                    Description = $"New proposal: {s.Project.Title}",
+                    RelatedClass = s.Project.Group!.Class!.ClassName,
+                    RelatedGroup = s.Project.Group.GroupName,
+                    ActivityDate = s.LastSubmittedAt
+                })
+                .ToListAsync();
 
-            // Recent announcements
-            foreach (var announcement in announcements.Take(3))
-            {
-                recentActivities.Add(new RecentActivityDto
+            recentActivities.AddRange(recentProposalActivities);
+
+            // Get recent announcements
+            var recentAnnouncementActivities = await _context.Announcements
+                .Where(a => a.AdminId == instructorId)
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(3)
+                .Select(a => new RecentActivityDto
                 {
                     ActivityType = "Announcement",
-                    Description = announcement.Title,
+                    Description = a.Title,
                     RelatedClass = "All Classes",
-                    ActivityDate = announcement.CreatedAt
-                });
-            }
+                    RelatedGroup = null,
+                    ActivityDate = a.CreatedAt
+                })
+                .ToListAsync();
 
-            // Sort by date
+            recentActivities.AddRange(recentAnnouncementActivities);
+
+            // Sort and take top 10
             recentActivities = recentActivities
                 .OrderByDescending(a => a.ActivityDate)
                 .Take(10)
                 .ToList();
 
-            // 8. T?o response
+            _logger.LogInformation("Recent activities count: {Count}", recentActivities.Count);
+
+            // 10. Create response
             var dashboard = new InstructorDashboardResponseDto
             {
                 TotalClasses = totalClasses,
-                TotalGroups = allGroups.Count,
-                TotalProjects = allProjects.Count,
+                TotalGroups = totalGroups,
+                TotalProjects = totalProjects,
                 TotalStudents = totalStudents,
-                PendingProposals = pendingProposals.Count,
+                PendingProposals = pendingProposals,
                 SubmissionsToGrade = submissionsToGrade,
                 RecentAnnouncements = recentAnnouncements,
-                RecentClasses = recentClasses.OrderByDescending(c => c.LastActivity).ToList(),
+                RecentClasses = recentClasses,
                 RecentActivities = recentActivities
             };
+
+            _logger.LogInformation("Dashboard created successfully for instructor {InstructorId}", instructorId);
 
             return new ResultModel<InstructorDashboardResponseDto>
             {
@@ -173,6 +210,7 @@ public class InstructorDashboardService : IInstructorDashboardService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error retrieving dashboard for instructor {InstructorId}", instructorId);
             return new ResultModel<InstructorDashboardResponseDto>
             {
                 IsSuccess = false,

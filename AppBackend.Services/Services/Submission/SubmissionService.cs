@@ -203,6 +203,8 @@ public class SubmissionService : ISubmissionService
             var project = await _context.Projects
                 .Include(p => p.Group)
                     .ThenInclude(g => g!.GroupMembers)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
                 .FirstOrDefaultAsync(p => p.ProjectId == projectId);
 
             if (project == null)
@@ -214,12 +216,18 @@ public class SubmissionService : ISubmissionService
                 );
             }
 
+            // ? Check if user is a member of the project group
             var isMember = project.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
-            if (!isMember)
+            
+            // ? Check if user is the instructor of the class
+            var isInstructor = project.Group?.Class?.InstructorId == userId;
+            
+            // ? Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
             {
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
-                    "You are not a member of this project's group",
+                    "You are not authorized to view this submission history",
                     StatusCodes.Status403Forbidden
                 );
             }
@@ -457,6 +465,20 @@ public class SubmissionService : ISubmissionService
             _logger.LogInformation("User {UserId} is a valid member of group {GroupId}", 
                 userId, submission.Project.Group.GroupId);
 
+            // ? FIX: Load user information for response
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+            {
+                _logger.LogError("User {UserId} not found", userId);
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "User not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
             var currentVersion = submission.LastVersionNo ?? 1;
             var uploadedFiles = new List<MilestoneFileDto>();
             var errors = new List<string>();
@@ -498,6 +520,7 @@ public class SubmissionService : ISubmissionService
 
                     _logger.LogInformation("File record saved to database with ID: {FileId}", submissionFile.FileId);
 
+                    // ? FIX: Add user's full name to response
                     uploadedFiles.Add(new MilestoneFileDto
                     {
                         FileId = submissionFile.FileId,
@@ -507,6 +530,7 @@ public class SubmissionService : ISubmissionService
                         FileSize = file.Length,
                         FileType = file.ContentType,
                         UploadedBy = userId,
+                        UploadedByName = user.FullName,
                         UploadedAt = submissionFile.UploadedAt
                     });
                 }

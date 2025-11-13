@@ -129,6 +129,7 @@ public class FinalProjectController : ControllerBase
     /// <param name="projectId">Project ID</param>
     /// <returns>Final submission details with all files and grade</returns>
     [HttpGet("{projectId}/final-submission")]
+    [Authorize(Roles = "Student,Instructor")] // ? Allow both Student and Instructor
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

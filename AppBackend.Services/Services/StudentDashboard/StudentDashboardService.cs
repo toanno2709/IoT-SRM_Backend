@@ -436,6 +436,129 @@ public class StudentDashboardService : IStudentDashboardService
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ResultModel<AcceptInvitationResponseDto>> AcceptGroupInvitationAsync(
+        int userId, 
+        int groupId)
+    {
+        try
+        {
+            _logger.LogInformation("User {UserId} attempting to accept invitation to group {GroupId}", userId, groupId);
+
+            // Find invitation notification
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n =>
+                    n.UserId == userId &&
+                    n.Type == "group_invitation" &&
+                    (n.Message ?? "").Contains($"groupId:{groupId}") &&
+                    (n.IsRead == null || n.IsRead == false));
+
+            if (notification == null)
+            {
+                _logger.LogWarning("No pending invitation found for user {UserId} and group {GroupId}", userId, groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Invitation not found or already processed",
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Verify group exists
+            var group = await _context.Groups
+                .Include(g => g.Leader)
+                .FirstOrDefaultAsync(g => g.GroupId == groupId);
+
+            if (group == null)
+            {
+                _logger.LogWarning("Group {GroupId} not found", groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Group not found",
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Check if already a member
+            var existingMember = await _context.GroupMembers
+                .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId);
+
+            if (existingMember)
+            {
+                _logger.LogWarning("User {UserId} is already a member of group {GroupId}", userId, groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "You are already a member of this group",
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            // Add to group
+            var newMember = new GroupMember
+            {
+                GroupId = groupId,
+                UserId = userId,
+                RoleInGroup = "Member",
+                JoinedAt = DateTime.UtcNow
+            };
+
+            _context.GroupMembers.Add(newMember);
+
+            // Mark notification as read
+            notification.IsRead = true;
+
+            // Notify group leader
+            if (group.LeaderId != null)
+            {
+                var user = await _context.Users.FindAsync(userId);
+                var acceptNotification = new BusinessObjects.Models.Notification
+                {
+                    UserId = group.LeaderId.Value,
+                    Title = "Invitation Accepted",
+                    Message = $"{user?.FullName ?? "A student"} has accepted your invitation to join {group.GroupName}.",
+                    Type = "group_invitation_accepted",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Notifications.Add(acceptNotification);
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("User {UserId} successfully joined group {GroupId}", userId, groupId);
+
+            var response = new AcceptInvitationResponseDto
+            {
+                Success = true,
+                GroupId = groupId,
+                GroupName = group.GroupName ?? "Unknown",
+                Message = "Successfully joined the group",
+                JoinedAt = newMember.JoinedAt
+            };
+
+            return new ResultModel<AcceptInvitationResponseDto>
+            {
+                IsSuccess = true,
+                Message = "Invitation accepted successfully",
+                Data = response,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error accepting invitation for user {UserId} and group {GroupId}", userId, groupId);
+            return new ResultModel<AcceptInvitationResponseDto>
+            {
+                IsSuccess = false,
+                Message = $"Error accepting invitation: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
     // Helper Methods
 
     private async Task<StudentStatisticsDto> CalculateStatisticsAsync(int userId, List<int> projectIds)

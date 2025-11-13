@@ -53,6 +53,7 @@ public class SubmissionController : ControllerBase
     /// Get submission history for a project's milestone
     /// </summary>
     [HttpGet("api/student/projects/{projectId}/milestones/{milestoneId}/submissions")]
+    [Authorize(Roles = "Student,Instructor")] // ? Allow both Student and Instructor
     [ProducesResponseType(typeof(ResultModel<MilestoneSubmissionHistoryDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ResultModel<MilestoneSubmissionHistoryDto>>> GetSubmissionHistory(
         [FromRoute] int projectId,

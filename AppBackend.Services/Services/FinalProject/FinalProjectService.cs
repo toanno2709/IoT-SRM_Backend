@@ -291,9 +291,23 @@ public class FinalProjectService : IFinalProjectService
                 );
             }
 
-            // Validate access
+            // ? Check if user is a member of the project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
-            if (!isMember)
+            
+            // ? Check if user is the instructor of the class
+            var isInstructor = false;
+            var classId = submission.Project?.Group?.ClassId;
+            if (classId.HasValue)
+            {
+                var classEntity = await _context.Classes
+                    .Include(c => c.Instructor)
+                    .FirstOrDefaultAsync(c => c.ClassId == classId.Value);
+                
+                isInstructor = classEntity?.InstructorId == userId;
+            }
+
+            // ? Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
             {
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
@@ -635,10 +649,14 @@ public class FinalProjectService : IFinalProjectService
             .FirstOrDefaultAsync(p => p.ProjectId == submission.ProjectId);
 
         // Find final milestone to get deadline
-        var finalMilestone = await _context.ProjectMilestones
+        // Load all milestones for this project first, then filter in memory
+        var milestones = await _context.ProjectMilestones
             .Where(m => m.ProjectId == submission.ProjectId)
             .OrderByDescending(m => m.MilestoneId)
-            .FirstOrDefaultAsync(m => m.Title != null && 
+            .ToListAsync(); // Load to client first
+        
+        var finalMilestone = milestones
+            .FirstOrDefault(m => m.Title != null && 
                 (m.Title.Contains("Final", StringComparison.OrdinalIgnoreCase) ||
                  m.Title.Contains("Submission", StringComparison.OrdinalIgnoreCase)));
 

@@ -204,7 +204,7 @@ public partial class IotShowroomContext : DbContext
         {
             entity.HasKey(e => e.SubmissionId).HasName("PK__Mileston__9B5355953C8BAC3D");
 
-            entity.Property(e => e.SubmissionId).ValueGeneratedNever();
+            entity.Property(e => e.SubmissionId).ValueGeneratedOnAdd();
 
             entity.HasOne(d => d.MilestoneDef).WithMany(p => p.MilestoneSubmissions)
                 .OnDelete(DeleteBehavior.ClientSetNull)
