@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace AppBackend.ApiCore.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Student")]
+
 public class SubmissionController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
@@ -21,6 +21,7 @@ public class SubmissionController : ControllerBase
     /// Submit a milestone (create new or resubmit)
     /// </summary>
     [HttpPost("api/student/milestones/submit")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<MilestoneSubmissionResponseDto>), StatusCodes.Status201Created)]
     public async Task<ActionResult<ResultModel<MilestoneSubmissionResponseDto>>> SubmitMilestone(
         [FromBody] MilestoneSubmissionRequestDto request)
@@ -77,6 +78,7 @@ public class SubmissionController : ControllerBase
     /// Get latest submission for a project's milestone
     /// </summary>
     [HttpGet("api/student/projects/{projectId}/milestones/{milestoneId}/latest")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<MilestoneSubmissionResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ResultModel<MilestoneSubmissionResponseDto>>> GetLatestSubmission(
         [FromRoute] int projectId,
@@ -100,6 +102,7 @@ public class SubmissionController : ControllerBase
     /// Upload files to a submission
     /// </summary>
     [HttpPost("api/student/milestones/{submissionId}/upload")]
+    [Authorize(Roles = "Student")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ResultModel<FileUploadResponseDto>), StatusCodes.Status200OK)]
     [RequestSizeLimit(104857600)] // 100 MB
@@ -130,6 +133,7 @@ public class SubmissionController : ControllerBase
     /// Get files for a submission
     /// </summary>
     [HttpGet("api/student/milestones/{submissionId}/files")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<List<MilestoneFileDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ResultModel<List<MilestoneFileDto>>>> GetSubmissionFiles(
         [FromRoute] int submissionId,
@@ -147,6 +151,7 @@ public class SubmissionController : ControllerBase
     /// Delete a file from submission
     /// </summary>
     [HttpDelete("api/student/milestones/files/{fileId}")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ResultModel<bool>>> DeleteFile([FromRoute] int fileId)
     {
