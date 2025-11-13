@@ -8,7 +8,7 @@ namespace AppBackend.ApiCore.Controllers;
 
 [ApiController]
 [Route("api/student/projects")]
-[Authorize(Roles = "Student")]
+
 public class FinalProjectController : ControllerBase
 {
     private readonly IFinalProjectService _finalProjectService;
@@ -30,6 +30,7 @@ public class FinalProjectController : ControllerBase
     /// Can only be done once per project.
     /// </remarks>
     [HttpPost("{projectId}/final-submission")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -85,6 +86,7 @@ public class FinalProjectController : ControllerBase
     /// - videoDemo: [file]
     /// </remarks>
     [HttpPost("{projectId}/final-submission/upload")]
+    [Authorize(Roles = "Student")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectFileUploadResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -167,6 +169,7 @@ public class FinalProjectController : ControllerBase
     /// To update files, use the upload endpoint.
     /// </remarks>
     [HttpPut("{projectId}/final-submission")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -215,6 +218,7 @@ public class FinalProjectController : ControllerBase
     /// Valid fileType values: report, presentation, sourcecode, video
     /// </remarks>
     [HttpDelete("{projectId}/final-submission/files/{fileType}")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

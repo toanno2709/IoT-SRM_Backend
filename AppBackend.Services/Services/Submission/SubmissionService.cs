@@ -199,6 +199,9 @@ public class SubmissionService : ISubmissionService
     {
         try
         {
+            _logger.LogInformation("=== GetSubmissionHistoryAsync START === ProjectId: {ProjectId}, MilestoneDefId: {MilestoneDefId}, UserId: {UserId}", 
+                projectId, milestoneDefId, userId);
+
             // Validate access
             var project = await _context.Projects
                 .Include(p => p.Group)
@@ -209,6 +212,7 @@ public class SubmissionService : ISubmissionService
 
             if (project == null)
             {
+                _logger.LogWarning("Project {ProjectId} not found", projectId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Project not found",
@@ -216,21 +220,60 @@ public class SubmissionService : ISubmissionService
                 );
             }
 
+            _logger.LogInformation("Found project {ProjectId}. GroupId: {GroupId}", projectId, project.GroupId);
+            
+            // Log navigation properties
+            _logger.LogInformation("Project.Group is null: {IsNull}", project.Group == null);
+            if (project.Group != null)
+            {
+                _logger.LogInformation("Group {GroupId} found. ClassId: {ClassId}", 
+                    project.Group.GroupId, 
+                    project.Group.ClassId);
+                
+                _logger.LogInformation("Group.Class is null: {IsNull}", project.Group.Class == null);
+                if (project.Group.Class != null)
+                {
+                    _logger.LogInformation("Class {ClassId} found. InstructorId: {InstructorId}", 
+                        project.Group.Class.ClassId, 
+                        project.Group.Class.InstructorId);
+                }
+                
+                _logger.LogInformation("Group.GroupMembers is null: {IsNull}, Count: {Count}", 
+                    project.Group.GroupMembers == null, 
+                    project.Group.GroupMembers?.Count ?? 0);
+                
+                if (project.Group.GroupMembers != null)
+                {
+                    var memberIds = string.Join(", ", project.Group.GroupMembers.Select(m => m.UserId));
+                    _logger.LogInformation("Group has {MemberCount} members: [{MemberIds}]", 
+                        project.Group.GroupMembers.Count, 
+                        memberIds);
+                }
+            }
+
             // ? Check if user is a member of the project group
             var isMember = project.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
             
             // ? Check if user is the instructor of the class
-            var isInstructor = project.Group?.Class?.InstructorId == userId;
+            var instructorId = project.Group?.Class?.InstructorId;
+            var isInstructor = instructorId == userId;
+            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is instructor: {IsInstructor}", 
+                instructorId, userId, isInstructor);
             
             // ? Allow access if user is either a group member OR the instructor
             if (!isMember && !isInstructor)
             {
+                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsInstructor: {IsInstructor}", 
+                    userId, isMember, isInstructor);
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
                     "You are not authorized to view this submission history",
                     StatusCodes.Status403Forbidden
                 );
             }
+
+            _logger.LogInformation("Access granted for user {UserId}", userId);
 
             // Get submission
             var submission = await _submissionRepository.GetSubmissionByProjectAndMilestoneAsync(
@@ -243,6 +286,9 @@ public class SubmissionService : ISubmissionService
 
             if (submission == null)
             {
+                _logger.LogInformation("No submissions found for ProjectId: {ProjectId}, MilestoneDefId: {MilestoneDefId}", 
+                    projectId, milestoneDefId);
+                
                 // No submissions yet
                 return new ResultModel<MilestoneSubmissionHistoryDto>
                 {
@@ -303,6 +349,8 @@ public class SubmissionService : ISubmissionService
                 AllVersions = versions
             };
 
+            _logger.LogInformation("=== GetSubmissionHistoryAsync SUCCESS ===");
+
             return new ResultModel<MilestoneSubmissionHistoryDto>
             {
                 IsSuccess = true,
@@ -311,8 +359,9 @@ public class SubmissionService : ISubmissionService
                 StatusCode = StatusCodes.Status200OK
             };
         }
-        catch (AppException)
+        catch (AppException ex)
         {
+            _logger.LogError(ex, "AppException in GetSubmissionHistoryAsync: {Message}", ex.Message);
             throw;
         }
         catch (Exception ex)

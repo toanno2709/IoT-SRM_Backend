@@ -43,6 +43,7 @@ using AppBackend.Services.Services.Submission;
 using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Repositories.Repositories.ClassConfigRepo;
 using AppBackend.Repositories.Repositories.NotificationRepo;
+using AppBackend.Services.Services.Notification;
 
 namespace AppBackend.Extensions;
 
@@ -119,6 +120,9 @@ public static class ServicesConfig
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
+        
+        // Notification services
+        services.AddScoped<INotificationService, NotificationService>();
         
         services.AddSingleton<RateLimiterStore>();
 

@@ -101,6 +101,19 @@ namespace AppBackend.Services.Services.Group
 
             if (alreadyIn) throw new InvalidOperationException("Invited user already in a group in this class.");
 
+            // NEW: Check if user already has a pending invitation to this group
+            var existingInvitation = await _db.Notifications
+                .Where(n => n.UserId == dto.InvitedUserId &&
+                           n.Type == "group_invitation" &&
+                           (n.IsRead == null || n.IsRead == false) &&
+                           (n.Message ?? "").Contains($"[groupId:{dto.GroupId}]"))
+                .FirstOrDefaultAsync();
+
+            if (existingInvitation != null)
+            {
+                throw new InvalidOperationException("This user already has a pending invitation to this group.");
+            }
+
             // Get inviter name for better notification
             var inviter = await _db.Users.FindAsync(dto.InviterUserId);
             var inviterName = inviter?.FullName ?? "A group leader";
@@ -346,7 +359,8 @@ namespace AppBackend.Services.Services.Group
                             UserId = m.UserId,
                             FullName = m.User?.FullName,
                             Email = m.User?.Email,
-                            RoleInGroup = m.RoleInGroup
+                            RoleInGroup = m.RoleInGroup,
+                            AvatarUrl = m.User?.AvatarUrl  // Added AvatarUrl mapping
                         }).ToList()
                 }).ToList();
 
