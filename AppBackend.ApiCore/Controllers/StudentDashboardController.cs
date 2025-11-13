@@ -207,12 +207,9 @@ public class StudentDashboardController : ControllerBase
     /// - Marks the invitation notification as read
     /// - Sends a rejection notification to the group leader
     /// - Includes optional reason in the notification
-    /// 
-    /// Note: Students can also simply ignore invitations without explicitly rejecting them.
     /// </remarks>
-    [HttpPost("reject-group-invitation")]
+    [HttpPost("group-invitations/reject")]
     [ProducesResponseType(typeof(ResultModel<RejectInvitationResponseDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ResultModel<RejectInvitationResponseDto>>> RejectGroupInvitation(
@@ -223,7 +220,7 @@ public class StudentDashboardController : ControllerBase
             return BadRequest(new ResultModel<RejectInvitationResponseDto>
             {
                 IsSuccess = false,
-                Message = "Invalid request data",
+                Message = "Invalid request",
                 StatusCode = StatusCodes.Status400BadRequest
             });
         }
@@ -242,6 +239,52 @@ public class StudentDashboardController : ControllerBase
         _logger.LogInformation("Student {UserId} rejecting invitation to group {GroupId}", userId, request.GroupId);
 
         var result = await _dashboardService.RejectGroupInvitationAsync(userId, request.GroupId, request.Reason);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Accept a group invitation
+    /// </summary>
+    /// <param name="groupId">Group ID to accept invitation for</param>
+    /// <returns>Acceptance confirmation with group details</returns>
+    /// <remarks>
+    /// Allows student to accept a group invitation.
+    /// 
+    /// Actions performed:
+    /// - Adds the student to the group as a member
+    /// - Marks the invitation notification as read
+    /// - Sends an acceptance notification to the group leader
+    /// 
+    /// Prerequisites:
+    /// - Student must have a pending invitation to the group
+    /// - Student must not already be a member of the group
+    /// </remarks>
+    [HttpPost("group-invitations/{groupId}/accept")]
+    [ProducesResponseType(typeof(ResultModel<AcceptInvitationResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ResultModel<AcceptInvitationResponseDto>>> AcceptGroupInvitation(
+        [FromRoute] int groupId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new ResultModel<AcceptInvitationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {UserId} accepting invitation to group {GroupId}", userId, groupId);
+
+        var result = await _dashboardService.AcceptGroupInvitationAsync(userId, groupId);
 
         if (result.IsSuccess)
             return Ok(result);

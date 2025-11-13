@@ -171,3 +171,15 @@ public class RejectInvitationResponseDto
     public string Message { get; set; } = string.Empty;
     public DateTime RejectedAt { get; set; }
 }
+
+/// <summary>
+/// Accept Invitation Response DTO
+/// </summary>
+public class AcceptInvitationResponseDto
+{
+    public bool Success { get; set; }
+    public int GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public DateTime? JoinedAt { get; set; }
+}

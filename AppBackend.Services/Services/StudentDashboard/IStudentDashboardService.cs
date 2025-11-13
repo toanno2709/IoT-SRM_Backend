@@ -44,4 +44,12 @@ public interface IStudentDashboardService
     /// <param name="reason">Rejection reason (optional)</param>
     /// <returns>Rejection confirmation</returns>
     Task<ResultModel<RejectInvitationResponseDto>> RejectGroupInvitationAsync(int userId, int groupId, string? reason);
+
+    /// <summary>
+    /// Accept a group invitation
+    /// </summary>
+    /// <param name="userId">Student user ID</param>
+    /// <param name="groupId">Group ID</param>
+    /// <returns>Acceptance confirmation with group details</returns>
+    Task<ResultModel<AcceptInvitationResponseDto>> AcceptGroupInvitationAsync(int userId, int groupId);
 }
