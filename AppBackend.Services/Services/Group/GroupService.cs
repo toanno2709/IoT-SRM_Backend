@@ -105,8 +105,8 @@ namespace AppBackend.Services.Services.Group
             var inviter = await _db.Users.FindAsync(dto.InviterUserId);
             var inviterName = inviter?.FullName ?? "A group leader";
 
-            // Create notification with proper format including groupId
-            await SendNotificationAsync(dto.InvitedUserId,
+            // FIX: Send notification to INVITED USER, not inviter
+            await SendNotificationAsync(dto.InvitedUserId,  // ? FIXED - Send to invited user
                 $"Invitation to join group {group.GroupName}",
                 $"You have been invited by {inviterName} to join group '{group.GroupName}' (ID: {group.ClassId}). [groupId:{dto.GroupId}]",
                 "group_invitation");
