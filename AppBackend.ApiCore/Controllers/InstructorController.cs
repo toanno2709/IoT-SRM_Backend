@@ -74,10 +74,23 @@ public class InstructorController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<ResultModel<InstructorDashboardResponseDto>>> GetDashboard()
     {
-        // TODO: Lấy instructorId từ JWT
-        var instructorId = 1;
+        // Get instructor ID from JWT token
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int instructorId;
+        
+        if (!int.TryParse(userIdClaim, out instructorId))
+        {
+            // Fallback for testing - using instructorId = 2 (same as classes endpoint)
+            instructorId = 2;
+        }
+        
         var result = await _dashboardService.GetDashboardAsync(instructorId);
-        if (result.IsSuccess) return Ok(result);
+        
+        if (result.IsSuccess)
+        {
+            return Ok(result);
+        }
+        
         return BadRequest(result);
     }
 

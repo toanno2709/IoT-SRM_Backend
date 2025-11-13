@@ -76,7 +76,7 @@ public class FinalProjectController : ControllerBase
     /// Upload final project files to Cloudinary.
     /// All files are optional - you can upload them separately.
     /// Can be called multiple times to update files before deadline.
-    /// Maximum file size: 100MB per file.
+    /// Maximum file size: 500MB per file.
     /// 
     /// Sample request using form-data:
     /// - finalReport: [file]
@@ -90,7 +90,8 @@ public class FinalProjectController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [RequestSizeLimit(104857600)] // 100 MB
+    [RequestSizeLimit(524288000)] // 500 MB
+    [RequestFormLimits(MultipartBodyLengthLimit = 524288000)] // 500 MB
     public async Task<ActionResult<ResultModel<FinalProjectFileUploadResponseDto>>> UploadFinalProjectFiles(
         [FromRoute] int projectId,
         [FromForm] FinalProjectFileUploadRequest files)
