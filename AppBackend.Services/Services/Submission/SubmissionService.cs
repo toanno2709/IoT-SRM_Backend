@@ -742,6 +742,8 @@ public class SubmissionService : ISubmissionService
             .FirstOrDefaultAsync(m => m.MilestoneId == submission.MilestoneDefId);
 
         var project = await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader) // Include group leader info
             .FirstOrDefaultAsync(p => p.ProjectId == submission.ProjectId);
 
         // Get grade from MilestoneEvaluation if exists
@@ -749,6 +751,10 @@ public class SubmissionService : ISubmissionService
             .Include(e => e.Instructor)
             .FirstOrDefaultAsync(e => e.ProjectId == submission.ProjectId 
                 && e.MilestoneDefId == submission.MilestoneDefId);
+
+        // Get submitter info (group leader)
+        var submitterId = project?.Group?.LeaderId ?? 0;
+        var submitterName = project?.Group?.Leader?.FullName;
 
         return new MilestoneSubmissionResponseDto
         {
@@ -758,6 +764,10 @@ public class SubmissionService : ISubmissionService
             MilestoneId = submission.MilestoneDefId,
             MilestoneTitle = milestone?.Title,
             Version = submission.LastVersionNo ?? 1,
+            SubmittedBy = submitterId,
+            SubmittedByName = submitterName,
+            Description = null, // Not stored in MilestoneSubmission currently
+            SubmissionNotes = null, // Not stored in MilestoneSubmission currently
             SubmittedAt = submission.LastSubmittedAt ?? DateTime.UtcNow,
             Grade = evaluation?.Score,
             Feedback = evaluation?.Feedback,
