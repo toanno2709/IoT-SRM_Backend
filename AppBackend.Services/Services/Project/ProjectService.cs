@@ -462,13 +462,13 @@ namespace AppBackend.Services.Services.Project
                     };
                 }
 
-                // 2. Get all history records for this project
-                // Note: Since ProjectApprovalHistory doesn't have direct ProjectId,
-                // we'll get records with SubmissionId = 0 (general project updates)
-                // In a production system, you might want to add ProjectId to the table
+                // ✅ FIX: Filter by projectId through MilestoneSubmission join
+                // Only get approval history records linked to actual milestone submissions (not general status updates with SubmissionId = 0)
                 var historyRecords = await _db.ProjectApprovalHistories
-                    .Where(h => h.SubmissionId == 0) // General project status updates
                     .Include(h => h.Reviewer)
+                    .Include(h => h.Submission) // Include submission to access ProjectId
+                        .ThenInclude(s => s.MilestoneDef) // Include milestone for additional context
+                    .Where(h => h.SubmissionId != 0 && h.Submission.ProjectId == projectId) // ✅ Filter by ProjectId and exclude SubmissionId = 0
                     .OrderByDescending(h => h.ActedAt)
                     .ToListAsync();
 
@@ -487,7 +487,7 @@ namespace AppBackend.Services.Services.Project
                 {
                     IsSuccess = true,
                     ResponseCode = CommonMessageConstants.SUCCESS,
-                    Message = $"Retrieved {historyDtos.Count} status history records",
+                    Message = $"Retrieved {historyDtos.Count} status history records for project {projectId}",
                     Data = historyDtos,
                     StatusCode = StatusCodes.Status200OK
                 };
