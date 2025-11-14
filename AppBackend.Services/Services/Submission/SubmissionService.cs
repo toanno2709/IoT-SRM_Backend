@@ -385,27 +385,43 @@ public class SubmissionService : ISubmissionService
         {
             var history = await GetSubmissionHistoryAsync(projectId, milestoneDefId, userId);
             
-            // FIX: Check both LatestSubmission and AllVersions
-            if (!history.IsSuccess || history.Data == null)
+            // ? FIX: Check if GetSubmissionHistoryAsync failed
+            if (!history.IsSuccess)
             {
                 throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "No submission found",
-                    StatusCodes.Status404NotFound
+                    CommonMessageConstants.ERROR,
+                    history.Message ?? "Failed to retrieve submission history",
+                    history.StatusCode
                 );
+            }
+
+            // ? FIX: If no data or no submissions, return 200 OK with null instead of 404
+            // This is the correct behavior - milestone exists but no submission yet
+            if (history.Data == null)
+            {
+                return new ResultModel<MilestoneSubmissionResponseDto>
+                {
+                    IsSuccess = true,
+                    Message = "No submission found for this milestone",
+                    Data = null,
+                    StatusCode = StatusCodes.Status200OK
+                };
             }
 
             // Try to get latest submission from LatestSubmission first, then from AllVersions
             var latestSubmission = history.Data.LatestSubmission 
                 ?? history.Data.AllVersions?.FirstOrDefault();
 
+            // ? FIX: Return 200 OK with null data instead of throwing 404
             if (latestSubmission == null)
             {
-                throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "No submission found",
-                    StatusCodes.Status404NotFound
-                );
+                return new ResultModel<MilestoneSubmissionResponseDto>
+                {
+                    IsSuccess = true,
+                    Message = "No submission found for this milestone",
+                    Data = null,
+                    StatusCode = StatusCodes.Status200OK
+                };
             }
 
             return new ResultModel<MilestoneSubmissionResponseDto>
