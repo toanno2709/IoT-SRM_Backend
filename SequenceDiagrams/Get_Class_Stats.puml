@@ -1,0 +1,62 @@
+@startuml Get_Class_Stats
+hide footbox
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam actor {
+  BackgroundColor white
+}
+
+title Sequence Diagram - Get Class Statistics
+
+actor ":Instructor" as Instructor
+participant ":Web Application" as Browser
+participant ":InstructorController" as Controller
+participant ":ClassStatsService" as Service
+participant ":Database" as DB
+
+Instructor -> Browser: 1. Select a class\nClick "View Statistics"
+activate Browser
+
+Browser -> Controller: 2. Send request to retrieve\nclass statistics
+activate Controller
+
+Controller -> Service: 3. Call GetClassStatsAsync(classId)
+activate Service
+
+Service -> DB: 4. Execute query:\nGet class with:\nClassEnrollments, Groups, Projects
+activate DB
+DB --> Service: 5. Return result
+deactivate DB
+
+Service -> DB: 6. Execute query:\nGet projects status:\nSubmittedProjects, PendingProjects\nApprovedProjects, RejectedProjects
+activate DB
+DB --> Service: 7. Return result
+deactivate DB
+
+Service -> DB: 8. Execute query:\nGet MilestoneEvaluations:\nCalculate average score\nCount evaluated projects
+activate DB
+DB --> Service: 9. Return result
+deactivate DB
+
+Service -> Service: 10. Calculate submission rate:\n= (SubmittedProjects / TotalProjects) * 100
+Service -> Service: 11. Map to ClassStatsResponseDto:\nTotalStudents, TotalProjects\nSubmissionRate, AverageScore\nProjectDetails[]
+
+Service --> Controller: 12. Return ClassStatsResponseDto
+deactivate Service
+
+Controller --> Browser: 13. Return 200 OK response
+deactivate Controller
+
+alt Response successful
+    Browser -> Browser: 14. Process response data
+    Browser --> Instructor: 15. Display statistics dashboard:\nSubmission rate chart, Average score\nProject status breakdown\nProject details table
+else Response failed
+    Browser --> Instructor: 15. Display error message
+end
+deactivate Browser
+
+@enduml
+

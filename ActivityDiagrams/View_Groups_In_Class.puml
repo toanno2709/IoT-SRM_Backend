@@ -1,0 +1,39 @@
+@startuml View_Groups_In_Class
+title Activity Diagram - View All Groups in Class
+
+|Instructor|
+start
+:Select a class;
+:Click "View Groups";
+
+|Web Application|
+:Send request to retrieve\ngroups in class;
+
+|Backend API|
+:Validate classId parameter;
+:Call GroupService.\nGetGroupsByClassAsync(classId);
+:Query database:\nGet groups where\nclassId = {classId};
+:Include related data:\n- GroupMembers\n- Projects\n- Leader;
+
+if (Groups found?) then (yes)
+  :Map entities to GroupResponseDto;
+  :Return List<GroupResponseDto>;
+  :Send 200 OK response;
+else (no)
+  :Return empty list;
+  :Send 200 OK response;
+endif
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display groups list\nwith members and projects;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View all groups in class;
+stop
+@enduml
+

@@ -1,0 +1,310 @@
+@startuml IoT_SRM_Database_ERD
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam roundcorner 5
+skinparam class {
+  BorderColor black
+  ArrowColor black
+}
+
+title IoT-SRM Database Entity Relationship Diagram\nComplete Database Schema
+
+' ========================================
+' Core User Management (Light Green)
+' ========================================
+class User #E8F5E9 {
+  User
+  --
+  PK: user_id
+  --
+  full_name
+  email
+  password_hash
+  phone
+  FK: role_id
+  avatar_url
+  created_at
+  updated_at
+}
+
+class Role #E8F5E9 {
+  Role
+  --
+  PK: role_id
+  --
+  role_name
+  description
+}
+
+' ========================================
+' Semester Management (Yellow)
+' ========================================
+class Semester #FFF9C4 {
+  Semester
+  --
+  PK: semester_id
+  --
+  code (unique)
+  name
+  year
+  term
+  start_date
+  end_date
+  is_active
+}
+
+' ========================================
+' Class Management (Light Green)
+' ========================================
+class Class #E8F5E9 {
+  Class
+  --
+  PK: class_id
+  --
+  class_name
+  FK: instructor_id
+  description
+  created_at
+  FK: semester_id
+}
+
+class ClassEnrollment #E8F5E9 {
+  ClassEnrollment
+  --
+  PK: enrollment_id
+  --
+  FK: class_id
+  FK: student_id
+  enrolled_at
+}
+
+class ClassMessage #E8F5E9 {
+  ClassMessage
+  --
+  PK: message_id
+  --
+  FK: class_id
+  FK: sender_id
+  content
+  sent_at
+}
+
+class Rubric #E8F5E9 {
+  Rubric
+  --
+  PK: rubric_id
+  --
+  criteria_name
+  max_score
+}
+
+class RubricWeight #E8F5E9 {
+  RubricWeight
+  --
+  PK: weight_id
+  --
+  FK: class_id
+  FK: rubric_id
+  weight_ratio
+}
+
+' ========================================
+' Group Management (Light Green)
+' ========================================
+class Group #E8F5E9 {
+  Group
+  --
+  PK: group_id
+  --
+  FK: class_id
+  group_name
+  description
+  FK: leader_id
+  created_at
+  updated_at
+}
+
+class GroupMember #E8F5E9 {
+  GroupMember
+  --
+  PK: gm_id
+  --
+  FK: group_id
+  FK: user_id
+  role_in_group
+  joined_at
+}
+
+' ========================================
+' Project Management (Purple)
+' ========================================
+class Project #E1BEE7 {
+  Project
+  --
+  PK: project_id
+  --
+  title
+  description
+  FK: group_id
+  created_at
+  updated_at
+  status
+}
+
+class ProjectMilestone #E8F5E9 {
+  ProjectMilestone
+  --
+  PK: milestone_id
+  --
+  FK: project_id
+  title
+  description
+  due_date
+  status
+  created_at
+  updated_at
+  weight
+}
+
+class MilestoneSubmission #E8F5E9 {
+  MilestoneSubmission
+  --
+  PK: submission_id
+  --
+  FK: project_id
+  FK: milestone_def_id
+  last_version_no
+  last_submitted_at
+}
+
+class SubmissionFile #E8F5E9 {
+  SubmissionFile
+  --
+  PK: file_id
+  --
+  FK: submission_id
+  version_no
+  file_url
+  mime_type
+  size_bytes
+  FK: uploaded_by
+  uploaded_at
+}
+
+class MilestoneEvaluation #E8F5E9 {
+  MilestoneEvaluation
+  --
+  PK: me_id
+  --
+  FK: project_id
+  FK: milestone_def_id
+  FK: instructor_id
+  weight_ratio_snapshot
+  score
+  feedback
+  evaluated_at
+}
+
+class ProjectApprovalHistory #E8F5E9 {
+  ProjectApprovalHistory
+  --
+  PK: history_id
+  --
+  FK: submission_id
+  FK: reviewer_id
+  action
+  comment
+  acted_at
+}
+
+' ========================================
+' Announcements & Notifications (Light Green)
+' ========================================
+class Announcement #E8F5E9 {
+  Announcement
+  --
+  PK: announcement_id
+  --
+  FK: admin_id
+  title
+  content
+  target_audience
+  created_at
+}
+
+class Notification #E8F5E9 {
+  Notification
+  --
+  PK: notification_id
+  --
+  FK: user_id
+  title
+  message
+  type
+  is_read
+  created_at
+}
+
+' ========================================
+' Hall of Fame (Light Green)
+' ========================================
+class HallOfFame #E8F5E9 {
+  HallOfFame
+  --
+  PK: hof_id
+  --
+  FK: project_id
+  FK: nominated_by
+  nominated_at
+  FK: semester_id
+  rank
+  note
+}
+
+' ========================================
+' Relationships
+' ========================================
+' User Management
+Role "1" ||--o{ "N" User : has
+User "1" ||--o{ "N" Class : instructs
+User "1" ||--o{ "N" Group : leads
+User "1" ||--o{ "N" GroupMember : belongs_to
+User "1" ||--o{ "N" ClassEnrollment : enrolled_in
+User "1" ||--o{ "N" Announcement : creates
+User "1" ||--o{ "N" Notification : receives
+User "1" ||--o{ "N" MilestoneEvaluation : evaluates
+User "1" ||--o{ "N" ProjectApprovalHistory : reviews
+User "1" ||--o{ "N" SubmissionFile : uploads
+
+' Semester & Class
+Semester "1" ||--o{ "N" Class : contains
+Semester "1" ||--o{ "N" HallOfFame : ranks
+
+Class "1" ||--o{ "N" ClassEnrollment : enrolls
+Class "1" ||--o{ "N" Group : has
+Class "1" ||--o{ "N" ClassMessage : contains
+Class "1" ||--o{ "N" RubricWeight : uses
+
+Rubric "1" ||--o{ "N" RubricWeight : weighted_in
+
+User "1" ||--o{ "N" ClassMessage : sends
+
+' Group & Project
+Group "1" ||--o{ "N" GroupMember : contains
+Group "1" ||--o{ "N" Project : creates
+
+' Project & Milestones
+Project "1" ||--o{ "N" ProjectMilestone : has
+Project "1" ||--o{ "N" MilestoneSubmission : submits
+Project "1" ||--o{ "N" MilestoneEvaluation : evaluated_by
+Project "1" ||--o{ "N" HallOfFame : featured_in
+
+ProjectMilestone "1" ||--o{ "N" MilestoneSubmission : submitted_for
+ProjectMilestone "1" ||--o{ "N" MilestoneEvaluation : evaluated_as
+
+' Submissions
+MilestoneSubmission "1" ||--o{ "N" SubmissionFile : contains
+MilestoneSubmission "1" ||--o{ "N" ProjectApprovalHistory : reviewed_in
+
+@enduml

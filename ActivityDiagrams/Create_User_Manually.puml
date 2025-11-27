@@ -1,0 +1,51 @@
+@startuml Create_User_Manually
+title Activity Diagram - Create User Manually
+
+|Admin|
+start
+:Open User Management;
+:Click "Create New User";
+:Enter user details:\n- Full Name\n- Email\n- Phone (optional)\n- Role\n- Password;
+:Click "Create";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send user creation data\nto backend;
+
+|Backend API|
+:Validate request body;
+:Call UserService.\nCreateUserAsync(request);
+:Check if email already exists;
+if (Email exists?) then (yes)
+  :Return 409 Conflict\n"Email already exists";
+  stop
+endif
+
+:Hash password using BCrypt;
+:Create new User entity:\n- FullName\n- Email\n- Phone\n- RoleId\n- PasswordHash\n- CreatedAt\n- UpdatedAt;
+:Save to database;
+:Get user with role information;
+:Return UserResponseDto;
+:Send 201 Created response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh user list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Admin|
+:View new user in list;
+stop
+@enduml
+
+
+

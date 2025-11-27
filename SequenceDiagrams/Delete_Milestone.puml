@@ -1,0 +1,59 @@
+@startuml Delete_Milestone
+hide footbox
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam actor {
+  BackgroundColor white
+}
+
+title Sequence Diagram - Delete Milestone
+
+actor ":Instructor" as Instructor
+participant ":Web Application" as Browser
+participant ":ProjectMilestonesController" as Controller
+participant ":ProjectMilestoneService" as Service
+participant ":Database" as DB
+
+Instructor -> Browser: 1. Select a milestone\nClick "Delete Milestone"
+activate Browser
+
+Browser -> Browser: 2. Confirm deletion
+Browser -> Controller: 3. Send request to delete\nmilestone
+activate Controller
+
+Controller -> Service: 4. Call DeleteAsync(milestoneId)
+activate Service
+
+Service -> DB: 5. Execute query:\nGet milestone by ID
+activate DB
+DB --> Service: 6. Return result
+deactivate DB
+
+alt Milestone not found
+    Service --> Controller: 7. Return 404 Not Found
+else Milestone found
+    Service -> DB: 8. Execute delete:\nDelete milestone entity
+    activate DB
+    DB --> Service: 9. Return result
+    deactivate DB
+    
+    Service --> Controller: 10. Return success message
+end
+deactivate Service
+
+Controller --> Browser: 11. Return 200 OK response
+deactivate Controller
+
+alt Response successful
+    Browser -> Browser: 12. Process response
+    Browser --> Instructor: 13. Display success message\nRefresh milestones list
+else Response failed
+    Browser --> Instructor: 13. Display error message
+end
+deactivate Browser
+
+@enduml
+

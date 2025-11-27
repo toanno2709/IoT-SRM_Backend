@@ -1,0 +1,70 @@
+@startuml Create_Class
+title Activity Diagram - Create Class
+
+|Admin|
+start
+:Open Admin Dashboard;
+:Click "Class Management";
+:Click "Create New Class";
+:Enter class details:\n- Class Name\n- Semester\n- Description (optional)\n- Instructor (optional);
+:Click "Create";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send class creation data\nto backend;
+
+|Backend API|
+:Validate request body;
+:Call ClassService.\nCreateClassAsync(request);
+:Check if semester exists;
+if (Semester not found?) then (yes)
+  :Return 400 Bad Request\n"Semester not found";
+  stop
+endif
+
+:Check if class name already\nexists in this semester;
+if (Class name exists?) then (yes)
+  :Return 409 Conflict\n"Class already exists in this semester";
+  stop
+endif
+
+if (Instructor provided?) then (yes)
+  :Check if instructor exists;
+  if (Instructor not found?) then (yes)
+    :Return 400 Bad Request\n"Instructor not found";
+    stop
+  endif
+  
+  :Check if user has Instructor role;
+  if (Invalid role?) then (yes)
+    :Return 400 Bad Request\n"User must have Instructor role";
+    stop
+  endif
+endif
+
+:Create new Class entity:\n- ClassName\n- SemesterId\n- Description\n- InstructorId\n- CreatedAt;
+:Save to database;
+:Return ClassResponseDto;
+:Send 201 Created response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh class list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Admin|
+:View new class in list;
+stop
+@enduml
+
+
+

@@ -1,6 +1,7 @@
 using AppBackend.Services.ApiModels;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.Services.Authentication;
+using AppBackend.Services.Services.Password;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AppBackend.Attributes;
@@ -16,10 +17,14 @@ namespace AppBackend.ApiCore.Controllers
     public class AuthenticationController : ControllerBase
     {
         private readonly IAuthenticationService _authenticationService;
+        private readonly IPasswordService _passwordService;
 
-        public AuthenticationController(IAuthenticationService authenticationService)
+        public AuthenticationController(
+            IAuthenticationService authenticationService,
+            IPasswordService passwordService)
         {
             _authenticationService = authenticationService;
+            _passwordService = passwordService;
         }
 
         /// <summary>
@@ -123,6 +128,82 @@ namespace AppBackend.ApiCore.Controllers
                 });
 
             var result = await _authenticationService.RefreshTokenAsync(request.RefreshToken);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Send OTP to email for password reset
+        /// </summary>
+        /// <param name="request">Email address</param>
+        /// <returns>OTP sent confirmation</returns>
+        /// <response code="200">OTP sent successfully (or email doesn't exist for security)</response>
+        /// <response code="400">Invalid email format</response>
+        [HttpPost("forgot-password/send-otp")]
+        [AllowAnonymous]
+        [RateLimit(permitLimit: 5, windowSeconds: 300, strategy: "fixed")]
+        public async Task<IActionResult> SendOTP([FromBody] SendOtpRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ResultModel
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_INPUT",
+                    Message = "Invalid input data",
+                    StatusCode = 400
+                });
+
+            var result = await _passwordService.SendOTPAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Verify OTP for password reset
+        /// </summary>
+        /// <param name="request">Email and OTP</param>
+        /// <returns>OTP verification result</returns>
+        /// <response code="200">OTP verified successfully</response>
+        /// <response code="400">Invalid or expired OTP</response>
+        [HttpPost("forgot-password/verify-otp")]
+        [AllowAnonymous]
+        [RateLimit(permitLimit: 10, windowSeconds: 60, strategy: "fixed")]
+        public async Task<IActionResult> VerifyOTP([FromBody] VerifyOtpRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ResultModel
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_INPUT",
+                    Message = "Invalid input data",
+                    StatusCode = 400
+                });
+
+            var result = await _passwordService.VerifyOTPAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Change password after OTP verification (No authentication required)
+        /// </summary>
+        /// <param name="request">Email, OTP, and new password</param>
+        /// <returns>Password change confirmation</returns>
+        /// <response code="200">Password changed successfully</response>
+        /// <response code="400">Invalid OTP or password requirements not met</response>
+        /// <response code="404">User not found</response>
+        [HttpPost("forgot-password/change-password")]
+        [AllowAnonymous]
+        [RateLimit(permitLimit: 5, windowSeconds: 300, strategy: "fixed")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ResultModel
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_INPUT",
+                    Message = "Invalid input data",
+                    StatusCode = 400
+                });
+
+            var result = await _passwordService.ChangePasswordAsync(request);
             return StatusCode(result.StatusCode, result);
         }
     }

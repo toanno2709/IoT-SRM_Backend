@@ -1,0 +1,80 @@
+@startuml Create_User_Manually
+hide footbox
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam actor {
+  BackgroundColor white
+}
+
+title Sequence Diagram - Create User Manually
+
+actor ":Admin" as Admin
+participant ":Web Application" as Browser
+participant ":UserController" as Controller
+participant ":UserService" as Service
+participant ":UserHelper" as Helper
+participant ":Database" as DB
+
+Admin -> Browser: 1. Open User Management\nClick "Create New User"
+activate Browser
+
+Browser --> Admin: 2. Display create user form
+deactivate Browser
+
+Admin -> Browser: 3. Enter user details:\nFull Name, Email, Phone\nRole, Password\nClick "Create"
+activate Browser
+
+Browser -> Browser: 4. Validate input data
+alt Valid
+    Browser -> Controller: 5. Send user creation data\nto backend
+    activate Controller
+    
+    Controller -> Service: 6. Call CreateUserAsync(request)
+    activate Service
+    
+    Service -> DB: 7. Execute query:\nCheck if email already exists
+    activate DB
+    DB --> Service: 8. Return result
+    deactivate DB
+    
+    alt Email exists
+        Service --> Controller: 9. Return 409 Conflict\n"Email already exists"
+    else Email available
+        Service -> Helper: 10. Hash password using BCrypt
+        activate Helper
+        Helper --> Service: 11. Return hashed password
+        deactivate Helper
+        
+        Service -> DB: 12. Execute insert:\nCreate new User entity\nFullName, Email, Phone\nRoleId, PasswordHash\nCreatedAt, UpdatedAt
+        activate DB
+        DB --> Service: 13. Return result
+        deactivate DB
+        
+        Service -> DB: 14. Execute query:\nGet user with role information
+        activate DB
+        DB --> Service: 15. Return result
+        deactivate DB
+        
+        Service --> Controller: 16. Return UserResponseDto
+    end
+    deactivate Service
+    
+    Controller --> Browser: 17. Return response
+    deactivate Controller
+    
+    alt Response successful
+        Browser -> Browser: 18. Process response
+        Browser --> Admin: 19. Display success message\nRefresh user list
+    else Response failed
+        Browser --> Admin: 19. Display error message
+    end
+else Invalid
+    Browser --> Admin: 5. Display validation error
+end
+deactivate Browser
+
+@enduml
+

@@ -30,6 +30,8 @@ using AppBackend.Services.Services.Sensor;
 using AppBackend.Repositories.Repositories.SensorRepo;
 using AppBackend.Services.Services.Notification;
 using AppBackend.Repositories.Repositories.NotificationRepo;
+using AppBackend.Services.Services.OTP;
+using AppBackend.Services.Services.Password;
 
 namespace AppBackend.Extensions;
 
@@ -86,6 +88,8 @@ public static class ServicesConfig
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<AppBackend.Services.ICloudinaryService, AppBackend.Services.CloudinaryService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IOTPService, OTPService>();
+        services.AddScoped<IPasswordService, PasswordService>();
         services.AddSingleton<RateLimiterStore>();
 
         #endregion

@@ -1,0 +1,55 @@
+@startuml Grade_Submission
+title Activity Diagram - Grade Submission (Score + Feedback)
+
+|Instructor|
+start
+:Select a project;
+:View milestone submissions;
+:Select a submission to grade;
+:Enter grade details:\n- Score (0-100)\n- Feedback (optional)\n- Weight Ratio Snapshot;
+:Click "Submit Grade";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send grading data\nto backend;
+
+|Backend API|
+:Validate request body;
+:Call MilestoneGradingService.\nGradeMilestoneAsync(request);
+:Get milestone by milestoneDefId;
+if (Milestone not found?) then (yes)
+  :Return 404 Not Found\n"Milestone not found";
+  stop
+endif
+
+:Check if evaluation\nalready exists\n(projectId, milestoneDefId, instructorId);
+if (Evaluation exists?) then (yes)
+  :Update existing evaluation:\n- WeightRatioSnapshot\n- Score\n- Feedback\n- EvaluatedAt;
+else (no)
+  :Create new MilestoneEvaluation:\n- ProjectId\n- MilestoneDefId\n- InstructorId\n- WeightRatioSnapshot\n- Score\n- Feedback\n- EvaluatedAt;
+endif
+
+:Save changes to database;
+:Return MilestoneGradeResponseDto;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh grades list;
+  :Send notification to student group;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View submitted grade;
+stop
+@enduml
+

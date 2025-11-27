@@ -1,0 +1,35 @@
+@startuml Get_Class_Stats
+title Activity Diagram - Get Class Statistics
+
+|Instructor|
+start
+:Select a class;
+:Click "View Statistics";
+
+|Web Application|
+:Send request to retrieve\nclass statistics;
+
+|Backend API|
+:Validate classId parameter;
+:Call ClassStatsService.\nGetClassStatsAsync(classId);
+:Query class with:\n- ClassEnrollments (TotalStudents)\n- Groups\n- Projects;
+:Query projects status:\n- SubmittedProjects\n- PendingProjects\n- ApprovedProjects\n- RejectedProjects;
+:Query MilestoneEvaluations:\n- Calculate average score\n- Count evaluated projects;
+:Calculate submission rate:\n= (SubmittedProjects / TotalProjects) * 100;
+
+:Map to ClassStatsResponseDto:\n- ClassId, ClassName\n- TotalStudents\n- TotalProjects\n- SubmittedProjects, PendingProjects\n- ApprovedProjects, RejectedProjects\n- SubmissionRate (%)\n- AverageScore\n- EvaluatedProjects\n- LastSubmissionDate\n- ProjectDetails[];
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display statistics dashboard:\n- Submission rate chart\n- Average score\n- Project status breakdown\n- Project details table;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View class statistics;
+stop
+@enduml
+

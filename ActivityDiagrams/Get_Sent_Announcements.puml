@@ -1,0 +1,40 @@
+@startuml Get_Sent_Announcements
+title Activity Diagram - Get Sent Announcements
+
+|Instructor|
+start
+:Open Announcements page;
+:Click "My Announcements";
+
+|Web Application|
+:Send request to retrieve\nsent announcements;
+
+|Backend API|
+:Extract admin/instructor ID\nfrom JWT token;
+:Call AnnouncementService.\nGetAnnouncementsByAdminAsync(adminUserId);
+:Query database:\nGet announcements where\nadminId = {adminUserId};
+:Include related data:\n- Admin (User);
+:Order by CreatedAt DESC;
+
+if (Announcements found?) then (yes)
+  :Map to AnnouncementResponseDto;
+  :Return List<AnnouncementResponseDto>;
+  :Send 200 OK response;
+else (no)
+  :Return empty list;
+  :Send 200 OK response;
+endif
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display announcements list\nwith title, content,\ntarget audience, and date;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View sent announcements list;
+stop
+@enduml
+

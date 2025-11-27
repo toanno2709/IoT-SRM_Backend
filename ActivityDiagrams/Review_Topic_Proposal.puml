@@ -1,0 +1,68 @@
+@startuml Review_Topic_Proposal
+title Activity Diagram - Review Topic Proposal (Approve/Reject/Request Revision)
+
+|Instructor|
+start
+:View pending proposal details;
+:Review project documents;
+if (Decision?) then (Approve)
+  :Select "Approve";
+elseif (Needs changes) then
+  :Select "Request Revision";
+  :Enter review comment;
+else (Reject)
+  :Select "Reject";
+  :Enter review comment;
+endif
+
+:Click "Submit Review";
+
+|Web Application|
+:Validate request body;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send review decision\nto backend;
+
+|Backend API|
+:Extract instructorId\nfrom JWT token;
+:Call TopicProposalService.\nReviewProposalAsync(instructorId, submissionId, request);
+:Get submission with details;
+if (Submission not found?) then (yes)
+  :Return 404 Not Found;
+  stop
+endif
+
+:Check if instructor owns class;
+if (Unauthorized?) then (yes)
+  :Return 403 Forbidden;
+  stop
+endif
+
+:Create ProjectApprovalHistory record:\n- SubmissionId\n- ReviewerId (instructorId)\n- Action (Approved/Rejected/Revision)\n- Comment\n- ActedAt;
+
+if (ReviewStatus == "Approved"?) then (yes)
+  :Update Project status to "Approved";
+endif
+
+:Save changes to database;
+:Return TopicProposalReviewResponseDto;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Remove proposal from pending list;
+  :Send notification to student group;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View review confirmation;
+stop
+@enduml
+

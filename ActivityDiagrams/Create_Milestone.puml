@@ -1,0 +1,60 @@
+@startuml Create_Milestone
+title Activity Diagram - Create Milestone
+
+|Instructor|
+start
+:Select a project;
+:Click "Create Milestone";
+:Enter milestone details:\n- Title (required)\n- Description\n- Due Date\n- Weight (%);
+:Click "Create";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send request to create\nnew milestone;
+
+|Backend API|
+:Validate request body;
+:Call ProjectMilestoneService.\nCreateAsync(request);
+:Check if title is provided;
+if (Title empty?) then (yes)
+  :Return 400 Bad Request\n"Title is required";
+  stop
+endif
+
+:Check weight range (0-100);
+if (Weight invalid?) then (yes)
+  :Return 400 Bad Request\n"Weight must be between 0 and 100";
+  stop
+endif
+
+:Get current total weight\nof all milestones in project;
+:Calculate new total weight\n= currentTotal + newWeight;
+if (Total weight > 100%?) then (yes)
+  :Return 400 Bad Request\n"Total weight would be {total}, exceeds 100";
+  stop
+endif
+
+:Create ProjectMilestone entity:\n- ProjectId\n- Title\n- Description\n- DueDate\n- Status = "Planned"\n- Weight\n- CreatedAt;
+:Save to database;
+:Return ProjectMilestoneResponseDto;
+:Send 201 Created response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh milestones list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View new milestone in list;
+stop
+@enduml
+

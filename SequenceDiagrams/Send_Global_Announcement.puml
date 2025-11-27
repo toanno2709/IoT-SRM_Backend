@@ -1,0 +1,96 @@
+@startuml Send_Global_Announcement
+hide footbox
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam actor {
+  BackgroundColor white
+}
+
+title Sequence Diagram - Send Global/Class/Role Announcement
+
+actor ":Admin" as Admin
+participant ":Web Application" as Browser
+participant ":InstructorController" as Controller
+participant ":AnnouncementService" as Service
+participant ":NotificationService" as NotifService
+participant ":Database" as DB
+
+Admin -> Browser: 1. Open Announcements page\nClick "Create Announcement"
+activate Browser
+
+Browser --> Admin: 2. Display create announcement form
+deactivate Browser
+
+Admin -> Browser: 3. Enter announcement details:\nTitle, Content, Target Audience\n(Global/Class/Role)
+activate Browser
+
+alt Target Audience == "Class"
+    Admin -> Browser: 4. Select class
+else Target Audience == "Role"
+    Admin -> Browser: 4. Select role
+end
+
+Admin -> Browser: 5. Click "Send"
+Browser -> Browser: 6. Validate input data
+alt Valid
+    Browser -> Controller: 7. Send announcement data\nto backend
+    activate Controller
+    
+    Controller -> Controller: 8. Extract admin ID\nfrom JWT token
+    Controller -> Service: 9. Call CreateAnnouncementAsync(adminUserId, request)
+    activate Service
+    
+    Service -> DB: 10. Execute insert:\nCreate Announcement entity\nAdminId, Title, Content\nTargetAudience, CreatedAt
+    activate DB
+    DB --> Service: 11. Return result
+    deactivate DB
+    
+    alt Target Audience == "Global"
+        Service -> DB: 12. Execute query:\nGet all users in system
+        activate DB
+        DB --> Service: 13. Return result
+        deactivate DB
+        Service -> NotifService: 14. Send bulk notifications\nto all users
+    else Target Audience == "Class"
+        Service -> DB: 12. Execute query:\nGet all students in class
+        activate DB
+        DB --> Service: 13. Return result
+        deactivate DB
+        Service -> NotifService: 14. Send bulk notifications\nto class students
+    else Target Audience == "Role"
+        Service -> DB: 12. Execute query:\nGet all users with selected role
+        activate DB
+        DB --> Service: 13. Return result
+        deactivate DB
+        Service -> NotifService: 14. Send bulk notifications\nto role users
+    end
+    activate NotifService
+    NotifService -> DB: 15. Create notification records
+    activate DB
+    DB --> NotifService: 16. Return result
+    deactivate DB
+    NotifService --> Service: 17. Return result
+    deactivate NotifService
+    
+    Service --> Controller: 18. Return AnnouncementResponseDto
+    deactivate Service
+    
+    Controller --> Browser: 19. Return response
+    deactivate Controller
+    
+    alt Response successful
+        Browser -> Browser: 20. Process response
+        Browser --> Admin: 21. Display success message\nRefresh announcements list
+    else Response failed
+        Browser --> Admin: 21. Display error message
+    end
+else Invalid
+    Browser --> Admin: 7. Display validation error
+end
+deactivate Browser
+
+@enduml
+

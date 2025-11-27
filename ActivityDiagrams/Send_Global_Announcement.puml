@@ -1,0 +1,61 @@
+@startuml Send_Global_Announcement
+title Activity Diagram - Send Global/Class/Role Announcement
+
+|Admin|
+start
+:Open Announcements page;
+:Click "Create Announcement";
+:Enter announcement details:\n- Title\n- Content\n- Target Audience\n  (Global/Class/Role);
+if (Target Audience == "Class"?) then (yes)
+  :Select class;
+elseif (Target Audience == "Role"?) then
+  :Select role;
+endif
+
+:Click "Send";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send announcement data\nto backend;
+
+|Backend API|
+:Extract admin ID\nfrom JWT token;
+:Call AnnouncementService.\nCreateAnnouncementAsync(adminUserId, request);
+:Create Announcement entity:\n- AdminId\n- Title\n- Content\n- TargetAudience\n- CreatedAt;
+:Save to database;
+
+if (Target Audience == "Global"?) then (yes)
+  :Get all users in system;
+  :Send bulk notifications\nto all users;
+elseif (Target Audience == "Class"?) then
+  :Get all students in class;
+  :Send bulk notifications\nto class students;
+elseif (Target Audience == "Role"?) then
+  :Get all users with selected role;
+  :Send bulk notifications\nto role users;
+endif
+
+:Return AnnouncementResponseDto;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh announcements list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Admin|
+:View sent announcement;
+stop
+@enduml
+
+
+

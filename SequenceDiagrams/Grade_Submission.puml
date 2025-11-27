@@ -1,0 +1,81 @@
+@startuml Grade_Submission
+hide footbox
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam actor {
+  BackgroundColor white
+}
+
+title Sequence Diagram - Grade Submission (Score + Feedback)
+
+actor ":Instructor" as Instructor
+participant ":Web Application" as Browser
+participant ":InstructorController" as Controller
+participant ":MilestoneGradingService" as Service
+participant ":Database" as DB
+
+Instructor -> Browser: 1. Select a project\nView milestone submissions\nSelect a submission to grade
+activate Browser
+
+Browser --> Instructor: 2. Display grading form
+deactivate Browser
+
+Instructor -> Browser: 3. Enter grade details:\nScore (0-100), Feedback, Weight Ratio Snapshot\nClick "Submit Grade"
+activate Browser
+
+Browser -> Browser: 4. Validate input data
+alt Valid
+    Browser -> Controller: 5. Send grading data\nto backend
+    activate Controller
+    
+    Controller -> Service: 6. Call GradeMilestoneAsync(request)
+    activate Service
+    
+    Service -> DB: 7. Execute query:\nGet milestone by milestoneDefId
+    activate DB
+    DB --> Service: 8. Return result
+    deactivate DB
+    
+    alt Milestone not found
+        Service --> Controller: 9. Return 404 Not Found\n"Milestone not found"
+    else Milestone found
+        Service -> DB: 10. Execute query:\nCheck if evaluation already exists\n(projectId, milestoneDefId, instructorId)
+        activate DB
+        DB --> Service: 11. Return result
+        deactivate DB
+        
+        alt Evaluation exists
+            Service -> DB: 12. Execute update:\nWeightRatioSnapshot, Score, Feedback, EvaluatedAt
+            activate DB
+            DB --> Service: 13. Return result
+            deactivate DB
+        else Evaluation not exists
+            Service -> DB: 12. Execute insert:\nCreate new MilestoneEvaluation\nProjectId, MilestoneDefId, InstructorId\nWeightRatioSnapshot, Score, Feedback, EvaluatedAt
+            activate DB
+            DB --> Service: 13. Return result
+            deactivate DB
+        end
+        
+        Service --> Controller: 14. Return MilestoneGradeResponseDto
+    end
+    deactivate Service
+    
+    Controller --> Browser: 15. Return response
+    deactivate Controller
+    
+    alt Response successful
+        Browser -> Browser: 16. Process response
+        Browser --> Instructor: 17. Display success message\nRefresh grades list\nSend notification to student group
+    else Response failed
+        Browser --> Instructor: 17. Display error message
+    end
+else Invalid
+    Browser --> Instructor: 5. Display validation error
+end
+deactivate Browser
+
+@enduml
+

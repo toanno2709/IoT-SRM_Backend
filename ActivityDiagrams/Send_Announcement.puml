@@ -1,0 +1,58 @@
+@startuml Send_Announcement
+title Activity Diagram - Send Announcement
+
+|Instructor|
+start
+:Open Announcements page;
+:Click "Create Announcement";
+:Enter announcement details:\n- Title\n- Content\n- Target Audience\n  (All/Class/Specific);
+if (Target Audience == "Class"?) then (yes)
+  :Select class;
+elseif (Target Audience == "Specific"?) then
+  :Select students;
+endif
+
+:Click "Send";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send announcement data\nto backend;
+
+|Backend API|
+:Extract admin/instructor ID\nfrom JWT token;
+:Call AnnouncementService.\nCreateAnnouncementAsync(adminUserId, request);
+:Create Announcement entity:\n- AdminId\n- Title\n- Content\n- TargetAudience\n- CreatedAt;
+:Save to database;
+
+if (TargetAudience == "Class"?) then (yes)
+  :Get all students in class;
+  :Send bulk notifications\nto all students;
+elseif (TargetAudience == "All"?) then
+  :Get all students;
+  :Send bulk notifications;
+else (Specific)
+  :Send notifications\nto selected students;
+endif
+
+:Return AnnouncementResponseDto;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh announcements list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View sent announcement;
+stop
+@enduml
+

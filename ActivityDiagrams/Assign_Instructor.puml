@@ -1,0 +1,61 @@
+@startuml Assign_Instructor
+title Activity Diagram - Assign Instructor to Class
+
+|Admin|
+start
+:Select a class;
+:Click "Assign Instructor";
+:Select an instructor\nfrom list;
+:Click "Assign";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send instructor assignment data\nto backend;
+
+|Backend API|
+:Validate request body;
+:Call ClassService.\nAssignInstructorAsync(classId, instructorId);
+:Check if class exists;
+if (Class not found?) then (yes)
+  :Return 404 Not Found;
+  stop
+endif
+
+:Check if instructor exists;
+if (Instructor not found?) then (yes)
+  :Return 400 Bad Request\n"Instructor not found";
+  stop
+endif
+
+:Check if user has Instructor role;
+if (Invalid role?) then (yes)
+  :Return 400 Bad Request\n"User must have Instructor role";
+  stop
+endif
+
+:Update class entity:\nSet InstructorId = {instructorId};
+:Save changes to database;
+:Return success message;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh class details;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Admin|
+:View updated class\nwith assigned instructor;
+stop
+@enduml
+
+
+

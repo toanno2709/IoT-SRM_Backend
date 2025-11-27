@@ -1,0 +1,39 @@
+@startuml Get_Assigned_Classes
+title Activity Diagram - Get Assigned Classes
+
+|Instructor|
+start
+:Open Instructor Dashboard;
+:Click "View My Classes";
+
+|Web Application|
+:Send request to retrieve\nassigned classes;
+
+|Backend API|
+:Extract instructorId\nfrom JWT token;
+:Call ClassService.\nGetAssignedClassesAsync(instructorId);
+:Query database:\nGet classes where\ninstructorId = {id};
+:Include related data:\n- Instructor\n- Semester\n- ClassEnrollments\n- Groups\n- Projects;
+
+if (Classes found?) then (yes)
+  :Map entities to DTOs\n(ClassResponseDto);
+  :Return List<ClassResponseDto>;
+  :Send 200 OK response;
+else (no)
+  :Return empty list;
+  :Send 200 OK response;
+endif
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display list of classes\nwith details\n(ClassName, Semester, TotalStudents, TotalGroups);
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View assigned classes list;
+stop
+@enduml
+

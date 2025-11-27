@@ -1,0 +1,54 @@
+@startuml Edit_Group_Info
+title Activity Diagram - Edit Group Info
+
+|Instructor|
+start
+:Select a group;
+:Click "Edit Group";
+:Input new group name\nand description;
+:Click "Save";
+
+|Web Application|
+:Validate input data;
+if (Valid?) then (no)
+  :Display validation error;
+  stop
+endif
+
+:Send updated group info\nto backend;
+
+|Backend API|
+:Validate request body;
+:Call GroupManagementService.\nUpdateGroupInfoAsync(groupId, request);
+:Check if group exists;
+if (Group not found?) then (yes)
+  :Return 404 Not Found;
+  stop
+endif
+
+:Update group entity:\n- GroupName\n- Description\n- UpdatedAt;
+:Save changes to database;
+
+if (Update successful?) then (yes)
+  :Return GroupResponseDto;
+  :Send 200 OK response;
+else (no)
+  :Return error message;
+  :Send 400 Bad Request;
+  stop
+endif
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh group list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View updated group info;
+stop
+@enduml
+

@@ -1,0 +1,48 @@
+@startuml Remove_Student_From_Group
+title Activity Diagram - Remove Student from Group
+
+|Instructor|
+start
+:Select a group;
+:Select a student member;
+:Click "Remove Member";
+:Confirm removal;
+
+|Web Application|
+:Send request to remove member\nfrom group;
+
+|Backend API|
+:Validate parameters;
+:Call GroupManagementService.\nRemoveMemberAsync(groupId, userId);
+:Check if group exists;
+if (Group not found?) then (yes)
+  :Return 404 Not Found;
+  stop
+endif
+
+:Check if member exists in group;
+if (Member not found?) then (yes)
+  :Return 404 Not Found;
+  stop
+endif
+
+:Remove GroupMember entity;
+:Save changes to database;
+:Send notification to removed student;
+:Return GroupMemberOperationResponseDto;
+:Send 200 OK response;
+
+|Web Application|
+if (Response successful?) then (yes)
+  :Display success message;
+  :Refresh group members list;
+else (no)
+  :Display error message;
+  stop
+endif
+
+|Instructor|
+:View updated group members;
+stop
+@enduml
+
