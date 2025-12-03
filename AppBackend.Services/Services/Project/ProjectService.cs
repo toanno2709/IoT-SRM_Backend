@@ -21,8 +21,8 @@ namespace AppBackend.Services.Services.Project
             _db = db;
         }
 
-        // 1. Create project (leader only, group must not already have one)
-        public async Task<ProjectCreateResultDto> CreateProjectAsync(ProjectCreateDto dto, int leaderId)
+        // 1. Create project (leader OR instructor of the class)
+        public async Task<ProjectCreateResultDto> CreateProjectAsync(ProjectCreateDto dto, int creatorUserId)
         {
             // Kiểm tra group tồn tại
             var group = await _db.Groups
@@ -36,11 +36,23 @@ namespace AppBackend.Services.Services.Project
                     StatusCodes.Status404NotFound
                 );
 
-            // Kiểm tra người tạo là leader
-            if (group.LeaderId != leaderId)
+            // Lấy thông tin user
+            var user = await _db.Users.FindAsync(creatorUserId);
+            if (user == null)
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "User not found",
+                    StatusCodes.Status404NotFound
+                );
+
+            // Kiểm tra quyền: phải là group leader HOẶC instructor của class
+            bool isGroupLeader = group.LeaderId == creatorUserId;
+            bool isInstructor = user.RoleId == 2 && group.Class?.InstructorId == creatorUserId;
+
+            if (!isGroupLeader && !isInstructor)
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
-                    "Only group leader can create project",
+                    "Only group leader or class instructor can create project",
                     StatusCodes.Status403Forbidden
                 );
 
@@ -66,38 +78,42 @@ namespace AppBackend.Services.Services.Project
             _db.Projects.Add(project);
             await _db.SaveChangesAsync();
 
-            // Gửi thông báo đến instructor
-            AppBackend.BusinessObjects.Models.User? instructor = null;
-            var instructorId = group.Class?.InstructorId;
-            if (instructorId.HasValue)
+            // Gửi thông báo đến instructor (chỉ khi được tạo bởi student)
+            if (isGroupLeader && !isInstructor)
             {
-                instructor = await _db.Users
-                    .FirstOrDefaultAsync(u => u.UserId == instructorId.Value && u.RoleId == 2);
-            }
-
-            if (instructor != null)
-            {
-                var note = new AppBackend.BusinessObjects.Models.Notification
+                AppBackend.BusinessObjects.Models.User? instructor = null;
+                var instructorId = group.Class?.InstructorId;
+                if (instructorId.HasValue)
                 {
-                    UserId = instructor.UserId,
-                    Title = $"New project submitted by group {group.GroupName}",
-                    Message = $"Group '{group.GroupName}' in class {group.Class?.ClassName ?? group.ClassId.ToString()} has created a new project: '{project.Title}'.",
-                    Type = "project_created",
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _db.Notifications.Add(note);
-                await _db.SaveChangesAsync();
+                    instructor = await _db.Users
+                        .FirstOrDefaultAsync(u => u.UserId == instructorId.Value && u.RoleId == 2);
+                }
+
+                if (instructor != null)
+                {
+                    var note = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = instructor.UserId,
+                        Title = $"New project submitted by group {group.GroupName}",
+                        Message = $"Group '{group.GroupName}' has submitted a new project: '{dto.Title}'",
+                        Type = "project_submitted",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(note);
+                    await _db.SaveChangesAsync();
+                }
             }
 
-            return new ProjectCreateResultDto(project.ProjectId, project.Title ?? string.Empty, project.Status);
+            return new ProjectCreateResultDto(project.ProjectId, project.Title, project.Status);
         }
 
-        // 2. Update project (leader only)
+        // 2. Update project (leader OR instructor of the class)
         public async Task UpdateProjectAsync(ProjectUpdateDto dto)
         {
             var project = await _db.Projects
                 .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
                 .FirstOrDefaultAsync(p => p.ProjectId == dto.ProjectId);
 
             if (project == null)
@@ -107,18 +123,33 @@ namespace AppBackend.Services.Services.Project
                     StatusCodes.Status404NotFound
                 );
 
-            if (project.Group?.LeaderId != dto.RequesterUserId)
+            // Lấy thông tin user
+            var user = await _db.Users.FindAsync(dto.RequesterUserId);
+            if (user == null)
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "User not found",
+                    StatusCodes.Status404NotFound
+                );
+
+            // Kiểm tra quyền: phải là group leader HOẶC instructor của class
+            bool isGroupLeader = project.Group?.LeaderId == dto.RequesterUserId;
+            bool isInstructor = user.RoleId == 2 && project.Group?.Class?.InstructorId == dto.RequesterUserId;
+
+            if (!isGroupLeader && !isInstructor)
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
-                    "Only group leader can update project",
+                    "Only group leader or class instructor can update project",
                     StatusCodes.Status403Forbidden
                 );
 
+            // Cập nhật project
             if (!string.IsNullOrWhiteSpace(dto.Title)) project.Title = dto.Title;
             if (dto.Description != null) project.Description = dto.Description;
             if (dto.Component != null) project.Component = dto.Component;
             project.UpdatedAt = DateTime.UtcNow;
 
+            _db.Projects.Update(project);
             await _db.SaveChangesAsync();
         }
 
