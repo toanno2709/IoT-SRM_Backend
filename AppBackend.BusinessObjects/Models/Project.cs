@@ -19,11 +19,8 @@ public partial class Project
     [Column("description")]
     public string? Description { get; set; }
 
-    [Column("purpose")]
-    public string? Purpose { get; set; }
-
-    [Column("expected_technology")]
-    public string? ExpectedTechnology { get; set; }
+    [Column("component")]
+    public string? Component { get; set; }
 
     [Column("group_id")]
     public int? GroupId { get; set; }

@@ -11,8 +11,7 @@ namespace AppBackend.BusinessObjects.Dtos.Project
         public int GroupId { get; set; }
         public string Title { get; set; } = null!;
         public string? Description { get; set; }
-        public string? Purpose { get; set; }
-        public string? ExpectedTechnology { get; set; }
+        public string? Component { get; set; }
     }
 
     public class ProjectCreateResultDto
@@ -35,8 +34,7 @@ namespace AppBackend.BusinessObjects.Dtos.Project
         public int RequesterUserId { get; set; }
         public string? Title { get; set; }
         public string? Description { get; set; }
-        public string? Purpose { get; set; }
-        public string? ExpectedTechnology { get; set; }
+        public string? Component { get; set; }
     }
 
     public class ProjectStatusDto
@@ -61,8 +59,7 @@ namespace AppBackend.BusinessObjects.Dtos.Project
         public int ProjectId { get; set; }
         public string? Title { get; set; }
         public string? Description { get; set; }
-        public string? Purpose { get; set; }
-        public string? ExpectedTechnology { get; set; }
+        public string? Component { get; set; }
         public string? Status { get; set; }
         public int? GroupId { get; set; }
         public string? GroupName { get; set; }

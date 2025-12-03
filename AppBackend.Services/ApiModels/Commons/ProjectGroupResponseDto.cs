@@ -21,9 +21,7 @@ public class ProjectGroupResponseDto
 
     public string? Description { get; set; }
 
-    public string? Purpose { get; set; }
-
-    public string? ExpectedTechnology { get; set; }
+    public string? Component { get; set; }
 
     /// <summary>
     /// Project status: Pending, Approved, Revision, Rejected, InProgress, Completed

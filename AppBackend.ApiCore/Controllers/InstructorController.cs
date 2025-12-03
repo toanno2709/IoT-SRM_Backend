@@ -14,6 +14,7 @@ using AppBackend.Services.Services.FinalProject;
 using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Services.Services.InstructorSubmissionView;
 using AppBackend.Services.Services.ClassEnrollment;
+using AppBackend.Services.Services.StudentGrade;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,7 @@ public class InstructorController : ControllerBase
     private readonly IClassConfigService _classConfigService;
     private readonly IInstructorSubmissionViewService _submissionViewService;
     private readonly IClassEnrollmentService _classEnrollmentService;
+    private readonly IStudentGradeService _studentGradeService;
 
     public InstructorController(
         IClassService classService, 
@@ -51,7 +53,8 @@ public class InstructorController : ControllerBase
         IFinalProjectService finalProjectService,
         IClassConfigService classConfigService,
         IInstructorSubmissionViewService submissionViewService,
-        IClassEnrollmentService classEnrollmentService)
+        IClassEnrollmentService classEnrollmentService,
+        IStudentGradeService studentGradeService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -66,6 +69,7 @@ public class InstructorController : ControllerBase
         _classConfigService = classConfigService;
         _submissionViewService = submissionViewService;
         _classEnrollmentService = classEnrollmentService;
+        _studentGradeService = studentGradeService;
     }
 
     /// <summary>
@@ -729,6 +733,106 @@ public class InstructorController : ControllerBase
             return Ok(result);
 
         return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all student grades in a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Comprehensive grades report for all students in the class</returns>
+    /// <remarks>
+    /// Returns detailed grade information for all students enrolled in the class:
+    /// - Student information (ID, name, email)
+    /// - Group and project information
+    /// - Individual milestone grades
+    /// - Overall calculated grade
+    /// - Project status
+    /// 
+    /// Only the instructor assigned to the class can access this endpoint.
+    /// </remarks>
+    [HttpGet("classes/{classId}/grades")]
+    [ProducesResponseType(typeof(ResultModel<ClassGradesReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ClassGradesReportDto>>> GetClassGrades([FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1; // Fallback for testing
+        }
+
+        var result = await _studentGradeService.GetClassGradesAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Export class grades to Excel file
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="includeMilestoneDetails">Include individual milestone grades (default: true)</param>
+    /// <param name="includeFeedback">Include feedback comments (default: false)</param>
+    /// <returns>Excel file with all student grades</returns>
+    /// <remarks>
+    /// Downloads an Excel file containing:
+    /// - Class information (name, semester, instructor)
+    /// - All enrolled students
+    /// - Group assignments
+    /// - Project titles
+    /// - Individual milestone grades (if includeMilestoneDetails = true)
+    /// - Overall calculated grades
+    /// - Project status
+    /// 
+    /// The Excel file includes:
+    /// - Color-coded grades (green: ≥80, yellow: 50-79, red: &lt;50)
+    /// - Auto-fitted columns
+    /// - Formatted headers
+    /// - Summary statistics
+    /// 
+    /// Example filename: ClassGrades_SE1234_20250120_143025.xlsx
+    /// </remarks>
+    [HttpGet("classes/{classId}/grades/export")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ExportClassGradesToExcel(
+        [FromRoute] int classId,
+        [FromQuery] bool includeMilestoneDetails = true,
+        [FromQuery] bool includeFeedback = false)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1; // Fallback for testing
+        }
+
+        var result = await _studentGradeService.ExportClassGradesToExcelAsync(
+            classId, 
+            includeMilestoneDetails, 
+            includeFeedback, 
+            instructorId);
+
+        if (result.IsSuccess && result.Data != null)
+        {
+            return File(
+                result.Data.FileContent,
+                result.Data.ContentType,
+                result.Data.FileName);
+        }
+
+        return StatusCode(result.StatusCode, new
+        {
+            isSuccess = false,
+            message = result.Message
+        });
     }
 }
 
