@@ -49,6 +49,8 @@ using AppBackend.Services.Services.Syllabus;
 using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
+using AppBackend.Services.Services.MilestoneWarning;
+using AppBackend.Services.BackgroundServices;
 
 namespace AppBackend.Extensions;
 
@@ -127,6 +129,7 @@ public static class ServicesConfig
         services.AddScoped<ISyllabusService, SyllabusService>();
         services.AddScoped<IProjectTemplateService, ProjectTemplateService>();
         services.AddScoped<IClassGraderService, ClassGraderService>();
+        services.AddScoped<IMilestoneWarningService, MilestoneWarningService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
@@ -135,6 +138,9 @@ public static class ServicesConfig
         services.AddScoped<INotificationService, NotificationService>();
         
         services.AddSingleton<RateLimiterStore>();
+
+        // Background Services
+        services.AddHostedService<MilestoneWeightCheckBackgroundService>();
 
         #endregion
 

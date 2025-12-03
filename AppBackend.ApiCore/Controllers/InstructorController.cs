@@ -17,6 +17,7 @@ using AppBackend.Services.Services.ClassEnrollment;
 using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
+using AppBackend.Services.Services.MilestoneWarning;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,6 +44,7 @@ public class InstructorController : ControllerBase
     private readonly IStudentGradeService _studentGradeService;
     private readonly IProjectTemplateService _templateService;
     private readonly IClassGraderService _classGraderService;
+    private readonly IMilestoneWarningService _milestoneWarningService;
 
     public InstructorController(
         IClassService classService, 
@@ -60,7 +62,8 @@ public class InstructorController : ControllerBase
         IClassEnrollmentService classEnrollmentService,
         IStudentGradeService studentGradeService,
         IProjectTemplateService templateService,
-        IClassGraderService classGraderService)
+        IClassGraderService classGraderService,
+        IMilestoneWarningService milestoneWarningService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -78,6 +81,7 @@ public class InstructorController : ControllerBase
         _studentGradeService = studentGradeService;
         _templateService = templateService;
         _classGraderService = classGraderService;
+        _milestoneWarningService = milestoneWarningService;
     }
 
     /// <summary>
@@ -1209,6 +1213,108 @@ public class InstructorController : ControllerBase
         }
 
         var result = await _classGraderService.GradeFinalSubmissionAsync(finalSubmissionId, request, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Milestone Weight Warnings
+
+    /// <summary>
+    /// Get all projects with incomplete milestone weights in a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of projects with incomplete milestones (not 100%)</returns>
+    /// <remarks>
+    /// Returns projects where milestone weights don't total to 100%.
+    /// 
+    /// This helps instructors identify projects that need milestone weight adjustments.
+    /// The system automatically checks this weekly and sends notifications.
+    /// 
+    /// Response includes:
+    /// - Project and group information
+    /// - Total weight percentage
+    /// - Missing/excess weight percentage
+    /// - Individual milestone weights
+    /// </remarks>
+    [HttpGet("classes/{classId}/milestone-warnings")]
+    [ProducesResponseType(typeof(ResultModel<List<ProjectMilestoneWarningDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<ProjectMilestoneWarningDto>>>> GetProjectsWithIncompleteMilestones(
+        [FromRoute] int classId)
+    {
+        var result = await _milestoneWarningService.GetProjectsWithIncompleteMilestonesAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get milestone weight summary for a specific project
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <returns>Detailed milestone weight information</returns>
+    /// <remarks>
+    /// Returns complete milestone weight breakdown for a project.
+    /// 
+    /// Response includes:
+    /// - Total weight percentage
+    /// - Whether weights total to 100%
+    /// - Missing or excess weight amount
+    /// - Individual milestone details with weights
+    /// - Warning message if incomplete
+    /// 
+    /// Use this to verify project milestone configuration.
+    /// </remarks>
+    [HttpGet("projects/{projectId}/milestone-weights")]
+    [ProducesResponseType(typeof(ResultModel<ProjectMilestoneWeightDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ProjectMilestoneWeightDto>>> GetProjectMilestoneWeights(
+        [FromRoute] int projectId)
+    {
+        var result = await _milestoneWarningService.GetProjectMilestoneWeightsAsync(projectId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Manually trigger milestone weight check (Admin/Testing only)
+    /// </summary>
+    /// <returns>Summary of warnings sent</returns>
+    /// <remarks>
+    /// Manually triggers the weekly milestone weight check.
+    /// 
+    /// This is normally run automatically every Monday at 9:00 AM UTC by a background service.
+    /// Use this endpoint for testing or immediate checking.
+    /// 
+    /// Actions performed:
+    /// - Checks all active classes
+    /// - Identifies projects with milestone weights ≠ 100%
+    /// - Sends notifications to instructors
+    /// - Returns summary of checks and notifications
+    /// 
+    /// ⚠️ Use sparingly to avoid spamming instructors with notifications.
+    /// </remarks>
+    [HttpPost("milestone-warnings/check-all")]
+    [ProducesResponseType(typeof(ResultModel<MilestoneWarningResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<MilestoneWarningResultDto>>> TriggerMilestoneWeightCheck()
+    {
+        var result = await _milestoneWarningService.CheckAndSendMilestoneWarningsAsync();
 
         if (result.IsSuccess)
             return Ok(result);
