@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,9 @@ public partial class FinalProjectSubmission
     [Precision(0)]
     public DateTime? LastUpdatedAt { get; set; }
 
+    /// <summary>
+    /// Average grade calculated from all instructor grades in FinalSubmissionGrades table
+    /// </summary>
     [Column("grade")]
     [Precision(5, 2)]
     public decimal? Grade { get; set; }
@@ -60,6 +64,10 @@ public partial class FinalProjectSubmission
     [Column("feedback")]
     public string? Feedback { get; set; }
 
+    /// <summary>
+    /// Deprecated: Use FinalSubmissionGrades for individual instructor grades
+    /// Kept for backward compatibility
+    /// </summary>
     [Column("graded_by")]
     public int? GradedBy { get; set; }
 
@@ -83,4 +91,7 @@ public partial class FinalProjectSubmission
     [ForeignKey("GradedBy")]
     [InverseProperty("FinalProjectSubmissionsGraded")]
     public virtual User? GradedByNavigation { get; set; }
+
+    [InverseProperty("FinalSubmission")]
+    public virtual ICollection<FinalSubmissionGrade> FinalSubmissionGrades { get; set; } = new List<FinalSubmissionGrade>();
 }

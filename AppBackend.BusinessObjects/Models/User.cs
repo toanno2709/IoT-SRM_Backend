@@ -98,4 +98,13 @@ public partial class User
 
   [InverseProperty("RegisteredByUser")]
   public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
+
+  [InverseProperty("Instructor")]
+  public virtual ICollection<ClassGrader> ClassGradersAsInstructor { get; set; } = new List<ClassGrader>();
+
+  [InverseProperty("AssignedByNavigation")]
+  public virtual ICollection<ClassGrader> ClassGradersAsAssigner { get; set; } = new List<ClassGrader>();
+
+  [InverseProperty("Instructor")]
+  public virtual ICollection<FinalSubmissionGrade> FinalSubmissionGrades { get; set; } = new List<FinalSubmissionGrade>();
 }

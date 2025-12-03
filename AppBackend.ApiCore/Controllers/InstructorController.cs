@@ -16,6 +16,7 @@ using AppBackend.Services.Services.InstructorSubmissionView;
 using AppBackend.Services.Services.ClassEnrollment;
 using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Services.Services.ProjectTemplate;
+using AppBackend.Services.Services.ClassGrader;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,7 @@ public class InstructorController : ControllerBase
     private readonly IClassEnrollmentService _classEnrollmentService;
     private readonly IStudentGradeService _studentGradeService;
     private readonly IProjectTemplateService _templateService;
+    private readonly IClassGraderService _classGraderService;
 
     public InstructorController(
         IClassService classService, 
@@ -57,7 +59,8 @@ public class InstructorController : ControllerBase
         IInstructorSubmissionViewService submissionViewService,
         IClassEnrollmentService classEnrollmentService,
         IStudentGradeService studentGradeService,
-        IProjectTemplateService templateService)
+        IProjectTemplateService templateService,
+        IClassGraderService classGraderService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -74,6 +77,7 @@ public class InstructorController : ControllerBase
         _classEnrollmentService = classEnrollmentService;
         _studentGradeService = studentGradeService;
         _templateService = templateService;
+        _classGraderService = classGraderService;
     }
 
     /// <summary>
@@ -1033,6 +1037,178 @@ public class InstructorController : ControllerBase
         }
 
         var result = await _templateService.GetTemplateStatisticsAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Class Grading Assignment
+
+    /// <summary>
+    /// Get all classes where instructor is assigned as grader
+    /// </summary>
+    /// <returns>List of classes with grading statistics</returns>
+    /// <remarks>
+    /// Returns classes where the current instructor is assigned to grade final projects.
+    /// This is separate from the main instructor assignment - multiple instructors can
+    /// be assigned to grade projects in the same class.
+    /// 
+    /// Response includes:
+    /// - Class information
+    /// - Total projects and approved projects
+    /// - Projects with final submissions
+    /// - Projects graded by this instructor
+    /// - Projects pending this instructor's grade
+    /// </remarks>
+    [HttpGet("grading/classes")]
+    [ProducesResponseType(typeof(ResultModel<List<GradingClassDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<GradingClassDto>>>> GetGradingClasses()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetGradingClassesAsync(instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all approved projects in a class for grading
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of approved projects with grading status</returns>
+    /// <remarks>
+    /// Returns all projects with status "Approved" in the specified class.
+    /// Only accessible to instructors assigned to grade this class.
+    /// 
+    /// Response includes:
+    /// - Project and group information
+    /// - Final submission status
+    /// - Grading status (has my grade, average grade, total grades)
+    /// - Whether submission is pending this instructor's grade
+    /// </remarks>
+    [HttpGet("grading/classes/{classId}/projects")]
+    [ProducesResponseType(typeof(ResultModel<List<ApprovedProjectForGradingDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<ApprovedProjectForGradingDto>>>> GetApprovedProjectsForGrading(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetApprovedProjectsForGradingAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get detailed final submission for grading
+    /// </summary>
+    /// <param name="finalSubmissionId">Final submission ID</param>
+    /// <returns>Detailed submission with all files and grades</returns>
+    /// <remarks>
+    /// Returns detailed information about a final submission for grading purposes.
+    /// Only accessible to instructors assigned to grade the class.
+    /// 
+    /// Response includes:
+    /// - All submission files and URLs
+    /// - Group members
+    /// - All grades from all assigned instructors
+    /// - Current instructor's grade (if already graded)
+    /// - Average grade
+    /// </remarks>
+    [HttpGet("grading/submissions/{finalSubmissionId}")]
+    [ProducesResponseType(typeof(ResultModel<GraderFinalSubmissionDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<GraderFinalSubmissionDetailDto>>> GetFinalSubmissionForGrading(
+        [FromRoute] int finalSubmissionId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetFinalSubmissionForGradingAsync(finalSubmissionId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Grade or update grade for final submission
+    /// </summary>
+    /// <param name="finalSubmissionId">Final submission ID</param>
+    /// <param name="request">Grade and feedback</param>
+    /// <returns>Grading result with average grade from all instructors</returns>
+    /// <remarks>
+    /// Allows assigned instructor to grade or update their grade for a final submission.
+    /// 
+    /// Multiple instructors can grade the same submission independently.
+    /// The system automatically calculates the average grade from all instructor grades.
+    /// 
+    /// Actions performed:
+    /// - Creates or updates instructor's grade in Final_Submission_Grades table
+    /// - Trigger automatically recalculates average and updates Final_Project_Submissions.grade
+    /// - Sends notification to all group members
+    /// 
+    /// Example: If 2 instructors grade the same project as 85 and 90, 
+    /// the average grade will be 87.5
+    /// </remarks>
+    [HttpPost("grading/submissions/{finalSubmissionId}/grade")]
+    [ProducesResponseType(typeof(ResultModel<GraderFinalProjectGradeResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<GraderFinalProjectGradeResponseDto>>> GradeFinalSubmission(
+        [FromRoute] int finalSubmissionId,
+        [FromBody] GraderFinalProjectGradeRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GraderFinalProjectGradeResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GradeFinalSubmissionAsync(finalSubmissionId, request, instructorId);
 
         if (result.IsSuccess)
             return Ok(result);

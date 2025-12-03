@@ -59,4 +59,7 @@ public partial class Class
 
     [InverseProperty("Class")]
     public virtual ICollection<ProjectTemplate> ProjectTemplates { get; set; } = new List<ProjectTemplate>();
+
+    [InverseProperty("Class")]
+    public virtual ICollection<ClassGrader> ClassGraders { get; set; } = new List<ClassGrader>();
 }
