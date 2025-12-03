@@ -2,6 +2,7 @@ using AppBackend.BusinessObjects.Dtos.Group;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services.Services.Notification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System;
@@ -19,27 +20,66 @@ namespace AppBackend.Services.Services.Group
     {
         private readonly IotShowroomContext _db;
         private readonly ILogger<GroupService> _logger;
+        private readonly INotificationHubService _notificationHubService;
 
-        public GroupService(IotShowroomContext db, ILogger<GroupService> logger)
+        public GroupService(
+            IotShowroomContext db, 
+            ILogger<GroupService> logger,
+            INotificationHubService notificationHubService)
         {
             _db = db;
             _logger = logger;
+            _notificationHubService = notificationHubService;
         }
 
         private async Task SendNotificationAsync(int userId, string title, string message, string type = "system")
         {
-            var note = new AppBackend.BusinessObjects.Models.Notification
+            try
             {
-                UserId = userId,
-                Title = title,
-                Message = message,
-                Type = type,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Notifications.Add(note);
-            await _db.SaveChangesAsync();
+                var note = new AppBackend.BusinessObjects.Models.Notification
+                {
+                    UserId = userId,
+                    Title = title,
+                    Message = message,
+                    Type = type,
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.Notifications.Add(note);
+                await _db.SaveChangesAsync();
+
+                // Send real-time notification via SignalR
+                var user = await _db.Users.FindAsync(userId);
+                if (user != null && !string.IsNullOrEmpty(user.Email))
+                {
+                    var notificationDto = new NotificationResponseDto
+                    {
+                        NotificationId = note.NotificationId,
+                        UserId = userId,
+                        UserName = user.FullName,
+                        Title = title,
+                        Message = message,
+                        Type = type,
+                        IsRead = false,
+                        CreatedAt = note.CreatedAt
+                    };
+
+                    if (type == "group_invitation")
+                    {
+                        await _notificationHubService.SendGroupInvitationNotificationAsync(user.Email, notificationDto);
+                    }
+                    else
+                    {
+                        await _notificationHubService.SendNotificationToUserAsync(user.Email, notificationDto);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error sending notification to user {userId}");
+            }
         }
+
         // 1. Create group: check user not in any group in same class -> create group and add leader as GroupMember role "Leader"
         public async Task<GroupCreateResultDto> CreateGroupAsync(GroupCreateDto dto, int creatorUserId)
         {
@@ -111,6 +151,7 @@ namespace AppBackend.Services.Services.Group
 
             if (existingInvitation != null)
             {
+                _logger.LogWarning($"User {dto.InvitedUserId} already has a pending invitation to group {dto.GroupId}");
                 throw new InvalidOperationException("This user already has a pending invitation to this group.");
             }
 
@@ -118,11 +159,13 @@ namespace AppBackend.Services.Services.Group
             var inviter = await _db.Users.FindAsync(dto.InviterUserId);
             var inviterName = inviter?.FullName ?? "A group leader";
 
-            // FIX: Send notification to INVITED USER, not inviter
-            await SendNotificationAsync(dto.InvitedUserId,  // ? FIXED - Send to invited user
+            // Send notification to INVITED USER with SignalR support
+            await SendNotificationAsync(dto.InvitedUserId,
                 $"Invitation to join group {group.GroupName}",
                 $"You have been invited by {inviterName} to join group '{group.GroupName}' (ID: {group.ClassId}). [groupId:{dto.GroupId}]",
                 "group_invitation");
+
+            _logger.LogInformation($"Group invitation sent from user {dto.InviterUserId} to user {dto.InvitedUserId} for group {dto.GroupId}");
         }
 
         // 3. Accept invite: add to group if not in other group in same class, remove any previous invite-notif? (we keep simple)
@@ -234,21 +277,9 @@ namespace AppBackend.Services.Services.Group
             if (dto.TargetUserId == dto.RequesterUserId) throw new InvalidOperationException("Leader cannot kick themselves.");
 
             _db.GroupMembers.Remove(gm);
-
-            
-            //var note = new Notification
-            //{
-            //    UserId = dto.TargetUserId,
-            //    Title = $"Removed from group {group.GroupName}",
-            //    Message = $"You have been removed from group '{group.GroupName}'.",
-            //    Type = "group_removed",
-            //    IsRead = false,
-            //    CreatedAt = DateTime.UtcNow
-            //};
-            //_db.Notifications.Add(note);
-
             await _db.SaveChangesAsync();
-// send notification to kicked user
+
+            // send notification to kicked user
             await SendNotificationAsync(dto.TargetUserId,
                 $"Removed from group {group.GroupName}",
                 $"You have been removed from group '{group.GroupName}'.",
@@ -276,10 +307,9 @@ namespace AppBackend.Services.Services.Group
 
             foreach (var uid in memberIds)
                 await SendNotificationAsync(uid, "Group Updated", $"Group '{group.GroupName}' information has been updated.", "group_update");
-
         }
 
-        // 7. Delete group (Admin or Instructor or Leader depending policy) — here only Admin (role id 1) or Instructor (role id 3?) or leader
+        // 7. Delete group (Admin or Instructor or Leader depending policy) – here only Admin (role id 1) or Instructor (role id 3?) or leader
         public async Task DeleteGroupAsync(int groupId, int requesterUserId)
         {
             var group = await _db.Groups.Include(g => g.GroupMembers).FirstOrDefaultAsync(g => g.GroupId == groupId);
@@ -307,7 +337,6 @@ namespace AppBackend.Services.Services.Group
 
             foreach (var uid in memberIds)
                 await SendNotificationAsync(uid, "Group Deleted", $"Your group '{group.GroupName}' has been deleted.", "group_deleted");
-
         }
 
         // 8. Get groups by class (simple list)

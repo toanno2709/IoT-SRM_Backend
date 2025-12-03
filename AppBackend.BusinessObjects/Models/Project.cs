@@ -61,4 +61,7 @@ public partial class Project
 
     [InverseProperty("Project")]
     public virtual FinalProjectSubmission? FinalProjectSubmission { get; set; }
+
+    [InverseProperty("Project")]
+    public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
 }

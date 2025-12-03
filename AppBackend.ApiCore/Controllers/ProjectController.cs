@@ -52,19 +52,20 @@ namespace AppBackend.ApiCore.Controllers
         }
 
         /// <summary>
-        /// Create a new project (Group Leader only)
+        /// Create a new project (Group Leader or Instructor of the class)
         /// </summary>
-        /// <param name="dto">Project creation data (GroupId, Title, Description)</param>
+        /// <param name="dto">Project creation data (GroupId, Title, Description, Component)</param>
         /// <returns>Created project information with auto-assigned "Pending" status</returns>
         /// <remarks>
         /// Business Rules:
-        /// - Only group leader can create project
+        /// - Student: Only group leader can create project
+        /// - Instructor: Can create project for any group in their class
         /// - Group must not already have a project
         /// - Status automatically set to "Pending"
-        /// - Notification sent to class instructor
+        /// - Notification sent to class instructor (if created by student)
         /// </remarks>
         [HttpPost]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "Student,Instructor")]
         public async Task<ActionResult<ProjectCreateResultDto>> CreateProject([FromBody] ProjectCreateDto dto)
         {
             if (!ModelState.IsValid)
@@ -77,7 +78,7 @@ namespace AppBackend.ApiCore.Controllers
             }
 
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out var leaderId))
+            if (!int.TryParse(userIdClaim, out var userId))
             {
                 return Unauthorized(new 
                 { 
@@ -86,18 +87,23 @@ namespace AppBackend.ApiCore.Controllers
                 });
             }
 
-            var result = await _projectService.CreateProjectAsync(dto, leaderId);
+            var result = await _projectService.CreateProjectAsync(dto, userId);
             return CreatedAtAction(nameof(GetProjectsByGroup), new { groupId = dto.GroupId }, new { status = "success", data = result });
         }
 
         /// <summary>
-        /// Update project information (Group Leader only)
+        /// Update project information (Group Leader or Instructor of the class)
         /// </summary>
         /// <param name="projectId">Project ID</param>
-        /// <param name="dto">Project update data (Title, Description)</param>
+        /// <param name="dto">Project update data (Title, Description, Component)</param>
         /// <returns>Success status</returns>
+        /// <remarks>
+        /// Business Rules:
+        /// - Student: Only group leader can update project
+        /// - Instructor: Can update any project in their class
+        /// </remarks>
         [HttpPut("{projectId}")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "Student,Instructor")]
         public async Task<ActionResult> UpdateProject(int projectId, [FromBody] ProjectUpdateDto dto)
         {
             if (!ModelState.IsValid)

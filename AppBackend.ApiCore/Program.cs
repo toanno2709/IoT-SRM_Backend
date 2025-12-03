@@ -2,6 +2,8 @@ using AppBackend.ApiCore.JsonConverters;
 using AppBackend.Extensions;
 using AppBackend.Services.Services.Group;
 using AppBackend.ApiCore.Middlewares;
+using AppBackend.Services.Services.Notification;
+using AppBackend.ApiCore.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -38,6 +40,17 @@ builder.Services.AddAutoMapperConfig();
 builder.Services.AddRateLimitConfig();
 builder.Services.AddScoped<IGroupService, GroupService>();
 
+// Add SignalR for real-time notifications
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+    options.MaximumReceiveMessageSize = 1024 * 1024; // 1MB max message size
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
+
+// Register SignalR notification service
+builder.Services.AddScoped<INotificationHubService, NotificationHubService>();
 
 builder.Services.AddControllers()   
     .AddJsonOptions(options =>
@@ -79,4 +92,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Map SignalR Hub endpoint
+app.MapHub<AppBackend.ApiCore.Hubs.NotificationHub>("/notificationHub");
+
 app.Run();

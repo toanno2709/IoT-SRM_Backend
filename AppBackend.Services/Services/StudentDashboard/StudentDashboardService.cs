@@ -250,6 +250,7 @@ public class StudentDashboardService : IStudentDashboardService
                     ProjectId = project.ProjectId,
                     Title = project.Title ?? "Untitled",
                     Description = project.Description,
+                    Component = project.Component,
                     Status = project.Status ?? "Unknown",
                     CreatedAt = project.CreatedAt
                 };
