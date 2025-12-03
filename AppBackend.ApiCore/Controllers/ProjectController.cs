@@ -54,7 +54,7 @@ namespace AppBackend.ApiCore.Controllers
         /// <summary>
         /// Create a new project (Group Leader or Instructor of the class)
         /// </summary>
-        /// <param name="dto">Project creation data (GroupId, Title, Description)</param>
+        /// <param name="dto">Project creation data (GroupId, Title, Description, Component)</param>
         /// <returns>Created project information with auto-assigned "Pending" status</returns>
         /// <remarks>
         /// Business Rules:
@@ -95,7 +95,7 @@ namespace AppBackend.ApiCore.Controllers
         /// Update project information (Group Leader or Instructor of the class)
         /// </summary>
         /// <param name="projectId">Project ID</param>
-        /// <param name="dto">Project update data (Title, Description)</param>
+        /// <param name="dto">Project update data (Title, Description, Component)</param>
         /// <returns>Success status</returns>
         /// <remarks>
         /// Business Rules:
