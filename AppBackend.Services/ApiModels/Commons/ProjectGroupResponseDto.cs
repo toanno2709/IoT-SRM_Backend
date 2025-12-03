@@ -7,6 +7,7 @@ public class ProjectMemberDto
     public int UserId { get; set; }
     public string? FullName { get; set; }
     public string? Email { get; set; }
+    public string? AvatarUrl { get; set; }
     public string? RoleInProject { get; set; }
 }
 
@@ -20,8 +21,18 @@ public class ProjectGroupResponseDto
 
     public string? Description { get; set; }
 
+    public string? Component { get; set; }
+
+    /// <summary>
+    /// Project status: Pending, Approved, Revision, Rejected, InProgress, Completed
+    /// </summary>
+    public string? Status { get; set; }
+
     public int? LeaderId { get; set; }
     public string? LeaderName { get; set; }
+
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
 
     public int? ClassId { get; set; }
 

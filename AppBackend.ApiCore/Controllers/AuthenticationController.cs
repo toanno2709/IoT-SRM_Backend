@@ -28,15 +28,15 @@ namespace AppBackend.ApiCore.Controllers
         }
 
         /// <summary>
-        /// Register a new user account
+        /// Register a new user account (Default role: Student)
         /// </summary>
-        /// <param name="request">Registration request payload</param>
-        /// <returns>JWT access token and refresh token</returns>
-        /// <response code="201">User registered successfully</response>
-        /// <response code="400">Invalid input data or email already exists</response>
+        /// <param name="request">Registration request payload (FullName, Email, Password, Phone)</param>
+        /// <returns>JWT access token, refresh token, and user information with role</returns>
+        /// <response code="201">User registered successfully with Student role</response>
+        /// <response code="400">Invalid input data</response>
+        /// <response code="409">Email already exists</response>
         [HttpPost("register")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 3, windowSeconds: 60, queueLimit: 1, strategy: "fixed")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
             if (!ModelState.IsValid)
@@ -56,12 +56,12 @@ namespace AppBackend.ApiCore.Controllers
         /// Login an existing user
         /// </summary>
         /// <param name="request">Login credentials (Email + Password)</param>
-        /// <returns>JWT access token and refresh token</returns>
+        /// <returns>JWT access token, refresh token, and user information with role details</returns>
         /// <response code="200">Login successful</response>
-        /// <response code="401">Invalid credentials</response>
+        /// <response code="401">Incorrect password</response>
+        /// <response code="404">User not found with this email</response>
         [HttpPost("login")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 5, windowSeconds: 60, queueLimit: 2, strategy: "sliding")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             if (!ModelState.IsValid)
@@ -83,9 +83,9 @@ namespace AppBackend.ApiCore.Controllers
         /// <returns>Logout confirmation</returns>
         /// <response code="200">Logout successful</response>
         /// <response code="401">Unauthorized - user not authenticated</response>
+        /// <response code="404">User not found</response>
         [HttpPost("logout")]
         [Authorize]
-        [RateLimit(permitLimit: 10, windowSeconds: 60, strategy: "fixed")]
         public async Task<IActionResult> Logout()
         {
             // Get user ID from JWT claims
@@ -115,7 +115,6 @@ namespace AppBackend.ApiCore.Controllers
         /// <response code="401">Invalid or expired refresh token</response>
         [HttpPost("refresh-token")]
         [AllowAnonymous]
-        [RateLimit(permitLimit: 10, windowSeconds: 60, strategy: "fixed")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
         {
             if (!ModelState.IsValid || string.IsNullOrEmpty(request.RefreshToken))

@@ -10,6 +10,36 @@ public class ClassRepository : GenericRepository<Class>, IClassRepository
     {
     }
 
+    /// <summary>
+    /// Override GetAllAsync to include navigation properties
+    /// Must match interface signature: Task<IEnumerable<Class>>
+    /// </summary>
+    public new async Task<IEnumerable<Class>> GetAllAsync()
+    {
+        return await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.Semester)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .OrderByDescending(c => c.CreatedAt)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Override GetByIdAsync to include navigation properties
+    /// </summary>
+    public new async Task<Class?> GetByIdAsync(object id)
+    {
+        return await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.Semester)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .FirstOrDefaultAsync(c => c.ClassId == (int)id);
+    }
+
     public async Task<List<Class>> GetAssignedClassesAsync(int instructorId)
     {
         return await _context.Classes
@@ -48,6 +78,7 @@ public class ClassRepository : GenericRepository<Class>, IClassRepository
             .Include(c => c.Semester)
             .Include(c => c.ClassEnrollments)
             .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
             .Where(c => c.SemesterId == semesterId)
             .OrderBy(c => c.ClassName)
             .ToListAsync();
@@ -60,6 +91,7 @@ public class ClassRepository : GenericRepository<Class>, IClassRepository
             .Include(c => c.Semester)
             .Include(c => c.ClassEnrollments)
             .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
             .AsQueryable();
 
         if (semesterId.HasValue)

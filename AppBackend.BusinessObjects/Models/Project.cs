@@ -19,6 +19,9 @@ public partial class Project
     [Column("description")]
     public string? Description { get; set; }
 
+    [Column("component")]
+    public string? Component { get; set; }
+
     [Column("group_id")]
     public int? GroupId { get; set; }
 
@@ -55,4 +58,10 @@ public partial class Project
 
     [InverseProperty("Project")]
     public virtual ICollection<Sensor> Sensors { get; set; } = new List<Sensor>();
+
+    [InverseProperty("Project")]
+    public virtual FinalProjectSubmission? FinalProjectSubmission { get; set; }
+
+    [InverseProperty("Project")]
+    public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
 }

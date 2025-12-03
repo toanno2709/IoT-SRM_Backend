@@ -62,7 +62,25 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<SubmissionFile> SubmissionFiles { get; set; }
 
+    public virtual DbSet<FinalProjectSubmission> FinalProjectSubmissions { get; set; }
+
+    public virtual DbSet<ClassConfiguration> ClassConfigurations { get; set; }
+
+    public virtual DbSet<Syllabus> Syllabi { get; set; }
+
+    public virtual DbSet<SyllabusFile> SyllabusFiles { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
+
+    public virtual DbSet<ProjectTemplate> ProjectTemplates { get; set; }
+
+    public virtual DbSet<TemplateMilestone> TemplateMilestones { get; set; }
+
+    public virtual DbSet<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; }
+
+    public virtual DbSet<ClassGrader> ClassGraders { get; set; }
+
+    public virtual DbSet<FinalSubmissionGrade> FinalSubmissionGrades { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -200,7 +218,7 @@ public partial class IotShowroomContext : DbContext
         {
             entity.HasKey(e => e.SubmissionId).HasName("PK__Mileston__9B5355953C8BAC3D");
 
-            entity.Property(e => e.SubmissionId).ValueGeneratedNever();
+            entity.Property(e => e.SubmissionId).ValueGeneratedOnAdd();
 
             entity.HasOne(d => d.MilestoneDef).WithMany(p => p.MilestoneSubmissions)
                 .OnDelete(DeleteBehavior.ClientSetNull)
@@ -304,11 +322,179 @@ public partial class IotShowroomContext : DbContext
             entity.HasOne(d => d.UploadedByNavigation).WithMany(p => p.SubmissionFiles).HasConstraintName("FK_SubFiles_Uploader");
         });
 
+        modelBuilder.Entity<FinalProjectSubmission>(entity =>
+        {
+            entity.HasKey(e => e.FinalSubmissionId).HasName("PK__Final_Pr__8E8F3A1BC7E9D0E4");
+
+            entity.Property(e => e.SubmittedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Submitted");
+
+            entity.HasOne(d => d.Project).WithOne(p => p.FinalProjectSubmission)
+                .HasForeignKey<FinalProjectSubmission>(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_Project");
+
+            entity.HasOne(d => d.SubmittedByNavigation).WithMany(p => p.FinalProjectSubmissionsSubmitted)
+                .HasForeignKey(d => d.SubmittedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmission_SubmittedBy");
+
+            entity.HasOne(d => d.GradedByNavigation).WithMany(p => p.FinalProjectSubmissionsGraded)
+                .HasForeignKey(d => d.GradedBy)
+                .HasConstraintName("FK_FinalSubmission_GradedBy");
+        });
+
+        modelBuilder.Entity<ClassConfiguration>(entity =>
+        {
+            entity.HasKey(e => e.ConfigId).HasName("PK__Class_Co__EA3469AF8B9C5C1D");
+
+            entity.HasIndex(e => e.ClassId, "UX_ClassConfig_ClassId").IsUnique();
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.MaxGroupsAllowed).HasDefaultValue(20);
+            entity.Property(e => e.MinMembersPerGroup).HasDefaultValue(2);
+            entity.Property(e => e.MaxMembersPerGroup).HasDefaultValue(5);
+            entity.Property(e => e.AllowStudentCreateGroup).HasDefaultValue(true);
+
+            entity.HasOne(d => d.Class).WithOne(p => p.ClassConfiguration)
+                .HasForeignKey<ClassConfiguration>(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ClassConfigurations_Classes");
+        });
+
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasKey(e => e.UserId).HasName("PK__Users__B9BE370FE4DCC161");
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users).HasConstraintName("FK_Users_Roles");
+        });
+
+        modelBuilder.Entity<Syllabus>(entity =>
+        {
+            entity.HasKey(e => e.SyllabusId).HasName("PK__Syllabi__");
+
+            entity.HasOne(d => d.Class).WithMany(p => p.Syllabi)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Syllabi_Class");
+
+            entity.HasOne(d => d.Creator).WithMany(p => p.Syllabi)
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Syllabi_Creator");
+        });
+
+        modelBuilder.Entity<SyllabusFile>(entity =>
+        {
+            entity.HasKey(e => e.FileId).HasName("PK__Syllabus_Files__");
+
+            entity.Property(e => e.UploadedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+
+            entity.HasOne(d => d.Syllabus).WithMany(p => p.SyllabusFiles)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_SyllabusFiles_Syllabus");
+
+            entity.HasOne(d => d.Uploader).WithMany(p => p.SyllabusFiles)
+                .HasForeignKey(d => d.UploadedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SyllabusFiles_Uploader");
+        });
+
+        modelBuilder.Entity<ProjectTemplate>(entity =>
+        {
+            entity.HasKey(e => e.TemplateId).HasName("PK__Project_Templates__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.RegisteredCount).HasDefaultValue(0);
+
+            entity.HasOne(d => d.Class).WithMany(p => p.ProjectTemplates)
+                .HasForeignKey(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ProjectTemplates_Class");
+
+            entity.HasOne(d => d.Creator).WithMany(p => p.ProjectTemplates)
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ProjectTemplates_Creator");
+        });
+
+        modelBuilder.Entity<TemplateMilestone>(entity =>
+        {
+            entity.HasKey(e => e.TemplateMilestoneId).HasName("PK__Template_Milestones__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.TemplateMilestones)
+                .HasForeignKey(d => d.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_TemplateMilestones_Template");
+        });
+
+        modelBuilder.Entity<ProjectTemplateRegistration>(entity =>
+        {
+            entity.HasKey(e => e.RegistrationId).HasName("PK__Project_Template_Registrations__");
+
+            entity.Property(e => e.RegisteredAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Active");
+
+            entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_TemplateRegistrations_Template");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.GroupId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_TemplateRegistrations_Group");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.ProjectId)
+                .HasConstraintName("FK_TemplateRegistrations_Project");
+
+            entity.HasOne(d => d.RegisteredByUser).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.RegisteredBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_TemplateRegistrations_RegisteredBy");
+        });
+
+        modelBuilder.Entity<ClassGrader>(entity =>
+        {
+            entity.HasKey(e => e.GraderId).HasName("PK__Class_Graders__");
+
+            entity.Property(e => e.AssignedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasOne(d => d.Class).WithMany(p => p.ClassGraders)
+                .HasForeignKey(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ClassGraders_Class");
+
+            entity.HasOne(d => d.Instructor).WithMany(p => p.ClassGradersAsInstructor)
+                .HasForeignKey(d => d.InstructorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ClassGraders_Instructor");
+
+            entity.HasOne(d => d.AssignedByNavigation).WithMany(p => p.ClassGradersAsAssigner)
+                .HasForeignKey(d => d.AssignedBy)
+                .HasConstraintName("FK_ClassGraders_AssignedBy");
+        });
+
+        modelBuilder.Entity<FinalSubmissionGrade>(entity =>
+        {
+            entity.HasKey(e => e.GradeId).HasName("PK__Final_Submission_Grades__");
+
+            entity.Property(e => e.GradedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.FinalSubmission).WithMany(p => p.FinalSubmissionGrades)
+                .HasForeignKey(d => d.FinalSubmissionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FinalSubmissionGrades_FinalSubmission");
+
+            entity.HasOne(d => d.Instructor).WithMany(p => p.FinalSubmissionGrades)
+                .HasForeignKey(d => d.InstructorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmissionGrades_Instructor");
         });
 
         OnModelCreatingPartial(modelBuilder);

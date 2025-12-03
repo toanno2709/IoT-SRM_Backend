@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.OpenApi.Models;
+using AppBackend.ApiCore.Swagger;
 
 namespace AppBackend.Extensions;
 
@@ -13,8 +14,13 @@ public static class SwaggerConfig
             c.SwaggerDoc("v1", new OpenApiInfo
             {
                 Title = "AppBackend.ApiCore",
-                Version = "v1",
-                Description = "API documentation for AppBackend"
+                Version = "v1.1.0", // Incremented version to force Swagger UI refresh
+                Description = "API documentation for AppBackend - Updated with latest instructor and project APIs",
+                Contact = new OpenApiContact
+                {
+                    Name = "IoT Showroom Team",
+                    Email = "support@iotshowroom.com"
+                }
             });
 
             // JWT Security Definition
@@ -38,6 +44,9 @@ public static class SwaggerConfig
             {
                 { securityScheme, Array.Empty<string>() }
             });
+
+            // Add DateOnly schema filter for proper Swagger documentation
+            c.SchemaFilter<DateOnlySchemaFilter>();
 
             // Load XML comments for API doc
             var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";

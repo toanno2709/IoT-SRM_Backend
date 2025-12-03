@@ -8,6 +8,7 @@ public class GroupMemberDto
     public string? FullName { get; set; }
     public string? Email { get; set; }
     public string? RoleInGroup { get; set; }
+    public string? AvatarUrl { get; set; }  // Added for user profile picture
 }
 
 public class GroupResponseDto

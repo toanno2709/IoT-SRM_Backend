@@ -67,4 +67,18 @@ public class ProjectRepository : GenericRepository<Project>, IProjectRepository
                     .ThenInclude(c => c!.Instructor)
             .FirstOrDefaultAsync(p => p.ProjectId == projectId);
     }
+
+    public async Task<List<Project>> GetProjectsBySemesterAsync(int semesterId)
+    {
+        return await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Class)
+                    .ThenInclude(c => c!.Semester)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader)
+            .Include(p => p.FinalProjectSubmission)
+            .Where(p => p.Group != null && p.Group.Class != null && p.Group.Class.SemesterId == semesterId)
+            .OrderByDescending(p => p.FinalProjectSubmission != null ? p.FinalProjectSubmission.Grade : 0)
+            .ToListAsync();
+    }
 }
