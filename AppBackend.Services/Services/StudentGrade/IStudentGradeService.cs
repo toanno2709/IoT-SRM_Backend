@@ -23,4 +23,14 @@ public interface IStudentGradeService
     /// Get calculated overall grade for a project
     /// </summary>
     Task<ResultModel<ProjectOverallGradeDto>> GetProjectOverallGradeAsync(int projectId, int userId);
+
+    /// <summary>
+    /// Get all students grades in a class (for instructors/admins)
+    /// </summary>
+    Task<ResultModel<ClassGradesReportDto>> GetClassGradesAsync(int classId, int? instructorId = null);
+
+    /// <summary>
+    /// Export class grades to Excel file
+    /// </summary>
+    Task<ResultModel<ExportClassGradesResponseDto>> ExportClassGradesToExcelAsync(int classId, bool includeMilestoneDetails = true, bool includeFeedback = false, int? instructorId = null);
 }

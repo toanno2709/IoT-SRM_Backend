@@ -59,8 +59,7 @@ namespace AppBackend.Services.Services.Project
                 GroupId = dto.GroupId,
                 Title = dto.Title,
                 Description = dto.Description,
-                Purpose = dto.Purpose,
-                ExpectedTechnology = dto.ExpectedTechnology,
+                Component = dto.Component,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
             };
@@ -117,8 +116,7 @@ namespace AppBackend.Services.Services.Project
 
             if (!string.IsNullOrWhiteSpace(dto.Title)) project.Title = dto.Title;
             if (dto.Description != null) project.Description = dto.Description;
-            if (dto.Purpose != null) project.Purpose = dto.Purpose;
-            if (dto.ExpectedTechnology != null) project.ExpectedTechnology = dto.ExpectedTechnology;
+            if (dto.Component != null) project.Component = dto.Component;
             project.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -151,8 +149,7 @@ namespace AppBackend.Services.Services.Project
                     ProjectId = project.ProjectId,
                     Title = project.Title,
                     Description = project.Description,
-                    Purpose = project.Purpose,
-                    ExpectedTechnology = project.ExpectedTechnology,
+                    Component = project.Component,
                     Status = project.Status,
                     GroupId = project.GroupId ?? 0,
                     GroupName = project.Group?.GroupName,
@@ -289,14 +286,13 @@ namespace AppBackend.Services.Services.Project
                     ProjectId = p.ProjectId,
                     Title = p.Title,
                     Description = p.Description,
-                    Purpose = p.Purpose,
-                    ExpectedTechnology = p.ExpectedTechnology,
+                    Component = p.Component,
                     Status = p.Status,
                     LeaderId = p.Group?.LeaderId,
                     LeaderName = p.Group?.Leader?.FullName,
                     GroupId = p.GroupId ?? 0,
                     GroupName = p.Group?.GroupName,
-                    ClassId = p.Group?.ClassId,  // ✅ FIX: Add ClassId from Group
+                    ClassId = p.Group?.ClassId,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
                     MemberCount = p.Group?.GroupMembers?.Count ?? 0,
@@ -462,17 +458,16 @@ namespace AppBackend.Services.Services.Project
                     };
                 }
 
-                // ✅ FIX: Filter by projectId through MilestoneSubmission join
-                // Only get approval history records linked to actual milestone submissions (not general status updates with SubmissionId = 0)
+                // Get approval history records for this project
                 var historyRecords = await _db.ProjectApprovalHistories
                     .Include(h => h.Reviewer)
-                    .Include(h => h.Submission) // Include submission to access ProjectId
-                        .ThenInclude(s => s.MilestoneDef) // Include milestone for additional context
-                    .Where(h => h.SubmissionId != 0 && h.Submission.ProjectId == projectId) // ✅ Filter by ProjectId and exclude SubmissionId = 0
+                    .Include(h => h.Submission)
+                        .ThenInclude(s => s.MilestoneDef)
+                    .Where(h => h.Submission.ProjectId == projectId)
                     .OrderByDescending(h => h.ActedAt)
                     .ToListAsync();
 
-                // 3. Map to DTOs
+                // Map to DTOs
                 var historyDtos = historyRecords.Select(h => new ProjectStatusHistoryDto
                 {
                     HistoryId = h.HistoryId,
@@ -487,7 +482,9 @@ namespace AppBackend.Services.Services.Project
                 {
                     IsSuccess = true,
                     ResponseCode = CommonMessageConstants.SUCCESS,
-                    Message = $"Retrieved {historyDtos.Count} status history records for project {projectId}",
+                    Message = historyDtos.Count > 0 
+                        ? $"Retrieved {historyDtos.Count} status history records for project {projectId}"
+                        : "No approval history found for this project",
                     Data = historyDtos,
                     StatusCode = StatusCodes.Status200OK
                 };

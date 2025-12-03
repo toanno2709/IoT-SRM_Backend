@@ -66,6 +66,10 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<ClassConfiguration> ClassConfigurations { get; set; }
 
+    public virtual DbSet<Syllabus> Syllabi { get; set; }
+
+    public virtual DbSet<SyllabusFile> SyllabusFiles { get; set; }
+
     public virtual DbSet<User> Users { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -353,6 +357,37 @@ public partial class IotShowroomContext : DbContext
             entity.HasKey(e => e.UserId).HasName("PK__Users__B9BE370FE4DCC161");
 
             entity.HasOne(d => d.Role).WithMany(p => p.Users).HasConstraintName("FK_Users_Roles");
+        });
+
+        modelBuilder.Entity<Syllabus>(entity =>
+        {
+            entity.HasKey(e => e.SyllabusId).HasName("PK__Syllabi__");
+
+            entity.HasOne(d => d.Class).WithMany(p => p.Syllabi)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Syllabi_Class");
+
+            entity.HasOne(d => d.Creator).WithMany(p => p.Syllabi)
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Syllabi_Creator");
+        });
+
+        modelBuilder.Entity<SyllabusFile>(entity =>
+        {
+            entity.HasKey(e => e.FileId).HasName("PK__Syllabus_Files__");
+
+            entity.Property(e => e.UploadedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+
+            entity.HasOne(d => d.Syllabus).WithMany(p => p.SyllabusFiles)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_SyllabusFiles_Syllabus");
+
+            entity.HasOne(d => d.Uploader).WithMany(p => p.SyllabusFiles)
+                .HasForeignKey(d => d.UploadedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SyllabusFiles_Uploader");
         });
 
         OnModelCreatingPartial(modelBuilder);

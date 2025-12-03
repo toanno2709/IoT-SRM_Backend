@@ -6,6 +6,7 @@ using AppBackend.Attributes;
 using AppBackend.Services.Services.HallOfFame;
 using AppBackend.Services.Services.AdminReport;
 using AppBackend.Services.Services.ClassEnrollment;
+using AppBackend.Services.Services.StudentGrade;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -22,17 +23,20 @@ public class AdminController : ControllerBase
     private readonly IHallOfFameService _hallOfFameService;
     private readonly IAdminReportService _reportService;
     private readonly IClassEnrollmentService _classEnrollmentService;
+    private readonly IStudentGradeService _studentGradeService;
 
     public AdminController(
         IAdminDashboardService dashboardService,
         IHallOfFameService hallOfFameService,
         IAdminReportService reportService,
-        IClassEnrollmentService classEnrollmentService)
+        IClassEnrollmentService classEnrollmentService,
+        IStudentGradeService studentGradeService)
     {
         _dashboardService = dashboardService;
         _hallOfFameService = hallOfFameService;
         _reportService = reportService;
         _classEnrollmentService = classEnrollmentService;
+        _studentGradeService = studentGradeService;
     }
 
     #region Dashboard APIs

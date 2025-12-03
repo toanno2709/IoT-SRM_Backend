@@ -44,6 +44,8 @@ using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Repositories.Repositories.ClassConfigRepo;
 using AppBackend.Repositories.Repositories.NotificationRepo;
 using AppBackend.Services.Services.Notification;
+using AppBackend.Repositories.Repositories.SyllabusRepo;
+using AppBackend.Services.Services.Syllabus;
 
 namespace AppBackend.Extensions;
 
@@ -72,6 +74,7 @@ public static class ServicesConfig
         services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
         services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<ISyllabusRepository, SyllabusRepository>();
         #endregion
 
         #region Services
@@ -117,6 +120,7 @@ public static class ServicesConfig
         services.AddScoped<IFinalProjectService, FinalProjectService>();
         services.AddScoped<IClassConfigService, ClassConfigService>();
         services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
+        services.AddScoped<ISyllabusService, SyllabusService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
