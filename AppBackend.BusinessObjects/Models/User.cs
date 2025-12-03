@@ -92,4 +92,10 @@ public partial class User
 
   [InverseProperty("Uploader")]
   public virtual ICollection<SyllabusFile> SyllabusFiles { get; set; } = new List<SyllabusFile>();
+
+  [InverseProperty("Creator")]
+  public virtual ICollection<ProjectTemplate> ProjectTemplates { get; set; } = new List<ProjectTemplate>();
+
+  [InverseProperty("RegisteredByUser")]
+  public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
 }

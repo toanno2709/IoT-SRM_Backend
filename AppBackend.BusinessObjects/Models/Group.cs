@@ -47,4 +47,7 @@ public partial class Group
 
     [InverseProperty("Group")]
     public virtual ICollection<Project> Projects { get; set; } = new List<Project>();
+
+    [InverseProperty("Group")]
+    public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.StudentDashboard;
+using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.ApiModels.Commons;
 using System.Security.Claims;
 
@@ -15,13 +16,16 @@ namespace AppBackend.ApiCore.Controllers;
 public class StudentDashboardController : ControllerBase
 {
     private readonly IStudentDashboardService _dashboardService;
+    private readonly IProjectTemplateService _templateService;
     private readonly ILogger<StudentDashboardController> _logger;
 
     public StudentDashboardController(
         IStudentDashboardService dashboardService,
+        IProjectTemplateService templateService,
         ILogger<StudentDashboardController> logger)
     {
         _dashboardService = dashboardService;
+        _templateService = templateService;
         _logger = logger;
     }
 
@@ -291,4 +295,166 @@ public class StudentDashboardController : ControllerBase
 
         return StatusCode(result.StatusCode, result);
     }
+
+    #region Project Templates
+
+    /// <summary>
+    /// Get available project templates for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of available templates with registration status</returns>
+    /// <remarks>
+    /// Shows templates that:
+    /// - Are active (is_active = true)
+    /// - Have available slots (registered_count &lt; max_groups OR max_groups IS NULL)
+    /// 
+    /// Response includes:
+    /// - Template details (title, description, component)
+    /// - Available slots (null = unlimited)
+    /// - Whether current student's group already registered
+    /// - Milestone preview
+    /// 
+    /// Students can only see templates from classes they're enrolled in.
+    /// </remarks>
+    [HttpGet("classes/{classId}/templates")]
+    [ProducesResponseType(typeof(ResultModel<List<AvailableTemplateDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ResultModel<List<AvailableTemplateDto>>>> GetAvailableTemplates(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new ResultModel<List<AvailableTemplateDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {UserId} getting available templates for class {ClassId}", userId, classId);
+
+        var result = await _templateService.GetAvailableTemplatesAsync(classId, userId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Register group to a project template
+    /// </summary>
+    /// <param name="dto">Registration request (templateId and groupId)</param>
+    /// <returns>Registration confirmation with auto-created project details</returns>
+    /// <remarks>
+    /// Automatically creates a project from template when group registers.
+    /// 
+    /// Requirements:
+    /// - Must be group leader
+    /// - Group must not already have a project
+    /// - Template must have available slots
+    /// - Template must be active
+    /// 
+    /// Actions performed automatically:
+    /// 1. Creates a new project from template
+    /// 2. Copies milestones with calculated due dates
+    /// 3. Creates registration record (status = 'Active')
+    /// 4. Increments template's registered_count
+    /// 5. Sends notification to group members
+    /// 
+    /// Example due date calculation:
+    /// - Milestone 1: DaysDuration=7 ? Due: Today + 7 days
+    /// - Milestone 2: DaysDuration=14 ? Due: Milestone1.Due + 14 days
+    /// - Milestone 3: DaysDuration=7 ? Due: Milestone2.Due + 7 days
+    /// </remarks>
+    [HttpPost("templates/register")]
+    [ProducesResponseType(typeof(ResultModel<TemplateRegistrationResponseDto>), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ResultModel<TemplateRegistrationResponseDto>>> RegisterToTemplate(
+        [FromBody] RegisterTemplateDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<TemplateRegistrationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new ResultModel<TemplateRegistrationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {UserId} registering group {GroupId} to template {TemplateId}", 
+            userId, dto.GroupId, dto.TemplateId);
+
+        var result = await _templateService.RegisterToTemplateAsync(dto, userId);
+
+        if (result.IsSuccess)
+            return CreatedAtAction(nameof(GetAvailableTemplates), 
+                new { classId = result.Data!.GroupId }, result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Cancel template registration
+    /// </summary>
+    /// <param name="registrationId">Registration ID</param>
+    /// <returns>Cancellation confirmation</returns>
+    /// <remarks>
+    /// Only group leader can cancel registration.
+    /// Cannot cancel if project has submissions.
+    /// 
+    /// Actions:
+    /// - Sets registration status to 'Cancelled'
+    /// - Decrements template's registered_count
+    /// - Does NOT delete the project (keeps history)
+    /// </remarks>
+    [HttpDelete("templates/registrations/{registrationId}")]
+    [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ResultModel<bool>>> CancelRegistration(
+        [FromRoute] int registrationId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new ResultModel<bool>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {UserId} cancelling registration {RegistrationId}", userId, registrationId);
+
+        var result = await _templateService.CancelRegistrationAsync(registrationId, userId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
 }

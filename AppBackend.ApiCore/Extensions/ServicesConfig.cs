@@ -46,6 +46,8 @@ using AppBackend.Repositories.Repositories.NotificationRepo;
 using AppBackend.Services.Services.Notification;
 using AppBackend.Repositories.Repositories.SyllabusRepo;
 using AppBackend.Services.Services.Syllabus;
+using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
+using AppBackend.Services.Services.ProjectTemplate;
 
 namespace AppBackend.Extensions;
 
@@ -75,6 +77,7 @@ public static class ServicesConfig
         services.AddScoped<IClassConfigRepository, ClassConfigRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISyllabusRepository, SyllabusRepository>();
+        services.AddScoped<IProjectTemplateRepository, ProjectTemplateRepository>();
         #endregion
 
         #region Services
@@ -121,6 +124,7 @@ public static class ServicesConfig
         services.AddScoped<IClassConfigService, ClassConfigService>();
         services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
         services.AddScoped<ISyllabusService, SyllabusService>();
+        services.AddScoped<IProjectTemplateService, ProjectTemplateService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();

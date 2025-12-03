@@ -56,4 +56,7 @@ public partial class Class
 
     [InverseProperty("Class")]
     public virtual ICollection<Syllabus> Syllabi { get; set; } = new List<Syllabus>();
+
+    [InverseProperty("Class")]
+    public virtual ICollection<ProjectTemplate> ProjectTemplates { get; set; } = new List<ProjectTemplate>();
 }

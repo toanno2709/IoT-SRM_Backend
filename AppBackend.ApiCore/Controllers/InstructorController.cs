@@ -15,6 +15,7 @@ using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Services.Services.InstructorSubmissionView;
 using AppBackend.Services.Services.ClassEnrollment;
 using AppBackend.Services.Services.StudentGrade;
+using AppBackend.Services.Services.ProjectTemplate;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +40,7 @@ public class InstructorController : ControllerBase
     private readonly IInstructorSubmissionViewService _submissionViewService;
     private readonly IClassEnrollmentService _classEnrollmentService;
     private readonly IStudentGradeService _studentGradeService;
+    private readonly IProjectTemplateService _templateService;
 
     public InstructorController(
         IClassService classService, 
@@ -54,7 +56,8 @@ public class InstructorController : ControllerBase
         IClassConfigService classConfigService,
         IInstructorSubmissionViewService submissionViewService,
         IClassEnrollmentService classEnrollmentService,
-        IStudentGradeService studentGradeService)
+        IStudentGradeService studentGradeService,
+        IProjectTemplateService templateService)
     {
         _classService = classService;
         _projectService = projectService;
@@ -70,6 +73,7 @@ public class InstructorController : ControllerBase
         _submissionViewService = submissionViewService;
         _classEnrollmentService = classEnrollmentService;
         _studentGradeService = studentGradeService;
+        _templateService = templateService;
     }
 
     /// <summary>
@@ -834,5 +838,208 @@ public class InstructorController : ControllerBase
             message = result.Message
         });
     }
+
+    #region Project Templates
+
+    /// <summary>
+    /// Create a new project template for a class
+    /// </summary>
+    /// <param name="dto">Template creation data with milestones</param>
+    /// <returns>Created template with details</returns>
+    /// <remarks>
+    /// Allows instructor to create a project template that students can register to.
+    /// 
+    /// Features:
+    /// - Define project title, description, and components
+    /// - Set max groups limit (null = unlimited)
+    /// - Define milestones with order, weight, and duration
+    /// - Students will see available templates and can register their groups
+    /// 
+    /// When a group registers:
+    /// - System automatically creates a project from the template
+    /// - All milestones are created with calculated due dates
+    /// - registered_count is incremented
+    /// </remarks>
+    [HttpPost("templates")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> CreateTemplate(
+        [FromBody] CreateProjectTemplateDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback
+        }
+
+        var result = await _templateService.CreateTemplateAsync(dto, instructorId);
+
+        if (result.IsSuccess)
+            return CreatedAtAction(nameof(GetTemplateById), new { templateId = result.Data!.TemplateId }, result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all templates for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of templates with statistics</returns>
+    [HttpGet("classes/{classId}/templates")]
+    public async Task<ActionResult<ResultModel<List<ProjectTemplateResponseDto>>>> GetTemplatesByClass(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplatesByClassIdAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get template details by ID
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Template details with milestones</returns>
+    [HttpGet("templates/{templateId}")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> GetTemplateById(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateByIdAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Update template information
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <param name="dto">Update data</param>
+    /// <returns>Updated template</returns>
+    [HttpPut("templates/{templateId}")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> UpdateTemplate(
+        [FromRoute] int templateId,
+        [FromBody] UpdateProjectTemplateDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.UpdateTemplateAsync(templateId, dto, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Delete a template
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Success status</returns>
+    /// <remarks>
+    /// Can only delete templates with no active registrations
+    /// </remarks>
+    [HttpDelete("templates/{templateId}")]
+    public async Task<ActionResult<ResultModel<bool>>> DeleteTemplate([FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.DeleteTemplateAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all registrations for a template
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>List of groups registered to this template</returns>
+    [HttpGet("templates/{templateId}/registrations")]
+    public async Task<ActionResult<ResultModel<List<TemplateRegistrationListDto>>>> GetTemplateRegistrations(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateRegistrationsAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get template statistics
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Statistics including registered count, available slots, etc.</returns>
+    [HttpGet("templates/{templateId}/statistics")]
+    public async Task<ActionResult<ResultModel<TemplateStatisticsDto>>> GetTemplateStatistics(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateStatisticsAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
 }
 

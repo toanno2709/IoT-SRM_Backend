@@ -72,6 +72,12 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<User> Users { get; set; }
 
+    public virtual DbSet<ProjectTemplate> ProjectTemplates { get; set; }
+
+    public virtual DbSet<TemplateMilestone> TemplateMilestones { get; set; }
+
+    public virtual DbSet<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // Connection string will be configured in Startup/Program.cs
@@ -388,6 +394,64 @@ public partial class IotShowroomContext : DbContext
                 .HasForeignKey(d => d.UploadedBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_SyllabusFiles_Uploader");
+        });
+
+        modelBuilder.Entity<ProjectTemplate>(entity =>
+        {
+            entity.HasKey(e => e.TemplateId).HasName("PK__Project_Templates__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.RegisteredCount).HasDefaultValue(0);
+
+            entity.HasOne(d => d.Class).WithMany(p => p.ProjectTemplates)
+                .HasForeignKey(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ProjectTemplates_Class");
+
+            entity.HasOne(d => d.Creator).WithMany(p => p.ProjectTemplates)
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ProjectTemplates_Creator");
+        });
+
+        modelBuilder.Entity<TemplateMilestone>(entity =>
+        {
+            entity.HasKey(e => e.TemplateMilestoneId).HasName("PK__Template_Milestones__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.TemplateMilestones)
+                .HasForeignKey(d => d.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_TemplateMilestones_Template");
+        });
+
+        modelBuilder.Entity<ProjectTemplateRegistration>(entity =>
+        {
+            entity.HasKey(e => e.RegistrationId).HasName("PK__Project_Template_Registrations__");
+
+            entity.Property(e => e.RegisteredAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Active");
+
+            entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_TemplateRegistrations_Template");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.GroupId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_TemplateRegistrations_Group");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.ProjectId)
+                .HasConstraintName("FK_TemplateRegistrations_Project");
+
+            entity.HasOne(d => d.RegisteredByUser).WithMany(p => p.ProjectTemplateRegistrations)
+                .HasForeignKey(d => d.RegisteredBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_TemplateRegistrations_RegisteredBy");
         });
 
         OnModelCreatingPartial(modelBuilder);
