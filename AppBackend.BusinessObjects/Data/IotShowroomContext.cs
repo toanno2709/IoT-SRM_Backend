@@ -78,6 +78,10 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; }
 
+    public virtual DbSet<ClassGrader> ClassGraders { get; set; }
+
+    public virtual DbSet<FinalSubmissionGrade> FinalSubmissionGrades { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // Connection string will be configured in Startup/Program.cs
@@ -452,6 +456,45 @@ public partial class IotShowroomContext : DbContext
                 .HasForeignKey(d => d.RegisteredBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_TemplateRegistrations_RegisteredBy");
+        });
+
+        modelBuilder.Entity<ClassGrader>(entity =>
+        {
+            entity.HasKey(e => e.GraderId).HasName("PK__Class_Graders__");
+
+            entity.Property(e => e.AssignedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasOne(d => d.Class).WithMany(p => p.ClassGraders)
+                .HasForeignKey(d => d.ClassId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_ClassGraders_Class");
+
+            entity.HasOne(d => d.Instructor).WithMany(p => p.ClassGradersAsInstructor)
+                .HasForeignKey(d => d.InstructorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ClassGraders_Instructor");
+
+            entity.HasOne(d => d.AssignedByNavigation).WithMany(p => p.ClassGradersAsAssigner)
+                .HasForeignKey(d => d.AssignedBy)
+                .HasConstraintName("FK_ClassGraders_AssignedBy");
+        });
+
+        modelBuilder.Entity<FinalSubmissionGrade>(entity =>
+        {
+            entity.HasKey(e => e.GradeId).HasName("PK__Final_Submission_Grades__");
+
+            entity.Property(e => e.GradedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.FinalSubmission).WithMany(p => p.FinalSubmissionGrades)
+                .HasForeignKey(d => d.FinalSubmissionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FinalSubmissionGrades_FinalSubmission");
+
+            entity.HasOne(d => d.Instructor).WithMany(p => p.FinalSubmissionGrades)
+                .HasForeignKey(d => d.InstructorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_FinalSubmissionGrades_Instructor");
         });
 
         OnModelCreatingPartial(modelBuilder);

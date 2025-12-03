@@ -48,6 +48,7 @@ using AppBackend.Repositories.Repositories.SyllabusRepo;
 using AppBackend.Services.Services.Syllabus;
 using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
 using AppBackend.Services.Services.ProjectTemplate;
+using AppBackend.Services.Services.ClassGrader;
 
 namespace AppBackend.Extensions;
 
@@ -125,6 +126,7 @@ public static class ServicesConfig
         services.AddScoped<IInstructorSubmissionViewService, InstructorSubmissionViewService>();
         services.AddScoped<ISyllabusService, SyllabusService>();
         services.AddScoped<IProjectTemplateService, ProjectTemplateService>();
+        services.AddScoped<IClassGraderService, ClassGraderService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
