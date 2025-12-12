@@ -108,6 +108,11 @@ if (app.Environment.IsDevelopment())
         c.EnableFilter();
         c.ShowExtensions();
     });
+}
+
+// IMPORTANT: CORS must be configured BEFORE routing and authentication for SignalR to work
+if (app.Environment.IsDevelopment())
+{
     // Use permissive CORS in development for easier testing
     app.UseCors("AllowAllOrigins");
 }
@@ -119,13 +124,16 @@ else
 
 app.UseRateLimiter();   
 app.UseHttpsRedirection();
+app.UseRouting();  // Add explicit UseRouting
 app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Map endpoints AFTER authentication/authorization
 app.MapControllers();
 
-// Map SignalR Hub endpoint
+// Map SignalR Hub endpoint with CORS configuration
+// The hub will inherit the CORS policy from app.UseCors() above
 app.MapHub<AppBackend.ApiCore.Hubs.NotificationHub>("/notificationHub");
 
 app.Run();
