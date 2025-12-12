@@ -75,7 +75,39 @@ app.UseGlobalExceptionHandler();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        // Main API documentation
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "?? All APIs - v1");
+        
+        // Admin API groups - organized by functionality
+        c.SwaggerEndpoint("/swagger/admin-dashboard/swagger.json", "?? Admin - Dashboard");
+        c.SwaggerEndpoint("/swagger/admin-charts/swagger.json", "?? Admin - Charts");
+        c.SwaggerEndpoint("/swagger/admin-hall-of-fame/swagger.json", "?? Admin - Hall of Fame");
+        c.SwaggerEndpoint("/swagger/admin-reports/swagger.json", "?? Admin - Reports");
+        c.SwaggerEndpoint("/swagger/admin-class-management/swagger.json", "?? Admin - Class Management");
+        c.SwaggerEndpoint("/swagger/admin-grader-management/swagger.json", "?? Admin - Grader Management");
+        
+        // Instructor API groups - organized by functionality
+        c.SwaggerEndpoint("/swagger/instructor-dashboard/swagger.json", "????? Instructor - Dashboard");
+        c.SwaggerEndpoint("/swagger/instructor-classes/swagger.json", "????? Instructor - Classes");
+        c.SwaggerEndpoint("/swagger/instructor-groups/swagger.json", "????? Instructor - Groups");
+        c.SwaggerEndpoint("/swagger/instructor-projects/swagger.json", "????? Instructor - Projects");
+        c.SwaggerEndpoint("/swagger/instructor-grading/swagger.json", "????? Instructor - Grading");
+        c.SwaggerEndpoint("/swagger/instructor-submissions/swagger.json", "????? Instructor - Submissions");
+        c.SwaggerEndpoint("/swagger/instructor-templates/swagger.json", "????? Instructor - Templates");
+        c.SwaggerEndpoint("/swagger/instructor-announcements/swagger.json", "????? Instructor - Announcements");
+        
+        // UI Settings
+        c.RoutePrefix = "swagger";
+        c.DocumentTitle = "IoT Showroom API Documentation";
+        c.DefaultModelsExpandDepth(2);
+        c.DefaultModelExpandDepth(2);
+        c.DisplayRequestDuration();
+        c.EnableDeepLinking();
+        c.EnableFilter();
+        c.ShowExtensions();
+    });
     // Use permissive CORS in development for easier testing
     app.UseCors("AllowAllOrigins");
 }

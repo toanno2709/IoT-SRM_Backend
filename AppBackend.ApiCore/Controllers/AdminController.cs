@@ -59,6 +59,7 @@ public class AdminController : ControllerBase
     /// - System alerts
     /// </remarks>
     [HttpGet("dashboard/overview")]
+    [ApiExplorerSettings(GroupName = "admin-dashboard")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<AdminDashboardOverviewDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -87,6 +88,7 @@ public class AdminController : ControllerBase
     /// - System health (announcements, backup status, database size)
     /// </remarks>
     [HttpGet("dashboard/statistics")]
+    [ApiExplorerSettings(GroupName = "admin-dashboard")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<AdminStatisticsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -117,6 +119,7 @@ public class AdminController : ControllerBase
     /// - Color coding for each semester
     /// </remarks>
     [HttpGet("dashboard/charts/classes-by-semester")]
+    [ApiExplorerSettings(GroupName = "admin-charts")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassesBySemesterChartDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -143,6 +146,7 @@ public class AdminController : ControllerBase
     /// - Color coding by status
     /// </remarks>
     [HttpGet("dashboard/charts/project-distribution")]
+    [ApiExplorerSettings(GroupName = "admin-charts")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ProjectDistributionChartDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -169,6 +173,7 @@ public class AdminController : ControllerBase
     /// - Progress over time
     /// </remarks>
     [HttpGet("dashboard/charts/milestone-completion")]
+    [ApiExplorerSettings(GroupName = "admin-charts")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<MilestoneCompletionChartDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -197,6 +202,7 @@ public class AdminController : ControllerBase
     /// ordered by nomination date (most recent first).
     /// </remarks>
     [HttpGet("hall-of-fame")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<HallOfFameResponseDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -222,6 +228,7 @@ public class AdminController : ControllerBase
     /// ordered by rank (ascending) then by nomination date.
     /// </remarks>
     [HttpGet("hall-of-fame/{semesterId}")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<HallOfFameResponseDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -249,6 +256,7 @@ public class AdminController : ControllerBase
     /// Only includes projects with status "Completed" and a final score.
     /// </remarks>
     [HttpGet("leaderboard/{semesterId}/top-10")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [AllowAnonymous] // Public leaderboard
     [RateLimit(permitLimit: 60, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<LeaderboardResponseDto>), StatusCodes.Status200OK)]
@@ -279,6 +287,7 @@ public class AdminController : ControllerBase
     /// - If rank is not provided, it will be auto-calculated based on existing entries
     /// </remarks>
     [HttpPost("hall-of-fame")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<HallOfFameResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -322,6 +331,7 @@ public class AdminController : ControllerBase
     /// Allows admin to update the rank or note of a Hall of Fame entry.
     /// </remarks>
     [HttpPut("hall-of-fame/{id}")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<HallOfFameResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -361,6 +371,7 @@ public class AdminController : ControllerBase
     /// This does not affect the project itself, only its Hall of Fame nomination.
     /// </remarks>
     [HttpDelete("hall-of-fame/{id}")]
+    [ApiExplorerSettings(GroupName = "admin-hall-of-fame")]
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -393,6 +404,7 @@ public class AdminController : ControllerBase
     /// - Breakdown by semester with student, group, and project counts
     /// </remarks>
     [HttpGet("reports/classes-summary")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassesSummaryReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -420,6 +432,7 @@ public class AdminController : ControllerBase
     /// - Detailed workload per instructor (classes, students, groups, pending work)
     /// </remarks>
     [HttpGet("reports/instructors-workload")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<InstructorsWorkloadReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -448,6 +461,7 @@ public class AdminController : ControllerBase
     /// - Average group sizes
     /// </remarks>
     [HttpGet("reports/students-distribution")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<StudentsDistributionReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -476,6 +490,7 @@ public class AdminController : ControllerBase
     /// - Breakdown by semester
     /// </remarks>
     [HttpGet("reports/projects-status")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ProjectsStatusReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -504,6 +519,7 @@ public class AdminController : ControllerBase
     /// - Progress by semester
     /// </remarks>
     [HttpGet("reports/milestone-progress")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<MilestoneProgressReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -532,6 +548,7 @@ public class AdminController : ControllerBase
     /// - Grades breakdown by semester
     /// </remarks>
     [HttpGet("reports/grades-distribution")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<GradesDistributionReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -561,6 +578,7 @@ public class AdminController : ControllerBase
     /// Supports exporting various report types in Excel or PDF format with filters.
     /// </remarks>
     [HttpPost("reports/export")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 5, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ReportExportResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -614,6 +632,7 @@ public class AdminController : ControllerBase
     /// - System will try to add 30 students automatically
     /// </remarks>
     [HttpPost("classes/bulk-add-students")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<BulkAddStudentsResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -648,6 +667,7 @@ public class AdminController : ControllerBase
     /// <param name="request">Student ID to add</param>
     /// <returns>Enrollment result</returns>
     [HttpPost("classes/{classId}/students")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<AddStudentToClassResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -683,6 +703,7 @@ public class AdminController : ControllerBase
     /// <param name="classId">Class ID</param>
     /// <returns>List of enrolled students</returns>
     [HttpGet("classes/{classId}/students")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassStudentsResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -709,6 +730,7 @@ public class AdminController : ControllerBase
     /// Remove student from groups first before removing from class.
     /// </remarks>
     [HttpDelete("classes/{classId}/students/{studentId}")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -747,6 +769,7 @@ public class AdminController : ControllerBase
     /// - Assignment date and who assigned them
     /// </remarks>
     [HttpGet("classes/{classId}/graders")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<ClassGraderDetailDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -783,6 +806,7 @@ public class AdminController : ControllerBase
     /// - Returns assignment details with statistics
     /// </remarks>
     [HttpPost("graders/assign")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassGraderDetailDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -839,6 +863,7 @@ public class AdminController : ControllerBase
     /// - Error messages for failures
     /// </remarks>
     [HttpPost("graders/bulk-assign")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<BulkAssignGradersResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -889,6 +914,7 @@ public class AdminController : ControllerBase
     /// This prevents data integrity issues with existing grades.
     /// </remarks>
     [HttpDelete("graders/{graderId}")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -928,6 +954,7 @@ public class AdminController : ControllerBase
     /// Sends notification to instructor about status change.
     /// </remarks>
     [HttpPut("graders/{graderId}/status")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassGraderDetailDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -979,6 +1006,7 @@ public class AdminController : ControllerBase
     /// - Instructor assignment overview
     /// </remarks>
     [HttpGet("graders")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<ClassGraderSummaryDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -1030,6 +1058,7 @@ public class AdminController : ControllerBase
     /// - Quality assurance
     /// </remarks>
     [HttpGet("classes/{classId}/grading-statistics")]
+    [ApiExplorerSettings(GroupName = "admin-grader-management")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<ClassGradingStatisticsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

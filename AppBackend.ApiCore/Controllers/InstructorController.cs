@@ -84,10 +84,13 @@ public class InstructorController : ControllerBase
         _milestoneWarningService = milestoneWarningService;
     }
 
+    #region Dashboard APIs
+
     /// <summary>
     /// Lấy dashboard overview cho instructor (tổng quan)
     /// </summary>
     [HttpGet("dashboard")]
+    [ApiExplorerSettings(GroupName = "instructor-dashboard")]
     public async Task<ActionResult<ResultModel<InstructorDashboardResponseDto>>> GetDashboard()
     {
         // Get instructor ID from JWT token
@@ -110,24 +113,16 @@ public class InstructorController : ControllerBase
         return BadRequest(result);
     }
 
-    /// <summary>
-    /// Lấy danh sách thông báo đã gửi bởi giảng viên hiện tại
-    /// </summary>
-    [HttpGet("announcements")]
-    public async Task<ActionResult<ResultModel<List<AnnouncementResponseDto>>>> GetSentAnnouncements()
-    {
-        // TODO: Lấy admin/instructor id từ JWT
-        var adminUserId = 1;
-        var result = await _announcementService.GetAnnouncementsByAdminAsync(adminUserId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
+    #endregion
+
+    #region Classes & Configuration APIs
 
     /// <summary>
     /// Get all classes assigned to the current instructor
     /// </summary>
     /// <returns>List of assigned classes</returns>
     [HttpGet("classes")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
     public async Task<ActionResult<ResultModel<List<ClassResponseDto>>>> GetAssignedClasses()
     {
         // Get instructor ID from JWT token
@@ -151,194 +146,10 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
-    /// Chấm điểm milestone (UPDATED - dùng MilestoneEvaluation)
-    /// </summary>
-    [HttpPost("milestones/grade")]
-    public async Task<ActionResult<ResultModel<MilestoneGradeResponseDto>>> GradeMilestone([FromBody] MilestoneGradeRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<MilestoneGradeResponseDto> { IsSuccess = false, Message = "Invalid request" });
-        }
-        var result = await _milestoneGradingService.GradeMilestoneAsync(request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Lấy tất cả điểm milestone của một project
-    /// </summary>
-    [HttpGet("projects/{projectId}/grades")]
-    public async Task<ActionResult<ResultModel<List<MilestoneGradeResponseDto>>>> GetProjectGrades([FromRoute] int projectId)
-    {
-        var result = await _milestoneGradingService.GetGradesByProjectAsync(projectId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Lấy danh sách topic proposal chờ duyệt
-    /// </summary>
-    [HttpGet("pending-proposals")]
-    public async Task<ActionResult<ResultModel<List<TopicProposalResponseDto>>>> GetPendingProposals()
-    {
-        // TODO: lấy instructorId từ JWT
-        var instructorId = 1;
-        var result = await _topicProposalService.GetPendingProposalsAsync(instructorId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Duyệt topic proposal: Approve/Revision/Reject
-    /// </summary>
-    [HttpPost("proposals/{submissionId}/review")]
-    public async Task<ActionResult<ResultModel<TopicProposalReviewResponseDto>>> ReviewProposal(
-        [FromRoute] int submissionId, 
-        [FromBody] TopicProposalReviewRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<TopicProposalReviewResponseDto> 
-            { 
-                IsSuccess = false, 
-                Message = "Invalid request" 
-            });
-        }
-
-        // TODO: lấy instructorId từ JWT
-        var instructorId = 1;
-        var result = await _topicProposalService.ReviewProposalAsync(instructorId, submissionId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Gửi thông báo mới (giảng viên)
-    /// </summary>
-    [HttpPost("announcements")]
-    public async Task<ActionResult<ResultModel<AnnouncementResponseDto>>> CreateAnnouncement([FromBody] AnnouncementCreateRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<AnnouncementResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                Data = null
-            });
-        }
-
-        // TODO: Lấy admin id từ JWT
-        var adminUserId = 1;
-        var result = await _announcementService.CreateAnnouncementAsync(adminUserId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Get all groups in a class
-    /// </summary>
-    /// <param name="classId">Class Id</param>
-    /// <returns>List of groups</returns>
-    [HttpGet("classes/{classId}/groups")]
-    public async Task<ActionResult<ResultModel<List<GroupResponseDto>>>> GetGroupsInClass([FromRoute] int classId)
-    {
-        var result = await _groupService.GetGroupsByClassAsync(classId);
-        if (result.IsSuccess)
-        {
-            return Ok(result);
-        }
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Cập nhật thông tin group (tên, mô tả)
-    /// </summary>
-    [HttpPut("groups/{groupId}")]
-    public async Task<ActionResult<ResultModel<GroupResponseDto>>> UpdateGroup(
-        [FromRoute] int groupId,
-        [FromBody] GroupUpdateRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<GroupResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                Data = null
-            });
-        }
-
-        var result = await _groupManagementService.UpdateGroupInfoAsync(groupId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Thêm member vào group
-    /// </summary>
-    [HttpPost("groups/{groupId}/members")]
-    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> AddGroupMember(
-        [FromRoute] int groupId,
-        [FromBody] AddGroupMemberRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                Data = null
-            });
-        }
-
-        var result = await _groupManagementService.AddMemberAsync(groupId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Xóa member khỏi group
-    /// </summary>
-    [HttpDelete("groups/{groupId}/members/{userId}")]
-    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> RemoveGroupMember(
-        [FromRoute] int groupId,
-        [FromRoute] int userId)
-    {
-        var result = await _groupManagementService.RemoveMemberAsync(groupId, userId);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
-    /// Cập nhật role của member trong group
-    /// </summary>
-    [HttpPut("groups/{groupId}/members/{userId}/role")]
-    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> UpdateMemberRole(
-        [FromRoute] int groupId,
-        [FromRoute] int userId,
-        [FromBody] UpdateMemberRoleRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                Data = null
-            });
-        }
-
-        var result = await _groupManagementService.UpdateMemberRoleAsync(groupId, userId, request);
-        if (result.IsSuccess) return Ok(result);
-        return BadRequest(result);
-    }
-
-    /// <summary>
     /// Lấy thống kê lớp học (submission rate, average score, etc.)
     /// </summary>
     [HttpGet("classes/{classId}/stats")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
     public async Task<ActionResult<ResultModel<ClassStatsResponseDto>>> GetClassStats([FromRoute] int classId)
     {
         var result = await _classStatsService.GetClassStatsAsync(classId);
@@ -347,46 +158,12 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
-    /// Grade final project submission (Instructor only)
-    /// </summary>
-    /// <param name="projectId">Project ID</param>
-    /// <param name="request">Grade and feedback</param>
-    /// <returns>Graded submission</returns>
-    [HttpPost("projects/{projectId}/final-grade")]
-    public async Task<ActionResult<ResultModel<FinalProjectSubmissionResponseDto>>> GradeFinalProject(
-        [FromRoute] int projectId,
-        [FromBody] FinalProjectGradeRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<FinalProjectSubmissionResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request"
-            });
-        }
-
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            // TODO: Get from JWT - temporary fallback
-            instructorId = 1;
-        }
-
-        var result = await _finalProjectService.GradeFinalProjectAsync(projectId, request, instructorId);
-        
-        if (result.IsSuccess) 
-            return Ok(result);
-        
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
     /// Get class configuration (max groups, member limits, deadlines)
     /// </summary>
     /// <param name="classId">Class ID</param>
     /// <returns>Class configuration</returns>
     [HttpGet("classes/{classId}/config")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
     public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> GetClassConfig([FromRoute] int classId)
     {
         var result = await _classConfigService.GetConfigAsync(classId);
@@ -411,6 +188,7 @@ public class InstructorController : ControllerBase
     /// - Whether students can create groups
     /// </remarks>
     [HttpPut("classes/{classId}/config")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
     public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> UpdateClassConfig(
         [FromRoute] int classId,
         [FromBody] ClassConfigUpdateDto request)
@@ -440,6 +218,544 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Get unassigned students in a class (students without groups)
+    /// </summary>
+    [HttpGet("classes/{classId}/unassigned-students")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    public async Task<ActionResult<ResultModel<UnassignedStudentsResponseDto>>> GetUnassignedStudents(
+        [FromRoute] int classId,
+        [FromQuery] string? q = null)
+    {
+        var result = await _classEnrollmentService.GetUnassignedStudentsAsync(classId, q);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all student grades in a class
+    /// </summary>
+    [HttpGet("classes/{classId}/grades")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<ClassGradesReportDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassGradesReportDto>>> GetClassGrades([FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1; // Fallback for testing
+        }
+
+        var result = await _studentGradeService.GetClassGradesAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Export class grades to Excel file
+    /// </summary>
+    [HttpGet("classes/{classId}/grades/export")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExportClassGradesToExcel(
+        [FromRoute] int classId,
+        [FromQuery] bool includeMilestoneDetails = true,
+        [FromQuery] bool includeFeedback = false)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1; // Fallback for testing
+        }
+
+        var result = await _studentGradeService.ExportClassGradesToExcelAsync(
+            classId, 
+            includeMilestoneDetails, 
+            includeFeedback, 
+            instructorId);
+
+        if (result.IsSuccess && result.Data != null)
+        {
+            return File(
+                result.Data.FileContent,
+                result.Data.ContentType,
+                result.Data.FileName);
+        }
+
+        return StatusCode(result.StatusCode, new
+        {
+            isSuccess = false,
+            message = result.Message
+        });
+    }
+
+    /// <summary>
+    /// Get all projects with incomplete milestone weights in a class
+    /// </summary>
+    [HttpGet("classes/{classId}/milestone-warnings")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<List<ProjectMilestoneWarningDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<ProjectMilestoneWarningDto>>>> GetProjectsWithIncompleteMilestones(
+        [FromRoute] int classId)
+    {
+        var result = await _milestoneWarningService.GetProjectsWithIncompleteMilestonesAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Groups Management APIs
+
+    /// <summary>
+    /// Get all groups in a class
+    /// </summary>
+    [HttpGet("classes/{classId}/groups")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    public async Task<ActionResult<ResultModel<List<GroupResponseDto>>>> GetGroupsInClass([FromRoute] int classId)
+    {
+        var result = await _groupService.GetGroupsByClassAsync(classId);
+        if (result.IsSuccess)
+        {
+            return Ok(result);
+        }
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Cập nhật thông tin group (tên, mô tả)
+    /// </summary>
+    [HttpPut("groups/{groupId}")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    public async Task<ActionResult<ResultModel<GroupResponseDto>>> UpdateGroup(
+        [FromRoute] int groupId,
+        [FromBody] GroupUpdateRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.UpdateGroupInfoAsync(groupId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Thêm member vào group
+    /// </summary>
+    [HttpPost("groups/{groupId}/members")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> AddGroupMember(
+        [FromRoute] int groupId,
+        [FromBody] AddGroupMemberRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.AddMemberAsync(groupId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Xóa member khỏi group
+    /// </summary>
+    [HttpDelete("groups/{groupId}/members/{userId}")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> RemoveGroupMember(
+        [FromRoute] int groupId,
+        [FromRoute] int userId)
+    {
+        var result = await _groupManagementService.RemoveMemberAsync(groupId, userId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Cập nhật role của member trong group
+    /// </summary>
+    [HttpPut("groups/{groupId}/members/{userId}/role")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    public async Task<ActionResult<ResultModel<GroupMemberOperationResponseDto>>> UpdateMemberRole(
+        [FromRoute] int groupId,
+        [FromRoute] int userId,
+        [FromBody] UpdateMemberRoleRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GroupMemberOperationResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        var result = await _groupManagementService.UpdateMemberRoleAsync(groupId, userId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    #endregion
+
+    #region Projects Management APIs
+
+    /// <summary>
+    /// Lấy danh sách topic proposal chờ duyệt
+    /// </summary>
+    [HttpGet("pending-proposals")]
+    [ApiExplorerSettings(GroupName = "instructor-projects")]
+    public async Task<ActionResult<ResultModel<List<TopicProposalResponseDto>>>> GetPendingProposals()
+    {
+        // TODO: lấy instructorId từ JWT
+        var instructorId = 1;
+        var result = await _topicProposalService.GetPendingProposalsAsync(instructorId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Duyệt topic proposal: Approve/Revision/Reject
+    /// </summary>
+    [HttpPost("proposals/{submissionId}/review")]
+    [ApiExplorerSettings(GroupName = "instructor-projects")]
+    public async Task<ActionResult<ResultModel<TopicProposalReviewResponseDto>>> ReviewProposal(
+        [FromRoute] int submissionId, 
+        [FromBody] TopicProposalReviewRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<TopicProposalReviewResponseDto> 
+            { 
+                IsSuccess = false, 
+                Message = "Invalid request" 
+            });
+        }
+
+        // TODO: lấy instructorId từ JWT
+        var instructorId = 1;
+        var result = await _topicProposalService.ReviewProposalAsync(instructorId, submissionId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Update project status with comment (Instructor only)
+    /// </summary>
+    [HttpPut("projects/{projectId}/status")]
+    [ApiExplorerSettings(GroupName = "instructor-projects")]
+    public async Task<ActionResult<ResultModel<UpdateProjectStatusResponseDto>>> UpdateProjectStatus(
+        [FromRoute] int projectId,
+        [FromBody] UpdateProjectStatusRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<UpdateProjectStatusResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var result = await _projectService.UpdateProjectStatusAsync(projectId, request, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get milestone weight summary for a specific project
+    /// </summary>
+    [HttpGet("projects/{projectId}/milestone-weights")]
+    [ApiExplorerSettings(GroupName = "instructor-projects")]
+    [ProducesResponseType(typeof(ResultModel<ProjectMilestoneWeightDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ProjectMilestoneWeightDto>>> GetProjectMilestoneWeights(
+        [FromRoute] int projectId)
+    {
+        var result = await _milestoneWarningService.GetProjectMilestoneWeightsAsync(projectId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Grading APIs
+
+    /// <summary>
+    /// Chấm điểm milestone (UPDATED - dùng MilestoneEvaluation)
+    /// </summary>
+    [HttpPost("milestones/grade")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    public async Task<ActionResult<ResultModel<MilestoneGradeResponseDto>>> GradeMilestone([FromBody] MilestoneGradeRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<MilestoneGradeResponseDto> { IsSuccess = false, Message = "Invalid request" });
+        }
+        var result = await _milestoneGradingService.GradeMilestoneAsync(request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Lấy tất cả điểm milestone của một project
+    /// </summary>
+    [HttpGet("projects/{projectId}/grades")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    public async Task<ActionResult<ResultModel<List<MilestoneGradeResponseDto>>>> GetProjectGrades([FromRoute] int projectId)
+    {
+        var result = await _milestoneGradingService.GetGradesByProjectAsync(projectId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Grade final project submission (Instructor only)
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="request">Grade and feedback</param>
+    /// <returns>Graded submission</returns>
+    [HttpPost("projects/{projectId}/final-grade")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    public async Task<ActionResult<ResultModel<FinalProjectSubmissionResponseDto>>> GradeFinalProject(
+        [FromRoute] int projectId,
+        [FromBody] FinalProjectGradeRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<FinalProjectSubmissionResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            // TODO: Get from JWT - temporary fallback
+            instructorId = 1;
+        }
+
+        var result = await _finalProjectService.GradeFinalProjectAsync(projectId, request, instructorId);
+        
+        if (result.IsSuccess) 
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all classes where instructor is assigned as grader
+    /// </summary>
+    /// <returns>List of classes with grading statistics</returns>
+    /// <remarks>
+    /// Returns classes where the current instructor is assigned to grade final projects.
+    /// This is separate from the main instructor assignment - multiple instructors can
+    /// be assigned to grade projects in the same class.
+    /// 
+    /// Response includes:
+    /// - Class information
+    /// - Total projects and approved projects
+    /// - Projects with final submissions
+    /// - Projects graded by this instructor
+    /// - Projects pending this instructor's grade
+    /// </remarks>
+    [HttpGet("grading/classes")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<List<GradingClassDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<GradingClassDto>>>> GetGradingClasses()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetGradingClassesAsync(instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all approved projects in a class for grading
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of approved projects with grading status</returns>
+    /// <remarks>
+    /// Returns all projects with status "Approved" in the specified class.
+    /// Only accessible to instructors assigned to grade this class.
+    /// 
+    /// Response includes:
+    /// - Project and group information
+    /// - Final submission status
+    /// - Grading status (has my grade, average grade, total grades)
+    /// - Whether submission is pending this instructor's grade
+    /// </remarks>
+    [HttpGet("grading/classes/{classId}/projects")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<List<ApprovedProjectForGradingDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<ApprovedProjectForGradingDto>>>> GetApprovedProjectsForGrading(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetApprovedProjectsForGradingAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get detailed final submission for grading
+    /// </summary>
+    /// <param name="finalSubmissionId">Final submission ID</param>
+    /// <returns>Detailed submission with all files and grades</returns>
+    /// <remarks>
+    /// Returns detailed information about a final submission for grading purposes.
+    /// Only accessible to instructors assigned to grade the class.
+    /// 
+    /// Response includes:
+    /// - All submission files and URLs
+    /// - Group members
+    /// - All grades from all assigned instructors
+    /// - Current instructor's grade (if already graded)
+    /// - Average grade
+    /// </remarks>
+    [HttpGet("grading/submissions/{finalSubmissionId}")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<GraderFinalSubmissionDetailDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<GraderFinalSubmissionDetailDto>>> GetFinalSubmissionForGrading(
+        [FromRoute] int finalSubmissionId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GetFinalSubmissionForGradingAsync(finalSubmissionId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Grade or update grade for final submission
+    /// </summary>
+    /// <param name="finalSubmissionId">Final submission ID</param>
+    /// <param name="request">Grade and feedback</param>
+    /// <returns>Grading result with average grade from all instructors</returns>
+    /// <remarks>
+    /// Allows assigned instructor to grade or update their grade for a final submission.
+    /// 
+    /// Multiple instructors can grade the same submission independently.
+    /// The system automatically calculates the average grade from all instructor grades.
+    /// 
+    /// Actions performed:
+    /// - Creates or updates instructor's grade in Final_Submission_Grades table
+    /// - Trigger automatically recalculates average and updates Final_Project_Submissions.grade
+    /// - Sends notification to all group members
+    /// 
+    /// Example: If 2 instructors grade the same project as 85 and 90, 
+    /// the average grade will be 87.5
+    /// </remarks>
+    [HttpPost("grading/submissions/{finalSubmissionId}/grade")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<GraderFinalProjectGradeResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<GraderFinalProjectGradeResponseDto>>> GradeFinalSubmission(
+        [FromRoute] int finalSubmissionId,
+        [FromBody] GraderFinalProjectGradeRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<GraderFinalProjectGradeResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _classGraderService.GradeFinalSubmissionAsync(finalSubmissionId, request, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Manually trigger milestone weight check (Admin/Testing only)
+    /// </summary>
+    [HttpPost("milestone-warnings/check-all")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<MilestoneWarningResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<MilestoneWarningResultDto>>> TriggerMilestoneWeightCheck()
+    {
+        var result = await _milestoneWarningService.CheckAndSendMilestoneWarningsAsync();
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Submissions Management APIs
+
+    /// <summary>
     /// Get all submissions for a specific milestone (all groups)
     /// </summary>
     /// <param name="milestoneId">Milestone ID</param>
@@ -449,6 +765,7 @@ public class InstructorController : ControllerBase
     /// <param name="sortOrder">Sort order: asc or desc (optional)</param>
     /// <returns>List of all submissions for the milestone</returns>
     [HttpGet("milestones/{milestoneId}/submissions")]
+    [ApiExplorerSettings(GroupName = "instructor-submissions")]
     public async Task<ActionResult<ResultModel<List<InstructorSubmissionViewDto>>>> GetMilestoneSubmissions(
         [FromRoute] int milestoneId,
         [FromQuery] bool? isGraded = null,
@@ -486,6 +803,7 @@ public class InstructorController : ControllerBase
     /// <param name="isGraded">Filter by grading status (optional)</param>
     /// <returns>Class submission overview with statistics</returns>
     [HttpGet("classes/{classId}/submissions")]
+    [ApiExplorerSettings(GroupName = "instructor-submissions")]
     public async Task<ActionResult<ResultModel<ClassSubmissionOverviewDto>>> GetClassSubmissions(
         [FromRoute] int classId,
         [FromQuery] int? milestoneId = null,
@@ -517,6 +835,7 @@ public class InstructorController : ControllerBase
     /// <param name="submissionId">Submission ID</param>
     /// <returns>Submission details with all files and download URLs</returns>
     [HttpGet("submissions/{submissionId}/files")]
+    [ApiExplorerSettings(GroupName = "instructor-submissions")]
     public async Task<ActionResult<ResultModel<InstructorSubmissionFilesDto>>> GetSubmissionFiles(
         [FromRoute] int submissionId)
     {
@@ -535,10 +854,291 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Get all submissions that need grading (across all classes or specific class)
+    /// </summary>
+    /// <param name="classId">Filter by class ID (optional)</param>
+    /// <returns>List of submissions pending grading</returns>
+    [HttpGet("submissions/pending-grading")]
+    [ApiExplorerSettings(GroupName = "instructor-submissions")]
+    public async Task<ActionResult<ResultModel<List<InstructorSubmissionViewDto>>>> GetPendingGradingSubmissions(
+        [FromQuery] int? classId = null)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 1;
+        }
+
+        var result = await _submissionViewService.GetPendingGradingSubmissionsAsync(instructorId, classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Project Templates APIs
+
+    /// <summary>
+    /// Create a new project template for a class
+    /// </summary>
+    /// <param name="dto">Template creation data with milestones</param>
+    /// <returns>Created template with details</returns>
+    /// <remarks>
+    /// Allows instructor to create a project template that students can register to.
+    /// 
+    /// Features:
+    /// - Define project title, description, and components
+    /// - Set max groups limit (null = unlimited)
+    /// - Define milestones with order, weight, and duration
+    /// - Students will see available templates and can register their groups
+    /// 
+    /// When a group registers:
+    /// - System automatically creates a project from the template
+    /// - All milestones are created with calculated due dates
+    /// - registered_count is incremented
+    /// </remarks>
+    [HttpPost("templates")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> CreateTemplate(
+        [FromBody] CreateProjectTemplateDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback
+        }
+
+        var result = await _templateService.CreateTemplateAsync(dto, instructorId);
+
+        if (result.IsSuccess)
+            return CreatedAtAction(nameof(GetTemplateById), new { templateId = result.Data!.TemplateId }, result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all templates for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of templates with statistics</returns>
+    [HttpGet("classes/{classId}/templates")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<List<ProjectTemplateResponseDto>>>> GetTemplatesByClass(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplatesByClassIdAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get template details by ID
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Template details with milestones</returns>
+    [HttpGet("templates/{templateId}")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> GetTemplateById(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateByIdAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Update template information
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <param name="dto">Update data</param>
+    /// <returns>Updated template</returns>
+    [HttpPut("templates/{templateId}")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> UpdateTemplate(
+        [FromRoute] int templateId,
+        [FromBody] UpdateProjectTemplateDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.UpdateTemplateAsync(templateId, dto, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Delete a template
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Success status</returns>
+    /// <remarks>
+    /// Can only delete templates with no active registrations
+    /// </remarks>
+    [HttpDelete("templates/{templateId}")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<bool>>> DeleteTemplate([FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.DeleteTemplateAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all registrations for a template
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>List of groups registered to this template</returns>
+    [HttpGet("templates/{templateId}/registrations")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<List<TemplateRegistrationListDto>>>> GetTemplateRegistrations(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateRegistrationsAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get template statistics
+    /// </summary>
+    /// <param name="templateId">Template ID</param>
+    /// <returns>Statistics including registered count, available slots, etc.</returns>
+    [HttpGet("templates/{templateId}/statistics")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    public async Task<ActionResult<ResultModel<TemplateStatisticsDto>>> GetTemplateStatistics(
+        [FromRoute] int templateId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2;
+        }
+
+        var result = await _templateService.GetTemplateStatisticsAsync(templateId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Announcements APIs
+
+    /// <summary>
+    /// Lấy danh sách thông báo đã gửi bởi giảng viên hiện tại
+    /// </summary>
+    [HttpGet("announcements")]
+    [ApiExplorerSettings(GroupName = "instructor-announcements")]
+    public async Task<ActionResult<ResultModel<List<AnnouncementResponseDto>>>> GetSentAnnouncements()
+    {
+        // TODO: Lấy admin/instructor id từ JWT
+        var adminUserId = 1;
+        var result = await _announcementService.GetAnnouncementsByAdminAsync(adminUserId);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Gửi thông báo mới (giảng viên)
+    /// </summary>
+    [HttpPost("announcements")]
+    [ApiExplorerSettings(GroupName = "instructor-announcements")]
+    public async Task<ActionResult<ResultModel<AnnouncementResponseDto>>> CreateAnnouncement([FromBody] AnnouncementCreateRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<AnnouncementResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid request",
+                Data = null
+            });
+        }
+
+        // TODO: Lấy admin id từ JWT
+        var adminUserId = 1;
+        var result = await _announcementService.CreateAnnouncementAsync(adminUserId, request);
+        if (result.IsSuccess) return Ok(result);
+        return BadRequest(result);
+    }
+
+    #endregion
+
+    #region Debug Endpoints
+
+    /// <summary>
     /// Debug endpoint to check database connection and data integrity
     /// </summary>
     [HttpGet("debug/database-check")]
     [AllowAnonymous]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public async Task<IActionResult> DebugDatabaseCheck()
     {
         // Inject DbContext for debugging
@@ -590,6 +1190,7 @@ public class InstructorController : ControllerBase
     /// </summary>
     [HttpGet("debug/submissions/{milestoneId}")]
     [AllowAnonymous]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public async Task<IActionResult> DebugSubmissionData([FromRoute] int milestoneId)
     {
         var _context = HttpContext.RequestServices.GetRequiredService<AppBackend.BusinessObjects.Data.IotShowroomContext>();
@@ -651,675 +1252,6 @@ public class InstructorController : ControllerBase
             Classes = classes,
             Note = "Check if submissions have valid project->group->class->instructor chain"
         });
-    }
-
-    /// <summary>
-    /// Get all submissions that need grading (across all classes or specific class)
-    /// </summary>
-    /// <param name="classId">Filter by class ID (optional)</param>
-    /// <returns>List of submissions pending grading</returns>
-    [HttpGet("submissions/pending-grading")]
-    public async Task<ActionResult<ResultModel<List<InstructorSubmissionViewDto>>>> GetPendingGradingSubmissions(
-        [FromQuery] int? classId = null)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 1;
-        }
-
-        var result = await _submissionViewService.GetPendingGradingSubmissionsAsync(instructorId, classId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Update project status with comment (Instructor only)
-    /// </summary>
-    /// <param name="projectId">Project ID</param>
-    /// <param name="request">Status and comment</param>
-    /// <returns>Updated project status details</returns>
-    /// <remarks>
-    /// Allows instructor to update project status and add comment. 
-    /// Students in the group will be notified and can view the comment.
-    /// 
-    /// Common status values:
-    /// - Approved: Project is approved to proceed
-    /// - Rejected: Project is rejected  
-    /// - Revision: Project needs changes
-    /// - In Progress: Project is actively being worked on
-    /// - Completed: Project is finished
-    /// </remarks>
-    [HttpPut("projects/{projectId}/status")]
-    public async Task<ActionResult<ResultModel<UpdateProjectStatusResponseDto>>> UpdateProjectStatus(
-        [FromRoute] int projectId,
-        [FromBody] UpdateProjectStatusRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<UpdateProjectStatusResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                StatusCode = StatusCodes.Status400BadRequest
-            });
-        }
-
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 1;
-        }
-
-        var result = await _projectService.UpdateProjectStatusAsync(projectId, request, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get unassigned students in a class (students without groups)
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <param name="q">Optional search query for student name or email</param>
-    /// <returns>List of students not assigned to any group</returns>
-    /// <remarks>
-    /// Returns students who are enrolled in the class but are not members of any group.
-    /// Useful for instructors to identify which students need group assignments.
-    /// 
-    /// Query parameter 'q' allows filtering by student name or email (case-insensitive).
-    /// </remarks>
-    [HttpGet("classes/{classId}/unassigned-students")]
-    public async Task<ActionResult<ResultModel<UnassignedStudentsResponseDto>>> GetUnassignedStudents(
-        [FromRoute] int classId,
-        [FromQuery] string? q = null)
-    {
-        var result = await _classEnrollmentService.GetUnassignedStudentsAsync(classId, q);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get all student grades in a class
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <returns>Comprehensive grades report for all students in the class</returns>
-    /// <remarks>
-    /// Returns detailed grade information for all students enrolled in the class:
-    /// - Student information (ID, name, email)
-    /// - Group and project information
-    /// - Individual milestone grades
-    /// - Overall calculated grade
-    /// - Project status
-    /// 
-    /// Only the instructor assigned to the class can access this endpoint.
-    /// </remarks>
-    [HttpGet("classes/{classId}/grades")]
-    [ProducesResponseType(typeof(ResultModel<ClassGradesReportDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<ClassGradesReportDto>>> GetClassGrades([FromRoute] int classId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 1; // Fallback for testing
-        }
-
-        var result = await _studentGradeService.GetClassGradesAsync(classId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Export class grades to Excel file
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <param name="includeMilestoneDetails">Include individual milestone grades (default: true)</param>
-    /// <param name="includeFeedback">Include feedback comments (default: false)</param>
-    /// <returns>Excel file with all student grades</returns>
-    /// <remarks>
-    /// Downloads an Excel file containing:
-    /// - Class information (name, semester, instructor)
-    /// - All enrolled students
-    /// - Group assignments
-    /// - Project titles
-    /// - Individual milestone grades (if includeMilestoneDetails = true)
-    /// - Overall calculated grades
-    /// - Project status
-    /// 
-    /// The Excel file includes:
-    /// - Color-coded grades (green: ≥80, yellow: 50-79, red: &lt;50)
-    /// - Auto-fitted columns
-    /// - Formatted headers
-    /// - Summary statistics
-    /// 
-    /// Example filename: ClassGrades_SE1234_20250120_143025.xlsx
-    /// </remarks>
-    [HttpGet("classes/{classId}/grades/export")]
-    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> ExportClassGradesToExcel(
-        [FromRoute] int classId,
-        [FromQuery] bool includeMilestoneDetails = true,
-        [FromQuery] bool includeFeedback = false)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 1; // Fallback for testing
-        }
-
-        var result = await _studentGradeService.ExportClassGradesToExcelAsync(
-            classId, 
-            includeMilestoneDetails, 
-            includeFeedback, 
-            instructorId);
-
-        if (result.IsSuccess && result.Data != null)
-        {
-            return File(
-                result.Data.FileContent,
-                result.Data.ContentType,
-                result.Data.FileName);
-        }
-
-        return StatusCode(result.StatusCode, new
-        {
-            isSuccess = false,
-            message = result.Message
-        });
-    }
-
-    #region Project Templates
-
-    /// <summary>
-    /// Create a new project template for a class
-    /// </summary>
-    /// <param name="dto">Template creation data with milestones</param>
-    /// <returns>Created template with details</returns>
-    /// <remarks>
-    /// Allows instructor to create a project template that students can register to.
-    /// 
-    /// Features:
-    /// - Define project title, description, and components
-    /// - Set max groups limit (null = unlimited)
-    /// - Define milestones with order, weight, and duration
-    /// - Students will see available templates and can register their groups
-    /// 
-    /// When a group registers:
-    /// - System automatically creates a project from the template
-    /// - All milestones are created with calculated due dates
-    /// - registered_count is incremented
-    /// </remarks>
-    [HttpPost("templates")]
-    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> CreateTemplate(
-        [FromBody] CreateProjectTemplateDto dto)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                StatusCode = StatusCodes.Status400BadRequest
-            });
-        }
-
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2; // Fallback
-        }
-
-        var result = await _templateService.CreateTemplateAsync(dto, instructorId);
-
-        if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetTemplateById), new { templateId = result.Data!.TemplateId }, result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get all templates for a class
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <returns>List of templates with statistics</returns>
-    [HttpGet("classes/{classId}/templates")]
-    public async Task<ActionResult<ResultModel<List<ProjectTemplateResponseDto>>>> GetTemplatesByClass(
-        [FromRoute] int classId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.GetTemplatesByClassIdAsync(classId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get template details by ID
-    /// </summary>
-    /// <param name="templateId">Template ID</param>
-    /// <returns>Template details with milestones</returns>
-    [HttpGet("templates/{templateId}")]
-    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> GetTemplateById(
-        [FromRoute] int templateId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.GetTemplateByIdAsync(templateId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Update template information
-    /// </summary>
-    /// <param name="templateId">Template ID</param>
-    /// <param name="dto">Update data</param>
-    /// <returns>Updated template</returns>
-    [HttpPut("templates/{templateId}")]
-    public async Task<ActionResult<ResultModel<ProjectTemplateResponseDto>>> UpdateTemplate(
-        [FromRoute] int templateId,
-        [FromBody] UpdateProjectTemplateDto dto)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<ProjectTemplateResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                StatusCode = StatusCodes.Status400BadRequest
-            });
-        }
-
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.UpdateTemplateAsync(templateId, dto, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Delete a template
-    /// </summary>
-    /// <param name="templateId">Template ID</param>
-    /// <returns>Success status</returns>
-    /// <remarks>
-    /// Can only delete templates with no active registrations
-    /// </remarks>
-    [HttpDelete("templates/{templateId}")]
-    public async Task<ActionResult<ResultModel<bool>>> DeleteTemplate([FromRoute] int templateId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.DeleteTemplateAsync(templateId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get all registrations for a template
-    /// </summary>
-    /// <param name="templateId">Template ID</param>
-    /// <returns>List of groups registered to this template</returns>
-    [HttpGet("templates/{templateId}/registrations")]
-    public async Task<ActionResult<ResultModel<List<TemplateRegistrationListDto>>>> GetTemplateRegistrations(
-        [FromRoute] int templateId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.GetTemplateRegistrationsAsync(templateId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get template statistics
-    /// </summary>
-    /// <param name="templateId">Template ID</param>
-    /// <returns>Statistics including registered count, available slots, etc.</returns>
-    [HttpGet("templates/{templateId}/statistics")]
-    public async Task<ActionResult<ResultModel<TemplateStatisticsDto>>> GetTemplateStatistics(
-        [FromRoute] int templateId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2;
-        }
-
-        var result = await _templateService.GetTemplateStatisticsAsync(templateId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    #endregion
-
-    #region Class Grading Assignment
-
-    /// <summary>
-    /// Get all classes where instructor is assigned as grader
-    /// </summary>
-    /// <returns>List of classes with grading statistics</returns>
-    /// <remarks>
-    /// Returns classes where the current instructor is assigned to grade final projects.
-    /// This is separate from the main instructor assignment - multiple instructors can
-    /// be assigned to grade projects in the same class.
-    /// 
-    /// Response includes:
-    /// - Class information
-    /// - Total projects and approved projects
-    /// - Projects with final submissions
-    /// - Projects graded by this instructor
-    /// - Projects pending this instructor's grade
-    /// </remarks>
-    [HttpGet("grading/classes")]
-    [ProducesResponseType(typeof(ResultModel<List<GradingClassDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<List<GradingClassDto>>>> GetGradingClasses()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2; // Fallback for testing
-        }
-
-        var result = await _classGraderService.GetGradingClassesAsync(instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get all approved projects in a class for grading
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <returns>List of approved projects with grading status</returns>
-    /// <remarks>
-    /// Returns all projects with status "Approved" in the specified class.
-    /// Only accessible to instructors assigned to grade this class.
-    /// 
-    /// Response includes:
-    /// - Project and group information
-    /// - Final submission status
-    /// - Grading status (has my grade, average grade, total grades)
-    /// - Whether submission is pending this instructor's grade
-    /// </remarks>
-    [HttpGet("grading/classes/{classId}/projects")]
-    [ProducesResponseType(typeof(ResultModel<List<ApprovedProjectForGradingDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<List<ApprovedProjectForGradingDto>>>> GetApprovedProjectsForGrading(
-        [FromRoute] int classId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2; // Fallback for testing
-        }
-
-        var result = await _classGraderService.GetApprovedProjectsForGradingAsync(classId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get detailed final submission for grading
-    /// </summary>
-    /// <param name="finalSubmissionId">Final submission ID</param>
-    /// <returns>Detailed submission with all files and grades</returns>
-    /// <remarks>
-    /// Returns detailed information about a final submission for grading purposes.
-    /// Only accessible to instructors assigned to grade the class.
-    /// 
-    /// Response includes:
-    /// - All submission files and URLs
-    /// - Group members
-    /// - All grades from all assigned instructors
-    /// - Current instructor's grade (if already graded)
-    /// - Average grade
-    /// </remarks>
-    [HttpGet("grading/submissions/{finalSubmissionId}")]
-    [ProducesResponseType(typeof(ResultModel<GraderFinalSubmissionDetailDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<GraderFinalSubmissionDetailDto>>> GetFinalSubmissionForGrading(
-        [FromRoute] int finalSubmissionId)
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2; // Fallback for testing
-        }
-
-        var result = await _classGraderService.GetFinalSubmissionForGradingAsync(finalSubmissionId, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Grade or update grade for final submission
-    /// </summary>
-    /// <param name="finalSubmissionId">Final submission ID</param>
-    /// <param name="request">Grade and feedback</param>
-    /// <returns>Grading result with average grade from all instructors</returns>
-    /// <remarks>
-    /// Allows assigned instructor to grade or update their grade for a final submission.
-    /// 
-    /// Multiple instructors can grade the same submission independently.
-    /// The system automatically calculates the average grade from all instructor grades.
-    /// 
-    /// Actions performed:
-    /// - Creates or updates instructor's grade in Final_Submission_Grades table
-    /// - Trigger automatically recalculates average and updates Final_Project_Submissions.grade
-    /// - Sends notification to all group members
-    /// 
-    /// Example: If 2 instructors grade the same project as 85 and 90, 
-    /// the average grade will be 87.5
-    /// </remarks>
-    [HttpPost("grading/submissions/{finalSubmissionId}/grade")]
-    [ProducesResponseType(typeof(ResultModel<GraderFinalProjectGradeResponseDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<GraderFinalProjectGradeResponseDto>>> GradeFinalSubmission(
-        [FromRoute] int finalSubmissionId,
-        [FromBody] GraderFinalProjectGradeRequestDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ResultModel<GraderFinalProjectGradeResponseDto>
-            {
-                IsSuccess = false,
-                Message = "Invalid request",
-                StatusCode = StatusCodes.Status400BadRequest
-            });
-        }
-
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var instructorId))
-        {
-            instructorId = 2; // Fallback for testing
-        }
-
-        var result = await _classGraderService.GradeFinalSubmissionAsync(finalSubmissionId, request, instructorId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    #endregion
-
-    #region Milestone Weight Warnings
-
-    /// <summary>
-    /// Get all projects with incomplete milestone weights in a class
-    /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <returns>List of projects with incomplete milestones (not 100%)</returns>
-    /// <remarks>
-    /// Returns projects where milestone weights don't total to 100%.
-    /// 
-    /// This helps instructors identify projects that need milestone weight adjustments.
-    /// The system automatically checks this weekly and sends notifications.
-    /// 
-    /// Response includes:
-    /// - Project and group information
-    /// - Total weight percentage
-    /// - Missing/excess weight percentage
-    /// - Individual milestone weights
-    /// </remarks>
-    [HttpGet("classes/{classId}/milestone-warnings")]
-    [ProducesResponseType(typeof(ResultModel<List<ProjectMilestoneWarningDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<List<ProjectMilestoneWarningDto>>>> GetProjectsWithIncompleteMilestones(
-        [FromRoute] int classId)
-    {
-        var result = await _milestoneWarningService.GetProjectsWithIncompleteMilestonesAsync(classId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Get milestone weight summary for a specific project
-    /// </summary>
-    /// <param name="projectId">Project ID</param>
-    /// <returns>Detailed milestone weight information</returns>
-    /// <remarks>
-    /// Returns complete milestone weight breakdown for a project.
-    /// 
-    /// Response includes:
-    /// - Total weight percentage
-    /// - Whether weights total to 100%
-    /// - Missing or excess weight amount
-    /// - Individual milestone details with weights
-    /// - Warning message if incomplete
-    /// 
-    /// Use this to verify project milestone configuration.
-    /// </remarks>
-    [HttpGet("projects/{projectId}/milestone-weights")]
-    [ProducesResponseType(typeof(ResultModel<ProjectMilestoneWeightDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<ProjectMilestoneWeightDto>>> GetProjectMilestoneWeights(
-        [FromRoute] int projectId)
-    {
-        var result = await _milestoneWarningService.GetProjectMilestoneWeightsAsync(projectId);
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
-    }
-
-    /// <summary>
-    /// Manually trigger milestone weight check (Admin/Testing only)
-    /// </summary>
-    /// <returns>Summary of warnings sent</returns>
-    /// <remarks>
-    /// Manually triggers the weekly milestone weight check.
-    /// 
-    /// This is normally run automatically every Monday at 9:00 AM UTC by a background service.
-    /// Use this endpoint for testing or immediate checking.
-    /// 
-    /// Actions performed:
-    /// - Checks all active classes
-    /// - Identifies projects with milestone weights ≠ 100%
-    /// - Sends notifications to instructors
-    /// - Returns summary of checks and notifications
-    /// 
-    /// ⚠️ Use sparingly to avoid spamming instructors with notifications.
-    /// </remarks>
-    [HttpPost("milestone-warnings/check-all")]
-    [ProducesResponseType(typeof(ResultModel<MilestoneWarningResultDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<MilestoneWarningResultDto>>> TriggerMilestoneWeightCheck()
-    {
-        var result = await _milestoneWarningService.CheckAndSendMilestoneWarningsAsync();
-
-        if (result.IsSuccess)
-            return Ok(result);
-
-        return StatusCode(result.StatusCode, result);
     }
 
     #endregion
