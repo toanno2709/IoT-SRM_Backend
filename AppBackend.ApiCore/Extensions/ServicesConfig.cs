@@ -43,6 +43,8 @@ using AppBackend.Services.Services.Submission;
 using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Repositories.Repositories.ClassConfigRepo;
 using AppBackend.Repositories.Repositories.NotificationRepo;
+using AppBackend.Services.Services.OTP;
+using AppBackend.Services.Services.Password;
 using AppBackend.Services.Services.Notification;
 using AppBackend.Repositories.Repositories.SyllabusRepo;
 using AppBackend.Services.Services.Syllabus;
@@ -136,7 +138,8 @@ public static class ServicesConfig
         
         // Notification services
         services.AddScoped<INotificationService, NotificationService>();
-        
+        services.AddScoped<IOTPService, OTPService>();
+        services.AddScoped<IPasswordService, PasswordService>();
         services.AddSingleton<RateLimiterStore>();
 
         // Background Services
