@@ -111,21 +111,54 @@ public class SyllabusController : ControllerBase
     }
 
     /// <summary>
-    /// Upload file to syllabus (Instructor only - must be owner)
+    /// Upload file to syllabus from device (Instructor only - must be owner)
     /// </summary>
     /// <param name="syllabusId">Syllabus ID</param>
-    /// <param name="file">File to upload</param>
+    /// <param name="file">File to upload from device</param>
     /// <param name="description">Optional file description</param>
     /// <param name="displayOrder">Optional display order</param>
-    /// <returns>Uploaded file information</returns>
+    /// <returns>Uploaded file information with Cloudinary URL</returns>
     /// <remarks>
-    /// Upload a file to a syllabus using multipart/form-data.
+    /// Upload a file to a syllabus from any device using multipart/form-data.
+    /// Files are automatically uploaded to Cloudinary cloud storage.
     /// 
-    /// Sample request:
-    /// - syllabusId: 1 (form field)
-    /// - file: [file] (form file)
-    /// - description: "Course materials" (optional form field)
-    /// - displayOrder: 1 (optional form field)
+    /// **Supported file types:**
+    /// - Documents: PDF, DOCX, DOC, XLSX, XLS, PPTX, PPT, TXT
+    /// - Images: JPG, PNG, GIF, SVG
+    /// - Archives: ZIP, RAR
+    /// - Videos: MP4, AVI, MOV
+    /// - And more...
+    /// 
+    /// **Maximum file size:** 100 MB
+    /// 
+    /// **Sample request (multipart/form-data):**
+    /// ```
+    /// syllabusId: 1
+    /// file: [select file from device]
+    /// description: "Course materials for Chapter 1" (optional)
+    /// displayOrder: 1 (optional)
+    /// ```
+    /// 
+    /// **Sample response:**
+    /// ```json
+    /// {
+    ///   "isSuccess": true,
+    ///   "message": "File uploaded successfully",
+    ///   "data": {
+    ///     "fileId": 123,
+    ///     "fileName": "chapter1.pdf",
+    ///     "fileUrl": "https://res.cloudinary.com/.../syllabuses/chapter1.pdf",
+    ///     "fileSize": 1024000,
+    ///     "uploadedAt": "2024-01-15T10:30:00Z"
+    ///   }
+    /// }
+    /// ```
+    /// 
+    /// **Error responses:**
+    /// - 400: Invalid file or file too large
+    /// - 403: Not the syllabus owner
+    /// - 404: Syllabus not found
+    /// - 500: Upload failed
     /// </remarks>
     [HttpPost("files")]
     [Authorize(Roles = "Instructor")]
@@ -134,6 +167,7 @@ public class SyllabusController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     [RequestSizeLimit(104857600)] // 100 MB
     [RequestFormLimits(MultipartBodyLengthLimit = 104857600)] // 100 MB
     public async Task<ActionResult<ResultModel<SyllabusFileDto>>> UploadFile(
@@ -142,7 +176,37 @@ public class SyllabusController : ControllerBase
         [FromForm] string? description = null,
         [FromForm] int? displayOrder = null)
     {
+        if (syllabusId <= 0)
+        {
+            return BadRequest(new ResultModel<SyllabusFileDto>
+            {
+                IsSuccess = false,
+                Message = "Invalid syllabus ID",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new ResultModel<SyllabusFileDto>
+            {
+                IsSuccess = false,
+                Message = "File is required",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
         var instructorId = GetUserId();
+        if (instructorId == 0)
+        {
+            return Unauthorized(new ResultModel<SyllabusFileDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
         var result = await _syllabusService.UploadFileAsync(syllabusId, file, description, displayOrder, instructorId);
         
         if (result.IsSuccess)

@@ -4,6 +4,7 @@ using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Repositories.SyllabusRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace AppBackend.Services.Services.Syllabus;
 
@@ -11,13 +12,16 @@ public class SyllabusService : ISyllabusService
 {
     private readonly ISyllabusRepository _syllabusRepository;
     private readonly ICloudinaryService _cloudinaryService;
+    private readonly ILogger<SyllabusService> _logger;
 
     public SyllabusService(
         ISyllabusRepository syllabusRepository,
-        ICloudinaryService cloudinaryService)
+        ICloudinaryService cloudinaryService,
+        ILogger<SyllabusService> logger)
     {
         _syllabusRepository = syllabusRepository;
         _cloudinaryService = cloudinaryService;
+        _logger = logger;
     }
 
     public async Task<ResultModel<SyllabusResponseDto>> CreateSyllabusAsync(SyllabusCreateRequestDto request, int instructorId)
@@ -296,8 +300,15 @@ public class SyllabusService : ISyllabusService
     {
         try
         {
+            _logger.LogInformation("Starting file upload for syllabus {SyllabusId} by instructor {InstructorId}", 
+                syllabusId, instructorId);
+
+            // Check permission
             if (!await _syllabusRepository.IsInstructorOwnerAsync(syllabusId, instructorId))
             {
+                _logger.LogWarning("Instructor {InstructorId} does not have permission to upload files to syllabus {SyllabusId}", 
+                    instructorId, syllabusId);
+                
                 return new ResultModel<SyllabusFileDto>
                 {
                     IsSuccess = false,
@@ -311,6 +322,8 @@ public class SyllabusService : ISyllabusService
             // Validate file
             if (file == null || file.Length == 0)
             {
+                _logger.LogWarning("Upload attempt with empty file for syllabus {SyllabusId}", syllabusId);
+                
                 return new ResultModel<SyllabusFileDto>
                 {
                     IsSuccess = false,
@@ -321,10 +334,33 @@ public class SyllabusService : ISyllabusService
                 };
             }
 
+            // Validate file size (100MB max)
+            const long maxFileSize = 104857600; // 100MB
+            if (file.Length > maxFileSize)
+            {
+                _logger.LogWarning("File size {FileSize} exceeds maximum allowed size for syllabus {SyllabusId}", 
+                    file.Length, syllabusId);
+                
+                return new ResultModel<SyllabusFileDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.BAD_REQUEST,
+                    Message = $"File size exceeds maximum allowed size of 100MB. Uploaded: {file.Length / (1024 * 1024)}MB",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            _logger.LogInformation("Uploading file {FileName} (Size: {FileSize} bytes, Type: {ContentType}) to Cloudinary", 
+                file.FileName, file.Length, file.ContentType);
+
             // Upload file to Cloudinary
             var uploadResult = await _cloudinaryService.UploadFileAsync(file, "syllabuses");
             if (uploadResult == null)
             {
+                _logger.LogError("Cloudinary upload failed for file {FileName} in syllabus {SyllabusId}", 
+                    file.FileName, syllabusId);
+                
                 return new ResultModel<SyllabusFileDto>
                 {
                     IsSuccess = false,
@@ -334,6 +370,8 @@ public class SyllabusService : ISyllabusService
                     StatusCode = StatusCodes.Status500InternalServerError
                 };
             }
+
+            _logger.LogInformation("File uploaded to Cloudinary successfully. URL: {FileUrl}", uploadResult.SecureUrl);
 
             // Create file record in database
             var syllabusFile = new SyllabusFile
@@ -352,17 +390,22 @@ public class SyllabusService : ISyllabusService
             var created = await _syllabusRepository.AddFileAsync(syllabusFile);
             var result = await _syllabusRepository.GetFileByIdAsync(created.FileId);
 
+            _logger.LogInformation("File record created in database with FileId: {FileId}", result!.FileId);
+
             return new ResultModel<SyllabusFileDto>
             {
                 IsSuccess = true,
                 ResponseCode = CommonMessageConstants.SUCCESS,
                 Message = "File uploaded successfully",
-                Data = MapToFileDto(result!),
+                Data = MapToFileDto(result),
                 StatusCode = StatusCodes.Status201Created
             };
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error uploading file to syllabus {SyllabusId}: {ErrorMessage}", 
+                syllabusId, ex.Message);
+            
             return new ResultModel<SyllabusFileDto>
             {
                 IsSuccess = false,

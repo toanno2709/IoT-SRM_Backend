@@ -52,8 +52,10 @@ public class ClassGraderService : IClassGraderService
                     .SelectMany(g => g.Projects)
                     .ToList();
 
+                // Fixed: Use case-insensitive comparison in memory instead of in query
                 var approvedProjects = allProjects
-                    .Where(p => p.Status != null && p.Status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                    .Where(p => p.Status != null && 
+                               string.Equals(p.Status, "Approved", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
                 var projectsWithFinalSubmission = approvedProjects
@@ -133,10 +135,11 @@ public class ClassGraderService : IClassGraderService
             }
 
             // Get all approved projects in this class
+            // Fixed: Remove StringComparison parameter for EF Core translation
             var projects = await _context.Projects
                 .Where(p => p.Group!.ClassId == classId && 
                            p.Status != null && 
-                           p.Status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                           p.Status.ToLower() == "approved")
                 .Include(p => p.Group)
                     .ThenInclude(g => g!.Class)
                 .Include(p => p.FinalProjectSubmission)

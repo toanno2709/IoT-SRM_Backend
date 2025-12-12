@@ -14,8 +14,8 @@ public static class SwaggerConfig
             c.SwaggerDoc("v1", new OpenApiInfo
             {
                 Title = "AppBackend.ApiCore",
-                Version = "v1.1.0", // Incremented version to force Swagger UI refresh
-                Description = "API documentation for AppBackend - Updated with latest instructor and project APIs",
+                Version = "v1.2.0", // Incremented version for file upload fix
+                Description = "API documentation for AppBackend - With proper file upload support",
                 Contact = new OpenApiContact
                 {
                     Name = "IoT Showroom Team",
@@ -47,6 +47,9 @@ public static class SwaggerConfig
 
             // Add DateOnly schema filter for proper Swagger documentation
             c.SchemaFilter<DateOnlySchemaFilter>();
+            
+            // Add file upload operation filter for proper file upload UI
+            c.OperationFilter<FileUploadOperationFilter>();
 
             // Load XML comments for API doc
             var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
