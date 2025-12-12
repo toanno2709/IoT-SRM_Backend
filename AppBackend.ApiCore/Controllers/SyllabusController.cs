@@ -113,15 +113,40 @@ public class SyllabusController : ControllerBase
     /// <summary>
     /// Upload file to syllabus (Instructor only - must be owner)
     /// </summary>
+    /// <param name="syllabusId">Syllabus ID</param>
+    /// <param name="file">File to upload</param>
+    /// <param name="description">Optional file description</param>
+    /// <param name="displayOrder">Optional display order</param>
+    /// <returns>Uploaded file information</returns>
+    /// <remarks>
+    /// Upload a file to a syllabus using multipart/form-data.
+    /// 
+    /// Sample request:
+    /// - syllabusId: 1 (form field)
+    /// - file: [file] (form file)
+    /// - description: "Course materials" (optional form field)
+    /// - displayOrder: 1 (optional form field)
+    /// </remarks>
     [HttpPost("files")]
     [Authorize(Roles = "Instructor")]
-    public async Task<ActionResult<ResultModel<SyllabusFileDto>>> UploadFile([FromBody] SyllabusFileUploadRequestDto request)
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ResultModel<SyllabusFileDto>), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [RequestSizeLimit(104857600)] // 100 MB
+    [RequestFormLimits(MultipartBodyLengthLimit = 104857600)] // 100 MB
+    public async Task<ActionResult<ResultModel<SyllabusFileDto>>> UploadFile(
+        [FromForm] int syllabusId,
+        [FromForm] IFormFile file,
+        [FromForm] string? description = null,
+        [FromForm] int? displayOrder = null)
     {
         var instructorId = GetUserId();
-        var result = await _syllabusService.UploadFileAsync(request, instructorId);
+        var result = await _syllabusService.UploadFileAsync(syllabusId, file, description, displayOrder, instructorId);
         
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetFilesBySyllabus), new { syllabusId = request.SyllabusId }, result);
+            return CreatedAtAction(nameof(GetFilesBySyllabus), new { syllabusId }, result);
         
         return StatusCode(result.StatusCode, result);
     }

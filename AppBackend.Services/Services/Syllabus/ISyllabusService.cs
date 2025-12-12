@@ -1,4 +1,5 @@
 using AppBackend.Services.ApiModels.Commons;
+using Microsoft.AspNetCore.Http;
 
 namespace AppBackend.Services.Services.Syllabus;
 
@@ -13,7 +14,7 @@ public interface ISyllabusService
     Task<ResultModel<bool>> DeleteSyllabusAsync(int syllabusId, int instructorId);
 
     // File management
-    Task<ResultModel<SyllabusFileDto>> UploadFileAsync(SyllabusFileUploadRequestDto request, int instructorId);
+    Task<ResultModel<SyllabusFileDto>> UploadFileAsync(int syllabusId, IFormFile file, string? description, int? displayOrder, int instructorId);
     Task<ResultModel<List<SyllabusFileDto>>> GetFilesBySyllabusIdAsync(int syllabusId);
     Task<ResultModel<SyllabusFileDto>> UpdateFileAsync(int fileId, SyllabusFileUpdateRequestDto request, int instructorId);
     Task<ResultModel<bool>> DeleteFileAsync(int fileId, int instructorId);

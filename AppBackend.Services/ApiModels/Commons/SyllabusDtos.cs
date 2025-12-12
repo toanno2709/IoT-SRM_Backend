@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace AppBackend.Services.ApiModels.Commons;
 
@@ -47,9 +48,27 @@ public class SyllabusUpdateRequestDto
 }
 
 /// <summary>
-/// Request to upload file to syllabus
+/// Request to upload file to syllabus (multipart/form-data)
 /// </summary>
 public class SyllabusFileUploadRequestDto
+{
+    [Required]
+    public int SyllabusId { get; set; }
+
+    [Required]
+    public IFormFile File { get; set; } = null!;
+
+    [StringLength(500)]
+    public string? Description { get; set; }
+
+    public int? DisplayOrder { get; set; }
+}
+
+/// <summary>
+/// Legacy request to upload file to syllabus using URL (deprecated)
+/// </summary>
+[Obsolete("Use SyllabusFileUploadRequestDto with IFormFile instead")]
+public class SyllabusFileUploadRequestDtoLegacy
 {
     [Required]
     public int SyllabusId { get; set; }

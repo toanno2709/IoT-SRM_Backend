@@ -162,7 +162,7 @@ namespace AppBackend.Services.Services.Group
             // Send notification to INVITED USER with SignalR support
             await SendNotificationAsync(dto.InvitedUserId,
                 $"Invitation to join group {group.GroupName}",
-                $"You have been invited by {inviterName} to join group '{group.GroupName}' (ID: {group.ClassId}). [groupId:{dto.GroupId}]",
+                $"You have been invited by {inviterName} to join group '{group.GroupName}'. [groupId:{dto.GroupId}][classId:{group.ClassId}]",
                 "group_invitation");
 
             _logger.LogInformation($"Group invitation sent from user {dto.InviterUserId} to user {dto.InvitedUserId} for group {dto.GroupId}");
