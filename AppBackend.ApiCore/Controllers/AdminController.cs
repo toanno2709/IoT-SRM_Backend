@@ -7,6 +7,7 @@ using AppBackend.Services.Services.HallOfFame;
 using AppBackend.Services.Services.AdminReport;
 using AppBackend.Services.Services.ClassEnrollment;
 using AppBackend.Services.Services.StudentGrade;
+using AppBackend.Services.Services.AdminClassGrader;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -24,19 +25,22 @@ public class AdminController : ControllerBase
     private readonly IAdminReportService _reportService;
     private readonly IClassEnrollmentService _classEnrollmentService;
     private readonly IStudentGradeService _studentGradeService;
+    private readonly IAdminClassGraderService _adminClassGraderService;
 
     public AdminController(
         IAdminDashboardService dashboardService,
         IHallOfFameService hallOfFameService,
         IAdminReportService reportService,
         IClassEnrollmentService classEnrollmentService,
-        IStudentGradeService studentGradeService)
+        IStudentGradeService studentGradeService,
+        IAdminClassGraderService adminClassGraderService)
     {
         _dashboardService = dashboardService;
         _hallOfFameService = hallOfFameService;
         _reportService = reportService;
         _classEnrollmentService = classEnrollmentService;
         _studentGradeService = studentGradeService;
+        _adminClassGraderService = adminClassGraderService;
     }
 
     #region Dashboard APIs
@@ -716,6 +720,326 @@ public class AdminController : ControllerBase
         [FromRoute] int studentId)
     {
         var result = await _classEnrollmentService.RemoveStudentFromClassAsync(classId, studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Class Grader Management APIs
+
+    /// <summary>
+    /// Get all graders assigned to a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of assigned graders with statistics</returns>
+    /// <remarks>
+    /// Returns all instructors assigned to grade final projects in the specified class.
+    /// 
+    /// Response includes:
+    /// - Grader assignment details
+    /// - Total final submissions in the class
+    /// - Graded count by each instructor
+    /// - Pending grades count
+    /// - Assignment date and who assigned them
+    /// </remarks>
+    [HttpGet("classes/{classId}/graders")]
+    [RateLimit(permitLimit: 30, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<List<ClassGraderDetailDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<ClassGraderDetailDto>>>> GetClassGraders([FromRoute] int classId)
+    {
+        var result = await _adminClassGraderService.GetClassGradersAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Assign an instructor to grade projects in a class
+    /// </summary>
+    /// <param name="request">Assignment request with class and instructor IDs</param>
+    /// <returns>Created grader assignment</returns>
+    /// <remarks>
+    /// Assigns an instructor as a grader for a class's final projects.
+    /// Multiple instructors can be assigned to the same class.
+    /// 
+    /// Requirements:
+    /// - Instructor must have role_id = 2 (Instructor)
+    /// - Cannot assign the same instructor twice to the same class (unless previously deactivated)
+    /// - If a deactivated assignment exists, it will be reactivated
+    /// 
+    /// Actions performed:
+    /// - Creates record in Class_Graders table
+    /// - Sends notification to instructor
+    /// - Returns assignment details with statistics
+    /// </remarks>
+    [HttpPost("graders/assign")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ClassGraderDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ClassGraderDetailDto>>> AssignGrader(
+        [FromBody] AssignClassGraderRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<ClassGraderDetailDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Invalid request data"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var adminId))
+        {
+            adminId = 1; // Fallback for testing
+        }
+
+        var result = await _adminClassGraderService.AssignGraderAsync(request, adminId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Bulk assign multiple graders to a class
+    /// </summary>
+    /// <param name="request">Bulk assignment request with instructor IDs</param>
+    /// <returns>Bulk assignment result with individual outcomes</returns>
+    /// <remarks>
+    /// Assigns multiple instructors as graders for a class in a single operation.
+    /// 
+    /// Features:
+    /// - Processes each instructor independently
+    /// - Returns detailed results for each assignment attempt
+    /// - Continues processing even if some assignments fail
+    /// - Reactivates deactivated assignments if they exist
+    /// - Sends notifications to all successfully assigned instructors
+    /// 
+    /// Response includes:
+    /// - Total success and failure counts
+    /// - Detailed results for each instructor
+    /// - Error messages for failures
+    /// </remarks>
+    [HttpPost("graders/bulk-assign")]
+    [RateLimit(permitLimit: 10, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<BulkAssignGradersResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<BulkAssignGradersResponseDto>>> BulkAssignGraders(
+        [FromBody] BulkAssignGradersRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ResultModel<BulkAssignGradersResponseDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Invalid request data"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var adminId))
+        {
+            adminId = 1; // Fallback for testing
+        }
+
+        var result = await _adminClassGraderService.BulkAssignGradersAsync(request, adminId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Remove grader assignment from a class
+    /// </summary>
+    /// <param name="graderId">Grader ID to remove</param>
+    /// <returns>Success status</returns>
+    /// <remarks>
+    /// Removes an instructor's grader assignment from a class.
+    /// 
+    /// Behavior:
+    /// - If instructor has already submitted grades: Assignment is **deactivated** (not deleted)
+    /// - If instructor has no grades: Assignment is **permanently deleted**
+    /// - Sends notification to instructor about removal
+    /// 
+    /// This prevents data integrity issues with existing grades.
+    /// </remarks>
+    [HttpDelete("graders/{graderId}")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<bool>>> RemoveGrader([FromRoute] int graderId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var adminId))
+        {
+            adminId = 1; // Fallback for testing
+        }
+
+        var result = await _adminClassGraderService.RemoveGraderAsync(graderId, adminId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Toggle grader active status
+    /// </summary>
+    /// <param name="graderId">Grader ID</param>
+    /// <param name="isActive">New active status</param>
+    /// <returns>Updated grader assignment</returns>
+    /// <remarks>
+    /// Activates or deactivates a grader assignment without deleting it.
+    /// 
+    /// Use cases:
+    /// - Temporarily disable a grader without losing assignment history
+    /// - Reactivate a previously deactivated grader
+    /// - Manage grader availability without affecting existing grades
+    /// 
+    /// Sends notification to instructor about status change.
+    /// </remarks>
+    [HttpPut("graders/{graderId}/status")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ClassGraderDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ClassGraderDetailDto>>> UpdateGraderStatus(
+        [FromRoute] int graderId,
+        [FromQuery] bool isActive)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var adminId))
+        {
+            adminId = 1; // Fallback for testing
+        }
+
+        var result = await _adminClassGraderService.UpdateGraderStatusAsync(graderId, isActive, adminId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get all grader assignments across all classes
+    /// </summary>
+    /// <param name="instructorId">Optional filter by instructor</param>
+    /// <param name="classId">Optional filter by class</param>
+    /// <param name="isActive">Optional filter by active status</param>
+    /// <returns>List of all grader assignments with statistics</returns>
+    /// <remarks>
+    /// Returns comprehensive overview of all grader assignments system-wide.
+    /// 
+    /// Filters:
+    /// - **instructorId**: Get all classes where specific instructor is a grader
+    /// - **classId**: Get all graders for specific class
+    /// - **isActive**: Filter by active/inactive status
+    /// 
+    /// Response includes:
+    /// - Assignment details
+    /// - Workload statistics (total submissions, graded, pending)
+    /// - Completion percentages
+    /// - Semester and class information
+    /// 
+    /// Useful for:
+    /// - Admin dashboard
+    /// - Workload balancing
+    /// - Instructor assignment overview
+    /// </remarks>
+    [HttpGet("graders")]
+    [RateLimit(permitLimit: 30, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<List<ClassGraderSummaryDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<ClassGraderSummaryDto>>>> GetAllGraderAssignments(
+        [FromQuery] int? instructorId = null,
+        [FromQuery] int? classId = null,
+        [FromQuery] bool? isActive = null)
+    {
+        var result = await _adminClassGraderService.GetAllGraderAssignmentsAsync(instructorId, classId, isActive);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get comprehensive grading statistics for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Detailed grading statistics and workload analysis</returns>
+    /// <remarks>
+    /// Provides comprehensive grading overview for a class including:
+    /// 
+    /// **Grader Information:**
+    /// - Total and active graders
+    /// - Individual workload for each grader
+    /// - Completion percentages
+    /// - Average grades given by each grader
+    /// 
+    /// **Project Statistics:**
+    /// - Total projects, approved projects
+    /// - Projects with final submissions
+    /// 
+    /// **Grading Statistics:**
+    /// - Total grades submitted
+    /// - Fully graded projects (all graders completed)
+    /// - Partially graded projects (some graders completed)
+    /// - Ungraded projects
+    /// - Average, highest, lowest grades
+    /// - Overall grading completion percentage
+    /// 
+    /// Useful for:
+    /// - Monitoring grading progress
+    /// - Identifying bottlenecks
+    /// - Balancing workload
+    /// - Quality assurance
+    /// </remarks>
+    [HttpGet("classes/{classId}/grading-statistics")]
+    [RateLimit(permitLimit: 30, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ClassGradingStatisticsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ClassGradingStatisticsDto>>> GetClassGradingStatistics(
+        [FromRoute] int classId)
+    {
+        var result = await _adminClassGraderService.GetClassGradingStatisticsAsync(classId);
 
         if (result.IsSuccess)
             return Ok(result);

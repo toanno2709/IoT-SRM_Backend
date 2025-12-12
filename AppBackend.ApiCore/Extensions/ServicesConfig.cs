@@ -53,6 +53,7 @@ using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
 using AppBackend.Services.Services.MilestoneWarning;
 using AppBackend.Services.BackgroundServices;
+using AppBackend.Services.Services.AdminClassGrader;
 
 namespace AppBackend.Extensions;
 
@@ -119,6 +120,7 @@ public static class ServicesConfig
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IHallOfFameService, HallOfFameService>();
         services.AddScoped<IAdminReportService, AdminReportService>();
+        services.AddScoped<IAdminClassGraderService, AdminClassGraderService>();
         
         // Student services
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
