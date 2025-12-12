@@ -61,6 +61,10 @@ public static class ServicesConfig
 {
     public static IServiceCollection AddServicesConfig(this IServiceCollection services)
     {
+        #region Memory Cache
+        services.AddMemoryCache();
+        #endregion
+
         #region Generic Repository
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         #endregion

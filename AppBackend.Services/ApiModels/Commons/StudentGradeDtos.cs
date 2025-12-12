@@ -164,6 +164,7 @@ public class StudentGradeReportDto
     public int? ProjectId { get; set; }
     public string? ProjectTitle { get; set; }
     public Dictionary<string, decimal?> MilestoneGrades { get; set; } = new();
+    public decimal? FinalSubmissionGrade { get; set; }
     public decimal? OverallGrade { get; set; }
     public string? Status { get; set; }
 }

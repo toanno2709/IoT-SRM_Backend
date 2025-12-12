@@ -394,6 +394,7 @@ public class StudentGradeService : IStudentGradeService
                 .Include(g => g.GroupMembers)
                     .ThenInclude(gm => gm.User)
                 .Include(g => g.Projects)
+                    .ThenInclude(p => p.FinalProjectSubmission)
                 .Where(g => g.ClassId == classId)
                 .ToListAsync();
 
@@ -459,10 +460,17 @@ public class StudentGradeService : IStudentGradeService
                         }
                     }
 
-                    // Calculate overall grade
+                    // Get final submission grade
+                    var finalSubmission = await _context.FinalProjectSubmissions
+                        .FirstOrDefaultAsync(fps => fps.ProjectId == projectId);
+                    
+                    studentGrade.FinalSubmissionGrade = finalSubmission?.Grade;
+
+                    // Calculate overall grade (milestones + final submission)
                     decimal totalWeightedScore = 0;
                     decimal totalWeight = 0;
 
+                    // Add milestone scores
                     foreach (var milestone in projectMilestones)
                     {
                         var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
@@ -470,6 +478,17 @@ public class StudentGradeService : IStudentGradeService
                         {
                             totalWeightedScore += (evaluation.Score * milestone.Weight.Value) / 100;
                             totalWeight += milestone.Weight.Value;
+                        }
+                    }
+
+                    // Add final submission score if exists (weight is remaining percentage)
+                    if (finalSubmission?.Grade != null)
+                    {
+                        decimal finalWeight = 100 - totalWeight;
+                        if (finalWeight > 0)
+                        {
+                            totalWeightedScore += (finalSubmission.Grade.Value * finalWeight) / 100;
+                            totalWeight += finalWeight;
                         }
                     }
 
@@ -482,10 +501,17 @@ public class StudentGradeService : IStudentGradeService
                     {
                         studentGrade.MilestoneGrades[milestoneName] = null;
                     }
+                    studentGrade.FinalSubmissionGrade = null;
                 }
 
                 studentGrades.Add(studentGrade);
             }
+
+            // Sort by Group Name (nulls last) then by Student Name
+            studentGrades = studentGrades
+                .OrderBy(sg => string.IsNullOrEmpty(sg.GroupName) ? "ZZZZZ" : sg.GroupName)
+                .ThenBy(sg => sg.StudentName)
+                .ToList();
 
             var report = new ClassGradesReportDto
             {
@@ -587,6 +613,8 @@ public class StudentGradeService : IStudentGradeService
                 }
             }
 
+            // Add Final Submission column
+            worksheet.Cells[headerRow, col++].Value = "Final Submission";
             worksheet.Cells[headerRow, col++].Value = "Overall Grade";
             worksheet.Cells[headerRow, col++].Value = "Status";
 
@@ -643,10 +671,53 @@ public class StudentGradeService : IStudentGradeService
                     }
                 }
 
+                // Final Submission Grade
+                if (studentGrade.FinalSubmissionGrade.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = studentGrade.FinalSubmissionGrade.Value;
+                    worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                    
+                    // Color coding for final submission
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    if (studentGrade.FinalSubmissionGrade.Value >= 80)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                    }
+                    else if (studentGrade.FinalSubmissionGrade.Value >= 50)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                    }
+                    else
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                    }
+                }
+                else
+                {
+                    worksheet.Cells[row, col].Value = "N/A";
+                }
+                col++;
+
+                // Overall Grade (now includes final submission)
                 if (studentGrade.OverallGrade.HasValue)
                 {
                     worksheet.Cells[row, col].Value = studentGrade.OverallGrade.Value;
                     worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                    
+                    // Color coding for overall grade
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    if (studentGrade.OverallGrade.Value >= 80)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                    }
+                    else if (studentGrade.OverallGrade.Value >= 50)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                    }
+                    else
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                    }
                 }
                 else
                 {
