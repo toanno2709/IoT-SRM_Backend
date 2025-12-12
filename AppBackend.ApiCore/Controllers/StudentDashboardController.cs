@@ -400,13 +400,13 @@ public class StudentDashboardController : ControllerBase
             });
         }
 
-        _logger.LogInformation("Student {UserId} registering group {GroupId} to template {TemplateId}", 
+        _logger.LogInformation("Student {UserId} registering group {GroupId} to template {TemplateId}",
             userId, dto.GroupId, dto.TemplateId);
 
         var result = await _templateService.RegisterToTemplateAsync(dto, userId);
 
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetAvailableTemplates), 
+            return CreatedAtAction(nameof(GetAvailableTemplates),
                 new { classId = result.Data!.GroupId }, result);
 
         return StatusCode(result.StatusCode, result);
