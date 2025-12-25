@@ -446,5 +446,238 @@ namespace AppBackend.Services.Services.Group
 
             return dto;
         }
+
+        /// <summary>
+        /// Create random groups for students who don't have a group yet
+        /// </summary>
+        public async Task<ResultModel<RandomGroupCreationResultDto>> CreateRandomGroupsAsync(int classId, int instructorId)
+        {
+            try
+            {
+                // 1. Verify instructor authorization
+                var classEntity = await _db.Classes
+                    .FirstOrDefaultAsync(c => c.ClassId == classId && c.InstructorId == instructorId);
+
+                if (classEntity == null)
+                {
+                    return new ResultModel<RandomGroupCreationResultDto>
+                    {
+                        IsSuccess = false,
+                        Message = "Class not found or you are not the instructor of this class",
+                        StatusCode = 403
+                    };
+                }
+
+                // 2. Get class configuration
+                var config = await _db.ClassConfigurations
+                    .FirstOrDefaultAsync(c => c.ClassId == classId);
+
+                if (config == null)
+                {
+                    return new ResultModel<RandomGroupCreationResultDto>
+                    {
+                        IsSuccess = false,
+                        Message = "Class configuration not found. Please set up class configuration first.",
+                        StatusCode = 400
+                    };
+                }
+
+                int minMembers = config.MinMembersPerGroup;
+                int maxMembers = config.MaxMembersPerGroup;
+
+                // 3. Get all students enrolled in the class
+                var allStudents = await _db.ClassEnrollments
+                    .Include(ce => ce.Student)
+                    .Where(ce => ce.ClassId == classId)
+                    .Select(ce => ce.Student)
+                    .ToListAsync();
+
+                // 4. Get students who already have a group in this class
+                var studentsWithGroups = await _db.GroupMembers
+                    .Include(gm => gm.Group)
+                    .Where(gm => gm.Group != null && gm.Group.ClassId == classId)
+                    .Select(gm => gm.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                // 5. Get unassigned students (shuffle for randomness)
+                var unassignedStudents = allStudents
+                    .Where(s => s != null && !studentsWithGroups.Contains(s.UserId))
+                    .OrderBy(x => Guid.NewGuid()) // Random shuffle
+                    .ToList();
+
+                if (!unassignedStudents.Any())
+                {
+                    return new ResultModel<RandomGroupCreationResultDto>
+                    {
+                        IsSuccess = true,
+                        Message = "All students already have groups",
+                        Data = new RandomGroupCreationResultDto
+                        {
+                            ClassId = classId,
+                            ClassName = classEntity.ClassName ?? "Unknown",
+                            TotalStudentsInClass = allStudents.Count,
+                            StudentsAlreadyInGroups = studentsWithGroups.Count,
+                            UnassignedStudents = 0,
+                            GroupsCreated = 0,
+                            StudentsAssigned = 0,
+                            StudentsRemaining = 0,
+                            MinMembersPerGroup = minMembers,
+                            MaxMembersPerGroup = maxMembers,
+                            Message = "No unassigned students to create groups"
+                        },
+                        StatusCode = 200
+                    };
+                }
+
+                // 6. Calculate optimal group distribution
+                int totalUnassigned = unassignedStudents.Count;
+                List<CreatedGroupSummaryDto> createdGroups = new();
+                int groupCounter = await GetNextGroupNumberAsync(classId);
+                int studentsAssigned = 0;
+
+                var now = DateTime.UtcNow;
+
+                // Create groups with optimal size distribution
+                while (unassignedStudents.Any())
+                {
+                    int remainingStudents = unassignedStudents.Count;
+                    
+                    // If remaining students less than min, stop
+                    if (remainingStudents < minMembers)
+                    {
+                        break;
+                    }
+
+                    // Calculate group size for this iteration
+                    int groupSize = maxMembers;
+                    
+                    // If remaining students would leave less than minMembers for next group
+                    // adjust current group size
+                    if (remainingStudents > maxMembers && 
+                        remainingStudents - maxMembers < minMembers)
+                    {
+                        // Distribute more evenly
+                        groupSize = (int)Math.Ceiling(remainingStudents / 2.0);
+                        groupSize = Math.Min(groupSize, maxMembers);
+                        groupSize = Math.Max(groupSize, minMembers);
+                    }
+
+                    // Take students for this group
+                    var groupMembers = unassignedStudents.Take(groupSize).ToList();
+                    unassignedStudents = unassignedStudents.Skip(groupSize).ToList();
+
+                    // Select random leader from group members
+                    var leader = groupMembers.First();
+
+                    // Create group
+                    string groupName = $"Group {groupCounter}";
+                    var group = new GroupEntity
+                    {
+                        ClassId = classId,
+                        GroupName = groupName,
+                        Description = $"Auto-generated group for class {classEntity.ClassName}",
+                        LeaderId = leader.UserId,
+                        CreatedAt = now
+                    };
+
+                    _db.Groups.Add(group);
+                    await _db.SaveChangesAsync();
+
+                    // Add all members to group
+                    foreach (var student in groupMembers)
+                    {
+                        var member = new GroupMember
+                        {
+                            GroupId = group.GroupId,
+                            UserId = student.UserId,
+                            RoleInGroup = student.UserId == leader.UserId ? "Leader" : "Member",
+                            JoinedAt = now
+                        };
+                        _db.GroupMembers.Add(member);
+
+                        // Send notification to each student
+                        await SendNotificationAsync(
+                            student.UserId,
+                            "Added to Group",
+                            $"You have been automatically assigned to '{groupName}' in {classEntity.ClassName}",
+                            "group_create"
+                        );
+                    }
+
+                    await _db.SaveChangesAsync();
+
+                    createdGroups.Add(new CreatedGroupSummaryDto
+                    {
+                        GroupId = group.GroupId,
+                        GroupName = groupName,
+                        LeaderId = leader.UserId,
+                        LeaderName = leader.FullName ?? "Unknown",
+                        MemberCount = groupMembers.Count,
+                        MemberNames = groupMembers.Select(m => m.FullName ?? "Unknown").ToList()
+                    });
+
+                    studentsAssigned += groupMembers.Count;
+                    groupCounter++;
+                }
+
+                return new ResultModel<RandomGroupCreationResultDto>
+                {
+                    IsSuccess = true,
+                    Message = $"Successfully created {createdGroups.Count} groups with {studentsAssigned} students",
+                    Data = new RandomGroupCreationResultDto
+                    {
+                        ClassId = classId,
+                        ClassName = classEntity.ClassName ?? "Unknown",
+                        TotalStudentsInClass = allStudents.Count,
+                        StudentsAlreadyInGroups = studentsWithGroups.Count,
+                        UnassignedStudents = totalUnassigned,
+                        GroupsCreated = createdGroups.Count,
+                        StudentsAssigned = studentsAssigned,
+                        StudentsRemaining = unassignedStudents.Count,
+                        MinMembersPerGroup = minMembers,
+                        MaxMembersPerGroup = maxMembers,
+                        CreatedGroups = createdGroups,
+                        Message = unassignedStudents.Any() 
+                            ? $"Created {createdGroups.Count} groups. {unassignedStudents.Count} students remaining (insufficient for another group)"
+                            : $"All unassigned students have been assigned to groups"
+                    },
+                    StatusCode = 200
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error creating random groups for class {classId}");
+                return new ResultModel<RandomGroupCreationResultDto>
+                {
+                    IsSuccess = false,
+                    Message = $"Error creating random groups: {ex.Message}",
+                    StatusCode = 500
+                };
+            }
+        }
+
+        /// <summary>
+        /// Get the next available group number for a class
+        /// </summary>
+        private async Task<int> GetNextGroupNumberAsync(int classId)
+        {
+            var existingGroups = await _db.Groups
+                .Where(g => g.ClassId == classId && g.GroupName != null && g.GroupName.StartsWith("Group "))
+                .Select(g => g.GroupName)
+                .ToListAsync();
+
+            int maxNumber = 0;
+            foreach (var name in existingGroups)
+            {
+                var parts = name!.Split(' ');
+                if (parts.Length >= 2 && int.TryParse(parts[1], out int num))
+                {
+                    maxNumber = Math.Max(maxNumber, num);
+                }
+            }
+
+            return maxNumber + 1;
+        }
     }
 }

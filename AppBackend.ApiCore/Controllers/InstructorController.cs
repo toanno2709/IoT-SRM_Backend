@@ -449,6 +449,51 @@ public class InstructorController : ControllerBase
         return BadRequest(result);
     }
 
+    /// <summary>
+    /// Create random groups for students without groups (Instructor only)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Summary of created groups</returns>
+    /// <remarks>
+    /// Automatically creates groups for students who are not in any group yet.
+    /// 
+    /// Features:
+    /// - Respects class configuration (MinMembersPerGroup, MaxMembersPerGroup)
+    /// - Randomly shuffles and assigns students to groups
+    /// - Automatically names groups (Group 1, Group 2, etc.)
+    /// - Randomly assigns group leaders from each group
+    /// - Sends notifications to all assigned students
+    /// 
+    /// Algorithm:
+    /// - Gets all enrolled students who don't have a group
+    /// - Creates groups with optimal size distribution
+    /// - Tries to maximize students assigned while respecting min/max constraints
+    /// - If remaining students less than MinMembersPerGroup, they won't be assigned
+    /// 
+    /// Example: If class has MinMembers=3, MaxMembers=5, and 12 unassigned students:
+    /// - Could create 2 groups of 5 and 1 group of 2 (2 remaining)
+    /// - Or better: 3 groups of 4 (all assigned)
+    /// </remarks>
+    [HttpPost("classes/{classId}/create-random-groups")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    [ProducesResponseType(typeof(ResultModel<RandomGroupCreationResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<RandomGroupCreationResultDto>>> CreateRandomGroups(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _groupService.CreateRandomGroupsAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 
     #region Projects Management APIs

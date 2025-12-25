@@ -37,4 +37,36 @@ public class GroupResponseDto
     public int ProjectCount { get; set; }
 }
 
+/// <summary>
+/// Result DTO for random group creation
+/// </summary>
+public class RandomGroupCreationResultDto
+{
+    public int ClassId { get; set; }
+    public string ClassName { get; set; } = string.Empty;
+    public int TotalStudentsInClass { get; set; }
+    public int StudentsAlreadyInGroups { get; set; }
+    public int UnassignedStudents { get; set; }
+    public int GroupsCreated { get; set; }
+    public int StudentsAssigned { get; set; }
+    public int StudentsRemaining { get; set; }
+    public int MinMembersPerGroup { get; set; }
+    public int MaxMembersPerGroup { get; set; }
+    public List<CreatedGroupSummaryDto> CreatedGroups { get; set; } = new();
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Summary info for each created group
+/// </summary>
+public class CreatedGroupSummaryDto
+{
+    public int GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public int LeaderId { get; set; }
+    public string LeaderName { get; set; } = string.Empty;
+    public int MemberCount { get; set; }
+    public List<string> MemberNames { get; set; } = new();
+}
+
 
