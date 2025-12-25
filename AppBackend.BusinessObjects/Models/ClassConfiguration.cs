@@ -33,8 +33,19 @@ public class ClassConfiguration
     [Range(1, 20, ErrorMessage = "Max members per group must be between 1 and 20")]
     public int MaxMembersPerGroup { get; set; } = 5;
 
+    /// <summary>
+    /// Deadline for students to form/create teams (groups)
+    /// After this deadline, students cannot create or join groups
+    /// </summary>
     [Column("group_formation_deadline")]
     public DateTime? GroupFormationDeadline { get; set; }
+
+    /// <summary>
+    /// Deadline for teams to create their projects
+    /// After this deadline, groups cannot create new projects
+    /// </summary>
+    [Column("project_creation_deadline")]
+    public DateTime? ProjectCreationDeadline { get; set; }
 
     [Required]
     [Column("allow_student_create_group")]
@@ -101,7 +112,8 @@ public class ClassConfiguration
                MaxGroupsAllowed > 0 && 
                MinMembersPerGroup >= 1 &&
                ValidateSubmissionDates() &&
-               ValidateEditWindowDates();
+               ValidateEditWindowDates() &&
+               ValidateDeadlineOrder();
     }
 
     /// <summary>
@@ -113,6 +125,17 @@ public class ClassConfiguration
             return true;
 
         return DateTime.UtcNow <= GroupFormationDeadline.Value;
+    }
+
+    /// <summary>
+    /// Checks if project creation is still allowed based on deadline
+    /// </summary>
+    public bool IsProjectCreationAllowed()
+    {
+        if (ProjectCreationDeadline == null)
+            return true;
+
+        return DateTime.UtcNow <= ProjectCreationDeadline.Value;
     }
 
     /// <summary>
@@ -203,6 +226,50 @@ public class ClassConfiguration
     }
 
     /// <summary>
+    /// Gets deadline status for team formation
+    /// </summary>
+    public string GetTeamFormationStatus()
+    {
+        if (GroupFormationDeadline == null)
+            return "NoDeadline";
+
+        var now = DateTime.UtcNow;
+        if (now > GroupFormationDeadline.Value)
+            return "Expired";
+
+        var daysRemaining = (GroupFormationDeadline.Value - now).TotalDays;
+        if (daysRemaining <= 1)
+            return "ExpiringWithin24Hours";
+
+        if (daysRemaining <= 7)
+            return "ExpiringWithinWeek";
+
+        return "Open";
+    }
+
+    /// <summary>
+    /// Gets deadline status for project creation
+    /// </summary>
+    public string GetProjectCreationStatus()
+    {
+        if (ProjectCreationDeadline == null)
+            return "NoDeadline";
+
+        var now = DateTime.UtcNow;
+        if (now > ProjectCreationDeadline.Value)
+            return "Expired";
+
+        var daysRemaining = (ProjectCreationDeadline.Value - now).TotalDays;
+        if (daysRemaining <= 1)
+            return "ExpiringWithin24Hours";
+
+        if (daysRemaining <= 7)
+            return "ExpiringWithinWeek";
+
+        return "Open";
+    }
+
+    /// <summary>
     /// Validates submission dates are in correct order
     /// </summary>
     private bool ValidateSubmissionDates()
@@ -220,6 +287,18 @@ public class ClassConfiguration
     {
         if (EditWindowStartDate.HasValue && EditWindowEndDate.HasValue)
             return EditWindowEndDate.Value >= EditWindowStartDate.Value;
+        
+        return true;
+    }
+
+    /// <summary>
+    /// Validates deadline order: team formation should come before project creation
+    /// </summary>
+    private bool ValidateDeadlineOrder()
+    {
+        // If both deadlines are set, project creation deadline should be after or equal to team formation deadline
+        if (GroupFormationDeadline.HasValue && ProjectCreationDeadline.HasValue)
+            return ProjectCreationDeadline.Value >= GroupFormationDeadline.Value;
         
         return true;
     }

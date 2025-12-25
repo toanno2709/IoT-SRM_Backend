@@ -402,6 +402,36 @@ public class InstructorController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    /// <summary>
+    /// Validate project creation for a group
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="groupId">Group ID</param>
+    /// <returns>Project creation validation result</returns>
+    /// <remarks>
+    /// Checks if a group can currently create a project based on class configuration.
+    /// 
+    /// Returns:
+    /// - Can create status
+    /// - Deadline date
+    /// - Status (NoDeadline, Open, ExpiringWithinWeek, ExpiringWithin24Hours, Expired)
+    /// - User-friendly message
+    /// </remarks>
+    [HttpGet("classes/{classId}/groups/{groupId}/validate-project-creation")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<ProjectCreationValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ProjectCreationValidationDto>>> ValidateProjectCreation(
+        [FromRoute] int classId,
+        [FromRoute] int groupId)
+    {
+        var result = await _classConfigService.ValidateProjectCreationAsync(classId, groupId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 
     #region Groups Management APIs

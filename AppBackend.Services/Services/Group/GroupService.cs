@@ -83,6 +83,34 @@ namespace AppBackend.Services.Services.Group
         // 1. Create group: check user not in any group in same class -> create group and add leader as GroupMember role "Leader"
         public async Task<GroupCreateResultDto> CreateGroupAsync(GroupCreateDto dto, int creatorUserId)
         {
+            // Check class configuration for group formation deadline
+            var classConfig = await _db.ClassConfigurations
+                .FirstOrDefaultAsync(c => c.ClassId == dto.ClassId);
+
+            if (classConfig != null)
+            {
+                // Check if group formation deadline has passed
+                if (!classConfig.IsGroupFormationAllowed())
+                {
+                    throw new InvalidOperationException(
+                        $"Group formation deadline has passed on {classConfig.GroupFormationDeadline:yyyy-MM-dd HH:mm}. Cannot create new groups.");
+                }
+
+                // Check if student group creation is allowed
+                if (!classConfig.AllowStudentCreateGroup)
+                {
+                    throw new InvalidOperationException("Student group creation is not allowed for this class.");
+                }
+
+                // Check max groups limit
+                var currentGroupCount = await _db.Groups.CountAsync(g => g.ClassId == dto.ClassId);
+                if (currentGroupCount >= classConfig.MaxGroupsAllowed)
+                {
+                    throw new InvalidOperationException(
+                        $"Maximum number of groups ({classConfig.MaxGroupsAllowed}) has been reached for this class.");
+                }
+            }
+
             // check user not already in a group in same class
             var inSameClass = await _db.GroupMembers
                 .Include(gm => gm.Group)

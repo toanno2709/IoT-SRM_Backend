@@ -14,8 +14,13 @@ public class ClassConfigResponseDto
     public int MaxGroupsAllowed { get; set; }
     public int MinMembersPerGroup { get; set; }
     public int MaxMembersPerGroup { get; set; }
+    
+    // Team Formation Settings
     public DateTime? GroupFormationDeadline { get; set; }
     public bool AllowStudentCreateGroup { get; set; }
+    
+    // Project Creation Settings
+    public DateTime? ProjectCreationDeadline { get; set; }
     
     // Milestone Submission Settings
     public DateTime? SubmissionStartDate { get; set; }
@@ -32,8 +37,14 @@ public class ClassConfigResponseDto
     
     // Additional info
     public int CurrentGroupCount { get; set; }
+    
+    // Team Formation Status
     public bool IsGroupFormationOpen { get; set; }
     public string? GroupFormationStatus { get; set; }
+    
+    // Project Creation Status
+    public bool IsProjectCreationOpen { get; set; }
+    public string? ProjectCreationStatus { get; set; }
     
     // Submission Period Status
     public string? SubmissionPeriodStatus { get; set; } // "NotStarted", "Open", "Late", "Closed"
@@ -59,7 +70,15 @@ public class ClassConfigUpdateDto
     [Range(1, 20, ErrorMessage = "Max members per group must be between 1 and 20")]
     public int? MaxMembersPerGroup { get; set; }
 
+    /// <summary>
+    /// Deadline for students to form/create teams
+    /// </summary>
     public DateTime? GroupFormationDeadline { get; set; }
+
+    /// <summary>
+    /// Deadline for teams to create their projects
+    /// </summary>
+    public DateTime? ProjectCreationDeadline { get; set; }
 
     public bool? AllowStudentCreateGroup { get; set; }
 
@@ -97,6 +116,23 @@ public class ClassConfigUpdateDto
         {
             errorMessage = "Group formation deadline must be in the future";
             return false;
+        }
+
+        // Validate project creation deadline
+        if (ProjectCreationDeadline.HasValue && ProjectCreationDeadline.Value <= DateTime.UtcNow)
+        {
+            errorMessage = "Project creation deadline must be in the future";
+            return false;
+        }
+
+        // Validate deadline order: project creation should be after or equal to team formation
+        if (GroupFormationDeadline.HasValue && ProjectCreationDeadline.HasValue)
+        {
+            if (ProjectCreationDeadline.Value < GroupFormationDeadline.Value)
+            {
+                errorMessage = "Project creation deadline must be after or equal to group formation deadline";
+                return false;
+            }
         }
 
         // Validate submission dates
@@ -143,6 +179,19 @@ public class GroupValidationDto
     public bool IsValid { get; set; }
     public List<string> ValidationErrors { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
+}
+
+/// <summary>
+/// DTO for validating project creation against class configuration
+/// </summary>
+public class ProjectCreationValidationDto
+{
+    public int ClassId { get; set; }
+    public int GroupId { get; set; }
+    public bool CanCreate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Message { get; set; }
+    public DateTime? DeadlineDate { get; set; }
 }
 
 /// <summary>

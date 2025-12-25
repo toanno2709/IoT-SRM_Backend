@@ -66,6 +66,7 @@ public class ClassConfigService : IClassConfigService
                 MinMembersPerGroup = config.MinMembersPerGroup,
                 MaxMembersPerGroup = config.MaxMembersPerGroup,
                 GroupFormationDeadline = config.GroupFormationDeadline,
+                ProjectCreationDeadline = config.ProjectCreationDeadline,
                 AllowStudentCreateGroup = config.AllowStudentCreateGroup,
                 
                 // Milestone Submission Settings
@@ -82,7 +83,11 @@ public class ClassConfigService : IClassConfigService
                 UpdatedAt = config.UpdatedAt,
                 CurrentGroupCount = currentGroupCount,
                 IsGroupFormationOpen = config.IsGroupFormationAllowed(),
-                GroupFormationStatus = GetDeadlineStatus(config.GroupFormationDeadline),
+                GroupFormationStatus = config.GetTeamFormationStatus(),
+                
+                // Project Creation Status
+                IsProjectCreationOpen = config.IsProjectCreationAllowed(),
+                ProjectCreationStatus = config.GetProjectCreationStatus(),
                 
                 // Submission Period Status
                 SubmissionPeriodStatus = config.GetSubmissionPeriodStatus(),
@@ -191,6 +196,11 @@ public class ClassConfigService : IClassConfigService
             if (dto.GroupFormationDeadline.HasValue)
             {
                 config!.GroupFormationDeadline = dto.GroupFormationDeadline.Value;
+            }
+
+            if (dto.ProjectCreationDeadline.HasValue)
+            {
+                config!.ProjectCreationDeadline = dto.ProjectCreationDeadline.Value;
             }
 
             if (dto.AllowStudentCreateGroup.HasValue)
@@ -434,6 +444,104 @@ public class ClassConfigService : IClassConfigService
             {
                 IsSuccess = false,
                 Message = $"Error checking group creation: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<ProjectCreationValidationDto>> ValidateProjectCreationAsync(int classId, int groupId)
+    {
+        try
+        {
+            var config = await _configRepository.GetByClassIdAsync(classId);
+            
+            var validation = new ProjectCreationValidationDto
+            {
+                ClassId = classId,
+                GroupId = groupId,
+                CanCreate = true,
+                Status = "Open"
+            };
+
+            if (config == null)
+            {
+                validation.Message = "No deadline configuration set - project creation allowed";
+                return new ResultModel<ProjectCreationValidationDto>
+                {
+                    IsSuccess = true,
+                    Data = validation,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            validation.DeadlineDate = config.ProjectCreationDeadline;
+            validation.Status = config.GetProjectCreationStatus();
+            validation.CanCreate = config.IsProjectCreationAllowed();
+
+            if (validation.Status == "Expired")
+            {
+                validation.Message = $"Project creation deadline has passed on {config.ProjectCreationDeadline:yyyy-MM-dd HH:mm}. Cannot create new projects.";
+            }
+            else if (validation.Status == "ExpiringWithin24Hours")
+            {
+                var hoursRemaining = (config.ProjectCreationDeadline!.Value - DateTime.UtcNow).TotalHours;
+                validation.Message = $"Project creation deadline expires in {Math.Ceiling(hoursRemaining)} hours. Please create your project soon.";
+            }
+            else if (validation.Status == "ExpiringWithinWeek")
+            {
+                var daysRemaining = (config.ProjectCreationDeadline!.Value - DateTime.UtcNow).TotalDays;
+                validation.Message = $"Project creation deadline expires in {Math.Ceiling(daysRemaining)} days.";
+            }
+            else if (validation.Status == "NoDeadline")
+            {
+                validation.Message = "No project creation deadline set. You can create projects anytime.";
+            }
+            else
+            {
+                validation.Message = "You can create a project now.";
+            }
+
+            return new ResultModel<ProjectCreationValidationDto>
+            {
+                IsSuccess = true,
+                Data = validation,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ProjectCreationValidationDto>
+            {
+                IsSuccess = false,
+                Message = $"Error validating project creation: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<bool>> CanCreateProjectAsync(int classId, int groupId)
+    {
+        try
+        {
+            var config = await _configRepository.GetByClassIdAsync(classId);
+            if (config == null)
+                return new ResultModel<bool> { IsSuccess = true, Data = true };
+
+            var canCreate = config.IsProjectCreationAllowed();
+
+            return new ResultModel<bool>
+            {
+                IsSuccess = true,
+                Data = canCreate,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<bool>
+            {
+                IsSuccess = false,
+                Message = $"Error checking project creation: {ex.Message}",
                 StatusCode = StatusCodes.Status500InternalServerError
             };
         }

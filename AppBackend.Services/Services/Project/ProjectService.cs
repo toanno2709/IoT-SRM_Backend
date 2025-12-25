@@ -56,6 +56,22 @@ namespace AppBackend.Services.Services.Project
                     StatusCodes.Status403Forbidden
                 );
 
+            // Check class configuration for project creation deadline (only for students, not instructors)
+            if (isGroupLeader && !isInstructor && group.Class != null)
+            {
+                var classConfig = await _db.ClassConfigurations
+                    .FirstOrDefaultAsync(c => c.ClassId == group.Class.ClassId);
+
+                if (classConfig != null && !classConfig.IsProjectCreationAllowed())
+                {
+                    throw new AppException(
+                        CommonMessageConstants.FORBIDDEN,
+                        $"Project creation deadline has passed on {classConfig.ProjectCreationDeadline:yyyy-MM-dd HH:mm}. Cannot create new projects.",
+                        StatusCodes.Status403Forbidden
+                    );
+                }
+            }
+
             // Kiểm tra group đã có project chưa
             var existing = await _db.Projects.FirstOrDefaultAsync(p => p.GroupId == dto.GroupId);
             if (existing != null)
