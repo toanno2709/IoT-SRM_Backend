@@ -250,5 +250,70 @@ public class StudentController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    /// <summary>
+    /// Get my group's template registrations
+    /// </summary>
+    /// <returns>List of all registrations for groups I'm in</returns>
+    /// <remarks>
+    /// Returns all template registrations for groups that the current student is a member of.
+    /// 
+    /// Use cases:
+    /// - View all templates your group(s) have registered
+    /// - Get registration IDs to cancel registrations
+    /// - Check registration status and project details
+    /// - See which registrations can be cancelled
+    /// 
+    /// **CanCancel** is true when:
+    /// - Registration status is "Active"
+    /// - No milestone submissions have been made yet
+    /// - You are the group leader (checked in DELETE endpoint)
+    /// 
+    /// Example response:
+    /// ```json
+    /// {
+    ///   "isSuccess": true,
+    ///   "data": [
+    ///     {
+    ///       "registrationId": 15,
+    ///       "templateTitle": "IoT Smart Home",
+    ///       "groupName": "Team Alpha",
+    ///       "projectId": 42,
+    ///       "status": "Active",
+    ///       "canCancel": true
+    ///     }
+    ///   ]
+    /// }
+    /// ```
+    /// 
+    /// To cancel a registration, use the `registrationId` with:
+    /// DELETE /api/Student/templates/registrations/{registrationId}
+    /// </remarks>
+    [HttpGet("templates/registrations/my-group")]
+    [ProducesResponseType(typeof(ResultModel<List<MyGroupRegistrationDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<List<MyGroupRegistrationDto>>>> GetMyGroupRegistrations()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting their group registrations", studentId);
+
+        var result = await _templateService.GetMyGroupRegistrationsAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 }

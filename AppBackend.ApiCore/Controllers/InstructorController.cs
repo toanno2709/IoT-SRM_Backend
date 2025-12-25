@@ -235,6 +235,38 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Get all students in a class with their group status
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of students with group information (has group or not, group name, role)</returns>
+    /// <remarks>
+    /// Returns all students enrolled in the class along with their group membership status.
+    /// 
+    /// For each student, shows:
+    /// - Basic student information (name, email, enrollment date)
+    /// - Whether they have a group (HasGroup)
+    /// - Group details if they're in a group (GroupId, GroupName, RoleInGroup, JoinedGroupAt)
+    /// 
+    /// Summary statistics included:
+    /// - Total students in class
+    /// - Number of students with groups
+    /// - Number of students without groups
+    /// </remarks>
+    [HttpGet("classes/{classId}/students-with-groups")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<ClassStudentsWithGroupResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassStudentsWithGroupResponseDto>>> GetClassStudentsWithGroup(
+        [FromRoute] int classId)
+    {
+        var result = await _classEnrollmentService.GetClassStudentsWithGroupAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
     /// Get all student grades in a class
     /// </summary>
     [HttpGet("classes/{classId}/grades")]

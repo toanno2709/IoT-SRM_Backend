@@ -661,6 +661,87 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Import students to class from Excel file
+    /// </summary>
+    /// <param name="classId">Class ID to add students to</param>
+    /// <param name="excelFile">Excel file (.xlsx or .xls) with Email and Status columns</param>
+    /// <returns>Import result with successful and failed entries</returns>
+    /// <remarks>
+    /// Imports students to a class from an Excel template file.
+    /// 
+    /// **Excel Format Requirements:**
+    /// - **Column A (Email)**: Student email address (required, must exist in system)
+    /// - **Column B (Status)**: IOT course status - "Passed" or "Not Pass"
+    /// 
+    /// **Validation Rules:**
+    /// 1. **Email must exist** in the Users table
+    /// 2. **User must be a student** (role_id = 3)
+    /// 3. **Student cannot already be enrolled** in this class (no duplicates)
+    /// 4. **Status must be "Not Pass"** or empty/null (students with "Passed" cannot be added)
+    /// 
+    /// **Response Structure:**
+    /// - Returns detailed results for each row
+    /// - Success list: Students successfully added with their details
+    /// - Failed list: Students not added with specific reason codes and messages in Vietnamese
+    /// 
+    /// **Failure Reason Codes:**
+    /// - `EMAIL_NOT_FOUND`: Email không t?n t?i trong h? th?ng
+    /// - `NOT_STUDENT`: Ng??i dùng không ph?i là sinh viên
+    /// - `DUPLICATE`: Sinh viên ?ã có trong l?p
+    /// - `ALREADY_PASSED`: Sinh viên ?ã hoàn thành môn IOT (Status: Passed)
+    /// - `INVALID_STATUS`: Status không h?p l?
+    /// 
+    /// **Example Usage:**
+    /// ```
+    /// POST /api/admin/classes/123/import-students
+    /// Content-Type: multipart/form-data
+    /// 
+    /// excelFile: [Excel file with Email and Status columns]
+    /// ```
+    /// 
+    /// **Sample Excel Data:**
+    /// | Email | Status |
+    /// |-------|--------|
+    /// | student@fpt.edu.vn | Not Pass |
+    /// | student2@example.com | Passed |
+    /// 
+    /// In this example:
+    /// - First student will be added successfully
+    /// - Second student will fail with "ALREADY_PASSED" reason
+    /// </remarks>
+    [HttpPost("classes/{classId}/import-students")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
+    [Consumes("multipart/form-data")]
+    [RateLimit(permitLimit: 5, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ImportStudentsResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ImportStudentsResultDto>>> ImportStudentsFromExcel(
+        [FromRoute] int classId,
+        [FromForm] IFormFile excelFile)
+    {
+        if (excelFile == null || excelFile.Length == 0)
+        {
+            return BadRequest(new ResultModel<ImportStudentsResultDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Excel file is required"
+            });
+        }
+
+        var result = await _classEnrollmentService.ImportStudentsFromExcelAsync(classId, excelFile);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
     /// Add a specific student to a class
     /// </summary>
     /// <param name="classId">Class ID</param>

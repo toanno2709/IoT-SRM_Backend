@@ -505,9 +505,22 @@ public class ProjectTemplateService : IProjectTemplateService
             foreach (var template in templates)
             {
                 bool isMyGroupRegistered = false;
+                int? myRegistrationId = null;
+                
                 if (studentGroup != null)
                 {
-                    isMyGroupRegistered = await _templateRepo.IsGroupRegisteredAsync(studentGroup.GroupId, template.TemplateId);
+                    // Check if group is registered and get registration ID
+                    var registration = await _context.ProjectTemplateRegistrations
+                        .Where(r => r.GroupId == studentGroup.GroupId 
+                                 && r.TemplateId == template.TemplateId 
+                                 && r.Status == "Active")
+                        .FirstOrDefaultAsync();
+                    
+                    if (registration != null)
+                    {
+                        isMyGroupRegistered = true;
+                        myRegistrationId = registration.RegistrationId;
+                    }
                 }
 
                 var dto = new AvailableTemplateDto
@@ -523,6 +536,7 @@ public class ProjectTemplateService : IProjectTemplateService
                                   (template.MaxGroups == null || template.RegisteredCount < template.MaxGroups) &&
                                   studentGroup != null && !isMyGroupRegistered,
                     IsMyGroupRegistered = isMyGroupRegistered,
+                    MyRegistrationId = myRegistrationId,
                     MilestoneCount = template.TemplateMilestones.Count,
                     Milestones = template.TemplateMilestones.Select(m => new TemplateMilestoneDto
                     {
@@ -755,6 +769,86 @@ public class ProjectTemplateService : IProjectTemplateService
                 DaysDuration = m.DaysDuration
             }).OrderBy(m => m.OrderIndex).ToList()
         };
+    }
+
+    public async Task<ResultModel<List<MyGroupRegistrationDto>>> GetMyGroupRegistrationsAsync(int studentId)
+    {
+        try
+        {
+            // Get student's groups
+            var studentGroups = await _context.GroupMembers
+                .Include(gm => gm.Group)
+                .Where(gm => gm.UserId == studentId)
+                .Select(gm => gm.Group)
+                .ToListAsync();
+
+            if (!studentGroups.Any())
+            {
+                return new ResultModel<List<MyGroupRegistrationDto>>
+                {
+                    IsSuccess = true,
+                    Message = "You are not in any group",
+                    Data = new List<MyGroupRegistrationDto>(),
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            var groupIds = studentGroups.Select(g => g.GroupId).ToList();
+
+            // Get all registrations for these groups
+            var registrations = await _context.ProjectTemplateRegistrations
+                .Include(r => r.ProjectTemplate)
+                .Include(r => r.Group)
+                .Include(r => r.Project)
+                .Where(r => groupIds.Contains(r.GroupId))
+                .OrderByDescending(r => r.RegisteredAt)
+                .ToListAsync();
+
+            var result = new List<MyGroupRegistrationDto>();
+            foreach (var reg in registrations)
+            {
+                // Check if can cancel (no submissions)
+                bool canCancel = false;
+                if (reg.Status == "Active" && reg.ProjectId.HasValue)
+                {
+                    var hasSubmissions = await _context.MilestoneSubmissions
+                        .AnyAsync(s => s.ProjectId == reg.ProjectId.Value);
+                    canCancel = !hasSubmissions;
+                }
+
+                result.Add(new MyGroupRegistrationDto
+                {
+                    RegistrationId = reg.RegistrationId,
+                    TemplateId = reg.TemplateId,
+                    TemplateTitle = reg.ProjectTemplate?.Title ?? "Unknown",
+                    TemplateDescription = reg.ProjectTemplate?.Description,
+                    GroupId = reg.GroupId,
+                    GroupName = reg.Group?.GroupName ?? "Unknown",
+                    ProjectId = reg.ProjectId,
+                    ProjectTitle = reg.Project?.Title,
+                    Status = reg.Status,
+                    RegisteredAt = reg.RegisteredAt ?? TruncateToSeconds(DateTime.UtcNow),
+                    CanCancel = canCancel
+                });
+            }
+
+            return new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = true,
+                Message = $"Found {result.Count} registration(s)",
+                Data = result,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = false,
+                Message = $"Error: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
     }
 
     #endregion

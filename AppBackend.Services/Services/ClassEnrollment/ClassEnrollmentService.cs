@@ -5,6 +5,7 @@ using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using AppBackend.BusinessObjects.Data;
+using OfficeOpenXml;
 using ClassEnrollmentModel = AppBackend.BusinessObjects.Models.ClassEnrollment;
 using UserModel = AppBackend.BusinessObjects.Models.User;
 
@@ -24,6 +25,9 @@ public class ClassEnrollmentService : IClassEnrollmentService
         _classRepo = classRepo;
         _userRepo = userRepo;
         _context = context;
+        
+        // Set EPPlus license context
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
     public async Task<ResultModel<BulkAddStudentsResponseDto>> BulkAddStudentsAsync(BulkAddStudentsRequestDto request)
@@ -398,6 +402,127 @@ public class ClassEnrollmentService : IClassEnrollmentService
         }
     }
 
+    public async Task<ResultModel<ClassStudentsWithGroupResponseDto>> GetClassStudentsWithGroupAsync(int classId)
+    {
+        try
+        {
+            // 1. Ki?m tra class có t?n t?i
+            var classEntity = await _classRepo.GetByIdAsync(classId);
+            if (classEntity == null)
+            {
+                return new ResultModel<ClassStudentsWithGroupResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "CLASS_NOT_FOUND",
+                    Message = "Class not found",
+                    Data = null,
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // 2. L?y danh sách students trong class
+            var enrollments = await _context.ClassEnrollments
+                .Where(ce => ce.ClassId == classId)
+                .Include(ce => ce.Student)
+                .ToListAsync();
+
+            if (!enrollments.Any())
+            {
+                return new ResultModel<ClassStudentsWithGroupResponseDto>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "No students found in this class",
+                    Data = new ClassStudentsWithGroupResponseDto
+                    {
+                        ClassId = classId,
+                        ClassName = classEntity.ClassName,
+                        TotalStudents = 0,
+                        StudentsWithGroup = 0,
+                        StudentsWithoutGroup = 0,
+                        Students = new List<StudentWithGroupDto>()
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            var studentIds = enrollments
+                .Where(ce => ce.StudentId.HasValue)
+                .Select(ce => ce.StudentId!.Value)
+                .ToList();
+
+            // 3. L?y thông tin group membership c?a students trong class này
+            var groupMemberships = await _context.GroupMembers
+                .Where(gm => studentIds.Contains(gm.UserId))
+                .Include(gm => gm.Group)
+                .Where(gm => gm.Group.ClassId == classId)
+                .ToListAsync();
+
+            // 4. T?o dictionary ?? lookup nhanh
+            var groupMembershipDict = groupMemberships
+                .GroupBy(gm => gm.UserId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.First() // M?i student ch? có th? ? 1 group trong 1 class
+                );
+
+            // 5. Map sang DTO
+            var studentDtos = enrollments
+                .Where(ce => ce.Student != null)
+                .Select(ce =>
+                {
+                    var studentId = ce.Student!.UserId;
+                    var hasGroupMembership = groupMembershipDict.ContainsKey(studentId);
+
+                    return new StudentWithGroupDto
+                    {
+                        UserId = studentId,
+                        FullName = ce.Student.FullName,
+                        Email = ce.Student.Email,
+                        EnrolledAt = ce.EnrolledAt,
+                        HasGroup = hasGroupMembership,
+                        GroupId = hasGroupMembership ? groupMembershipDict[studentId].GroupId : null,
+                        GroupName = hasGroupMembership ? groupMembershipDict[studentId].Group?.GroupName : null,
+                        RoleInGroup = hasGroupMembership ? groupMembershipDict[studentId].RoleInGroup : null,
+                        JoinedGroupAt = hasGroupMembership ? groupMembershipDict[studentId].JoinedAt : null
+                    };
+                })
+                .OrderBy(s => s.FullName)
+                .ToList();
+
+            var studentsWithGroup = studentDtos.Count(s => s.HasGroup);
+            var studentsWithoutGroup = studentDtos.Count(s => !s.HasGroup);
+
+            return new ResultModel<ClassStudentsWithGroupResponseDto>
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = $"Retrieved {studentDtos.Count} students ({studentsWithGroup} with groups, {studentsWithoutGroup} without groups)",
+                Data = new ClassStudentsWithGroupResponseDto
+                {
+                    ClassId = classId,
+                    ClassName = classEntity.ClassName,
+                    TotalStudents = studentDtos.Count,
+                    StudentsWithGroup = studentsWithGroup,
+                    StudentsWithoutGroup = studentsWithoutGroup,
+                    Students = studentDtos
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ClassStudentsWithGroupResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = "INTERNAL_ERROR",
+                Message = $"Error retrieving class students with group status: {ex.Message}",
+                Data = null,
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
     public async Task<ResultModel<UnassignedStudentsResponseDto>> GetUnassignedStudentsAsync(int classId, string? searchQuery = null)
     {
         try
@@ -487,6 +612,262 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 IsSuccess = false,
                 ResponseCode = "INTERNAL_ERROR",
                 Message = $"Error retrieving unassigned students: {ex.Message}",
+                Data = null,
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<ImportStudentsResultDto>> ImportStudentsFromExcelAsync(int classId, IFormFile excelFile)
+    {
+        try
+        {
+            // 1. Validate class exists
+            var classEntity = await _classRepo.GetByIdAsync(classId);
+            if (classEntity == null)
+            {
+                return new ResultModel<ImportStudentsResultDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "CLASS_NOT_FOUND",
+                    Message = "Class not found",
+                    Data = null,
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // 2. Validate Excel file
+            if (excelFile == null || excelFile.Length == 0)
+            {
+                return new ResultModel<ImportStudentsResultDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_FILE",
+                    Message = "Excel file is required",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            if (!excelFile.FileName.EndsWith(".xlsx") && !excelFile.FileName.EndsWith(".xls"))
+            {
+                return new ResultModel<ImportStudentsResultDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_FILE_FORMAT",
+                    Message = "Only Excel files (.xlsx, .xls) are allowed",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            var successList = new List<ImportStudentSuccessDto>();
+            var failedList = new List<ImportStudentFailureDto>();
+            var rowsData = new List<StudentImportRowDto>();
+
+            // 3. Read Excel file
+            using (var stream = new MemoryStream())
+            {
+                await excelFile.CopyToAsync(stream);
+                using (var package = new ExcelPackage(stream))
+                {
+                    var worksheet = package.Workbook.Worksheets[0];
+                    var rowCount = worksheet.Dimension?.Rows ?? 0;
+
+                    if (rowCount < 2)
+                    {
+                        return new ResultModel<ImportStudentsResultDto>
+                        {
+                            IsSuccess = false,
+                            ResponseCode = "EMPTY_FILE",
+                            Message = "Excel file is empty or has no data rows",
+                            Data = null,
+                            StatusCode = StatusCodes.Status400BadRequest
+                        };
+                    }
+
+                    // Read data from row 2 onwards (row 1 is header)
+                    for (int row = 2; row <= rowCount; row++)
+                    {
+                        var email = worksheet.Cells[row, 1].Value?.ToString()?.Trim();
+                        var status = worksheet.Cells[row, 2].Value?.ToString()?.Trim();
+
+                        if (string.IsNullOrWhiteSpace(email))
+                        {
+                            continue; // Skip empty rows
+                        }
+
+                        rowsData.Add(new StudentImportRowDto
+                        {
+                            RowNumber = row,
+                            Email = email,
+                            Status = status
+                        });
+                    }
+                }
+            }
+
+            if (!rowsData.Any())
+            {
+                return new ResultModel<ImportStudentsResultDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "NO_DATA",
+                    Message = "No valid data found in Excel file",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            // 4. Get existing enrollments for this class
+            var existingEnrollments = await _context.ClassEnrollments
+                .Where(ce => ce.ClassId == classId)
+                .Select(ce => ce.StudentId)
+                .ToListAsync();
+
+            // 5. Process each row
+            var enrolledAt = DateTime.UtcNow;
+            var emailsToProcess = rowsData.Select(r => r.Email.ToLower()).ToList();
+
+            // Get all users by email in one query
+            var usersDict = await _context.Users
+                .Where(u => emailsToProcess.Contains(u.Email.ToLower()))
+                .ToDictionaryAsync(u => u.Email.ToLower(), u => u);
+
+            foreach (var row in rowsData)
+            {
+                var emailLower = row.Email.ToLower();
+
+                // Validation 1: Email exists in system
+                if (!usersDict.ContainsKey(emailLower))
+                {
+                    failedList.Add(new ImportStudentFailureDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Email = row.Email,
+                        Status = row.Status,
+                        Reason = "Email không t?n t?i trong h? th?ng",
+                        ReasonCode = "EMAIL_NOT_FOUND"
+                    });
+                    continue;
+                }
+
+                var user = usersDict[emailLower];
+
+                // Validation 2: Check if user is a student (role_id = 3)
+                if (user.RoleId != 3)
+                {
+                    failedList.Add(new ImportStudentFailureDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Email = row.Email,
+                        Status = row.Status,
+                        Reason = "Ng??i dùng không ph?i là sinh viên",
+                        ReasonCode = "NOT_STUDENT"
+                    });
+                    continue;
+                }
+
+                // Validation 3: Student already in class (check duplicate)
+                if (existingEnrollments.Contains(user.UserId))
+                {
+                    failedList.Add(new ImportStudentFailureDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Email = row.Email,
+                        Status = row.Status,
+                        Reason = "Sinh viên ?ã có trong l?p",
+                        ReasonCode = "DUPLICATE"
+                    });
+                    continue;
+                }
+
+                // Validation 4: Check status (must be "Passed" or empty/null for "Not Pass")
+                if (!string.IsNullOrWhiteSpace(row.Status))
+                {
+                    var statusUpper = row.Status.Trim().ToUpper();
+                    if (statusUpper == "PASSED")
+                    {
+                        failedList.Add(new ImportStudentFailureDto
+                        {
+                            RowNumber = row.RowNumber,
+                            Email = row.Email,
+                            Status = row.Status,
+                            Reason = "Sinh viên ?ã hoàn thành môn IOT (Status: Passed)",
+                            ReasonCode = "ALREADY_PASSED"
+                        });
+                        continue;
+                    }
+                    else if (statusUpper != "NOT PASS")
+                    {
+                        failedList.Add(new ImportStudentFailureDto
+                        {
+                            RowNumber = row.RowNumber,
+                            Email = row.Email,
+                            Status = row.Status,
+                            Reason = $"Status không h?p l? (ch? ch?p nh?n 'Passed' ho?c 'Not Pass'): {row.Status}",
+                            ReasonCode = "INVALID_STATUS"
+                        });
+                        continue;
+                    }
+                }
+
+                // All validations passed - add to success list
+                successList.Add(new ImportStudentSuccessDto
+                {
+                    RowNumber = row.RowNumber,
+                    Email = user.Email,
+                    StudentName = user.FullName ?? "Unknown",
+                    UserId = user.UserId
+                });
+
+                // Add to existing enrollments to prevent duplicates in same import
+                existingEnrollments.Add(user.UserId);
+            }
+
+            // 6. Bulk insert successful enrollments
+            if (successList.Any())
+            {
+                var enrollments = successList.Select(s => new ClassEnrollmentModel
+                {
+                    ClassId = classId,
+                    StudentId = s.UserId,
+                    EnrolledAt = enrolledAt
+                }).ToList();
+
+                await _context.ClassEnrollments.AddRangeAsync(enrollments);
+                await _context.SaveChangesAsync();
+            }
+
+            // 7. Prepare result
+            var result = new ImportStudentsResultDto
+            {
+                ClassId = classId,
+                ClassName = classEntity.ClassName,
+                TotalRows = rowsData.Count,
+                SuccessCount = successList.Count,
+                FailedCount = failedList.Count,
+                SuccessfulStudents = successList,
+                FailedStudents = failedList,
+                Message = $"Imported {successList.Count} students successfully, {failedList.Count} failed"
+            };
+
+            return new ResultModel<ImportStudentsResultDto>
+            {
+                IsSuccess = true,
+                ResponseCode = CommonMessageConstants.SUCCESS,
+                Message = result.Message,
+                Data = result,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ImportStudentsResultDto>
+            {
+                IsSuccess = false,
+                ResponseCode = "INTERNAL_ERROR",
+                Message = $"Error importing students: {ex.Message}",
                 Data = null,
                 StatusCode = StatusCodes.Status500InternalServerError
             };
