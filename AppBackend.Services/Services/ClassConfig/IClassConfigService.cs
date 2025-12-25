@@ -9,4 +9,6 @@ public interface IClassConfigService
     Task<ResultModel<ClassConfigResponseDto>> CreateDefaultConfigAsync(int classId);
     Task<ResultModel<GroupValidationDto>> ValidateGroupCreationAsync(int classId, int memberCount);
     Task<ResultModel<bool>> CanCreateGroupAsync(int classId);
+    Task<ResultModel<SubmissionDeadlineValidationDto>> ValidateSubmissionDeadlineAsync(int classId);
+    Task<ResultModel<EditWindowValidationDto>> ValidateEditWindowAsync(int classId);
 }

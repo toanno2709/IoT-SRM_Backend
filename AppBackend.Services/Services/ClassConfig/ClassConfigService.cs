@@ -67,11 +67,31 @@ public class ClassConfigService : IClassConfigService
                 MaxMembersPerGroup = config.MaxMembersPerGroup,
                 GroupFormationDeadline = config.GroupFormationDeadline,
                 AllowStudentCreateGroup = config.AllowStudentCreateGroup,
+                
+                // Milestone Submission Settings
+                SubmissionStartDate = config.SubmissionStartDate,
+                SubmissionDeadline = config.SubmissionDeadline,
+                AllowLateSubmission = config.AllowLateSubmission,
+                LateSubmissionPenaltyPercent = config.LateSubmissionPenaltyPercent,
+                
+                // Milestone Edit Window Settings
+                EditWindowStartDate = config.EditWindowStartDate,
+                EditWindowEndDate = config.EditWindowEndDate,
+                
                 CreatedAt = config.CreatedAt,
                 UpdatedAt = config.UpdatedAt,
                 CurrentGroupCount = currentGroupCount,
                 IsGroupFormationOpen = config.IsGroupFormationAllowed(),
-                DeadlineStatus = GetDeadlineStatus(config.GroupFormationDeadline)
+                GroupFormationStatus = GetDeadlineStatus(config.GroupFormationDeadline),
+                
+                // Submission Period Status
+                SubmissionPeriodStatus = config.GetSubmissionPeriodStatus(),
+                CanSubmitNow = config.IsWithinSubmissionPeriod(),
+                IsSubmissionLate = config.IsSubmissionLate(),
+                
+                // Edit Window Status
+                EditWindowStatus = config.GetEditWindowStatus(),
+                CanEditNow = config.IsWithinEditWindow()
             };
 
             return new ResultModel<ClassConfigResponseDto>
@@ -141,7 +161,7 @@ public class ClassConfigService : IClassConfigService
                 config = await _configRepository.GetByClassIdAsync(classId);
             }
 
-            // Update fields if provided
+            // Update basic fields if provided
             if (dto.MaxGroupsAllowed.HasValue)
             {
                 // Validate against current group count
@@ -178,6 +198,38 @@ public class ClassConfigService : IClassConfigService
                 config!.AllowStudentCreateGroup = dto.AllowStudentCreateGroup.Value;
             }
 
+            // Update milestone submission settings
+            if (dto.SubmissionStartDate.HasValue)
+            {
+                config!.SubmissionStartDate = dto.SubmissionStartDate.Value;
+            }
+
+            if (dto.SubmissionDeadline.HasValue)
+            {
+                config!.SubmissionDeadline = dto.SubmissionDeadline.Value;
+            }
+
+            if (dto.AllowLateSubmission.HasValue)
+            {
+                config!.AllowLateSubmission = dto.AllowLateSubmission.Value;
+            }
+
+            if (dto.LateSubmissionPenaltyPercent.HasValue)
+            {
+                config!.LateSubmissionPenaltyPercent = dto.LateSubmissionPenaltyPercent.Value;
+            }
+
+            // Update milestone edit window settings
+            if (dto.EditWindowStartDate.HasValue)
+            {
+                config!.EditWindowStartDate = dto.EditWindowStartDate.Value;
+            }
+
+            if (dto.EditWindowEndDate.HasValue)
+            {
+                config!.EditWindowEndDate = dto.EditWindowEndDate.Value;
+            }
+
             config!.UpdatedAt = DateTime.UtcNow;
 
             // Validate final config
@@ -186,7 +238,7 @@ public class ClassConfigService : IClassConfigService
                 return new ResultModel<ClassConfigResponseDto>
                 {
                     IsSuccess = false,
-                    Message = "Invalid configuration: Max members must be >= Min members",
+                    Message = "Invalid configuration: Please check all date ranges and member limits",
                     StatusCode = StatusCodes.Status400BadRequest
                 };
             }
@@ -243,6 +295,8 @@ public class ClassConfigService : IClassConfigService
                 MinMembersPerGroup = 2,
                 MaxMembersPerGroup = 5,
                 AllowStudentCreateGroup = true,
+                AllowLateSubmission = true,
+                LateSubmissionPenaltyPercent = 0,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -380,6 +434,136 @@ public class ClassConfigService : IClassConfigService
             {
                 IsSuccess = false,
                 Message = $"Error checking group creation: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<SubmissionDeadlineValidationDto>> ValidateSubmissionDeadlineAsync(int classId)
+    {
+        try
+        {
+            var config = await _configRepository.GetByClassIdAsync(classId);
+            
+            var validation = new SubmissionDeadlineValidationDto
+            {
+                CanSubmit = true,
+                IsLate = false,
+                Status = "Open"
+            };
+
+            if (config == null)
+            {
+                validation.Message = "No deadline configuration set - submissions allowed";
+                return new ResultModel<SubmissionDeadlineValidationDto>
+                {
+                    IsSuccess = true,
+                    Data = validation,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            validation.DeadlineDate = config.SubmissionDeadline;
+            validation.Status = config.GetSubmissionPeriodStatus();
+            validation.CanSubmit = config.IsWithinSubmissionPeriod();
+            validation.IsLate = config.IsSubmissionLate();
+
+            if (validation.IsLate && config.AllowLateSubmission)
+            {
+                validation.ApplicablePenaltyPercent = config.LateSubmissionPenaltyPercent;
+                validation.Message = $"Submission is late. A penalty of {config.LateSubmissionPenaltyPercent}% will be applied.";
+            }
+            else if (validation.IsLate && !config.AllowLateSubmission)
+            {
+                validation.CanSubmit = false;
+                validation.Message = "Submission deadline has passed and late submissions are not allowed.";
+            }
+            else if (validation.Status == "NotStarted")
+            {
+                validation.CanSubmit = false;
+                validation.Message = $"Submission period has not started yet. Opens on {config.SubmissionStartDate:yyyy-MM-dd HH:mm}";
+            }
+            else
+            {
+                validation.Message = "Submission is on time.";
+            }
+
+            return new ResultModel<SubmissionDeadlineValidationDto>
+            {
+                IsSuccess = true,
+                Data = validation,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<SubmissionDeadlineValidationDto>
+            {
+                IsSuccess = false,
+                Message = $"Error validating submission deadline: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<EditWindowValidationDto>> ValidateEditWindowAsync(int classId)
+    {
+        try
+        {
+            var config = await _configRepository.GetByClassIdAsync(classId);
+            
+            var validation = new EditWindowValidationDto
+            {
+                CanEdit = false,
+                Status = "NotConfigured"
+            };
+
+            if (config == null)
+            {
+                validation.Message = "No edit window configuration set - editing not allowed";
+                return new ResultModel<EditWindowValidationDto>
+                {
+                    IsSuccess = true,
+                    Data = validation,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            validation.WindowStartDate = config.EditWindowStartDate;
+            validation.WindowEndDate = config.EditWindowEndDate;
+            validation.Status = config.GetEditWindowStatus();
+            validation.CanEdit = config.IsWithinEditWindow();
+
+            if (validation.Status == "NotConfigured")
+            {
+                validation.Message = "Edit window is not configured for this class.";
+            }
+            else if (validation.Status == "NotStarted")
+            {
+                validation.Message = $"Edit window has not started yet. Opens on {config.EditWindowStartDate:yyyy-MM-dd HH:mm}";
+            }
+            else if (validation.Status == "Closed")
+            {
+                validation.Message = $"Edit window has closed on {config.EditWindowEndDate:yyyy-MM-dd HH:mm}";
+            }
+            else
+            {
+                validation.Message = $"Edit window is open until {config.EditWindowEndDate:yyyy-MM-dd HH:mm}";
+            }
+
+            return new ResultModel<EditWindowValidationDto>
+            {
+                IsSuccess = true,
+                Data = validation,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<EditWindowValidationDto>
+            {
+                IsSuccess = false,
+                Message = $"Error validating edit window: {ex.Message}",
                 StatusCode = StatusCodes.Status500InternalServerError
             };
         }

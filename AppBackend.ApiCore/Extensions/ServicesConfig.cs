@@ -93,13 +93,7 @@ public static class ServicesConfig
         #region Services
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IClassService>(sp => new ClassService(
-            sp.GetRequiredService<IClassRepository>(),
-            sp.GetRequiredService<ISemesterRepository>(),
-            sp.GetRequiredService<IUserRepository>(),
-            sp.GetRequiredService<IGroupRepository>(),
-            sp.GetRequiredService<IMapper>()
-        ));
+        services.AddScoped<IClassService, ClassService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
         services.AddScoped<IProjectMilestoneService, ProjectMilestoneService>();
@@ -150,6 +144,7 @@ public static class ServicesConfig
 
         // Background Services
         services.AddHostedService<MilestoneWeightCheckBackgroundService>();
+        services.AddHostedService<ClassStatusAutoTransitionService>();
 
         #endregion
 

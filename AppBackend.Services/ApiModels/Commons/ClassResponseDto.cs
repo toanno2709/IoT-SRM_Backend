@@ -24,6 +24,10 @@ public class ClassResponseDto
     
     public DateTime? CreatedAt { get; set; }
     
+    public string Status { get; set; } = "Not Started";
+    
+    public DateTime? StartTime { get; set; }
+    
     public int TotalStudents { get; set; }
     
     public int TotalGroups { get; set; }

@@ -345,6 +345,65 @@ public class InstructorController : ControllerBase
 
     #endregion
 
+    #region Class Configuration Validation APIs
+
+    /// <summary>
+    /// Validate submission deadline for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Submission deadline validation result</returns>
+    /// <remarks>
+    /// Checks if students can currently submit milestones based on class configuration.
+    /// 
+    /// Returns:
+    /// - Can submit status
+    /// - Late submission flag
+    /// - Applicable penalty percentage
+    /// - Submission period status (NotStarted, Open, Late, Closed)
+    /// </remarks>
+    [HttpGet("classes/{classId}/validate-submission")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<SubmissionDeadlineValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<SubmissionDeadlineValidationDto>>> ValidateSubmissionDeadline(
+        [FromRoute] int classId)
+    {
+        var result = await _classConfigService.ValidateSubmissionDeadlineAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Validate edit window for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Edit window validation result</returns>
+    /// <remarks>
+    /// Checks if students can currently edit their milestone submissions.
+    /// 
+    /// Returns:
+    /// - Can edit status
+    /// - Edit window status (NotConfigured, NotStarted, Open, Closed)
+    /// - Window start and end dates
+    /// </remarks>
+    [HttpGet("classes/{classId}/validate-edit-window")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<EditWindowValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<EditWindowValidationDto>>> ValidateEditWindow(
+        [FromRoute] int classId)
+    {
+        var result = await _classConfigService.ValidateEditWindowAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
     #region Groups Management APIs
 
     /// <summary>

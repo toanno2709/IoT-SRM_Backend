@@ -7,6 +7,7 @@ using AppBackend.Repositories.Repositories.UserRepo;
 using AppBackend.Services.ApiModels.Commons;
 using AutoMapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Services.Services.Class;
 
@@ -17,19 +18,22 @@ public class ClassService : IClassService
     private readonly IUserRepository _userRepo;
     private readonly IGroupRepository _groupRepo;
     private readonly IMapper _mapper;
+    private readonly AppBackend.BusinessObjects.Data.IotShowroomContext _context;
 
     public ClassService(
         IClassRepository classRepo, 
         ISemesterRepository semesterRepo,
         IUserRepository userRepo,
         IGroupRepository groupRepo,
-        IMapper mapper)
+        IMapper mapper,
+        AppBackend.BusinessObjects.Data.IotShowroomContext context)
     {
         _classRepo = classRepo;
         _semesterRepo = semesterRepo;
         _userRepo = userRepo;
         _groupRepo = groupRepo;
         _mapper = mapper;
+        _context = context;
     }
 
     public async Task<ResultModel<List<ClassResponseDto>>> GetAssignedClassesAsync(int instructorId)
@@ -47,6 +51,8 @@ public class ClassService : IClassService
             SemesterCode = c.Semester?.Code,
             Description = c.Description,
             CreatedAt = c.CreatedAt,
+            Status = c.Status,
+            StartTime = c.StartTime,
             TotalStudents = c.ClassEnrollments?.Count ?? 0,
             TotalGroups = c.Groups?.Count ?? 0,
             TotalProjects = c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -89,6 +95,8 @@ public class ClassService : IClassService
             SemesterCode = classEntity.Semester?.Code,
             Description = classEntity.Description,
             CreatedAt = classEntity.CreatedAt,
+            Status = classEntity.Status,
+            StartTime = classEntity.StartTime,
             TotalStudents = classEntity.ClassEnrollments?.Count ?? 0,
             TotalGroups = classEntity.Groups?.Count ?? 0,
             TotalProjects = classEntity.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0,
@@ -134,6 +142,8 @@ public class ClassService : IClassService
             SemesterCode = c.Semester?.Code,
             Description = c.Description,
             CreatedAt = c.CreatedAt,
+            Status = c.Status,
+            StartTime = c.StartTime,
             TotalStudents = c.ClassEnrollments?.Count ?? 0,
             TotalGroups = c.Groups?.Count ?? 0,
             TotalProjects = c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -178,6 +188,8 @@ public class ClassService : IClassService
             SemesterCode = classEntity.Semester?.Code,
             Description = classEntity.Description,
             CreatedAt = classEntity.CreatedAt,
+            Status = classEntity.Status,
+            StartTime = classEntity.StartTime,
             TotalStudents = classEntity.ClassEnrollments?.Count ?? 0,
             TotalGroups = classEntity.Groups?.Count ?? 0,
             TotalProjects = classEntity.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -208,6 +220,8 @@ public class ClassService : IClassService
             SemesterCode = c.Semester?.Code,
             Description = c.Description,
             CreatedAt = c.CreatedAt,
+            Status = c.Status,
+            StartTime = c.StartTime,
             TotalStudents = c.ClassEnrollments?.Count ?? 0,
             TotalGroups = c.Groups?.Count ?? 0,
             TotalProjects = c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -238,6 +252,8 @@ public class ClassService : IClassService
             SemesterCode = c.Semester?.Code,
             Description = c.Description,
             CreatedAt = c.CreatedAt,
+            Status = c.Status,
+            StartTime = c.StartTime,
             TotalStudents = c.ClassEnrollments?.Count ?? 0,
             TotalGroups = c.Groups?.Count ?? 0,
             TotalProjects = c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -319,7 +335,9 @@ public class ClassService : IClassService
             SemesterId = request.SemesterId,
             Description = request.Description,
             InstructorId = request.InstructorId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Status = "Not Started",
+            StartTime = request.StartTime
         };
 
         await _classRepo.AddAsync(newClass);
@@ -339,6 +357,8 @@ public class ClassService : IClassService
             SemesterCode = createdClass.Semester?.Code,
             Description = createdClass.Description,
             CreatedAt = createdClass.CreatedAt,
+            Status = createdClass.Status,
+            StartTime = createdClass.StartTime,
             TotalStudents = 0,
             TotalGroups = 0,
             TotalProjects = 0
@@ -426,6 +446,12 @@ public class ClassService : IClassService
             classEntity.InstructorId = request.InstructorId.Value;
         }
 
+        // Update StartTime if provided
+        if (request.StartTime.HasValue)
+        {
+            classEntity.StartTime = request.StartTime;
+        }
+
         await _classRepo.UpdateAsync(classEntity);
         await _classRepo.SaveChangesAsync();
 
@@ -443,6 +469,8 @@ public class ClassService : IClassService
             SemesterCode = updatedClass.Semester?.Code,
             Description = updatedClass.Description,
             CreatedAt = updatedClass.CreatedAt,
+            Status = updatedClass.Status,
+            StartTime = updatedClass.StartTime,
             TotalStudents = updatedClass.ClassEnrollments?.Count ?? 0,
             TotalGroups = updatedClass.Groups?.Count ?? 0,
             TotalProjects = updatedClass.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0
@@ -566,6 +594,123 @@ public class ClassService : IClassService
             ResponseCode = CommonMessageConstants.SUCCESS,
             Message = $"Instructor '{instructor.FullName}' assigned to class successfully",
             Data = true,
+            StatusCode = StatusCodes.Status200OK
+        };
+    }
+
+    public async Task<ResultModel<ChangeClassStatusResponseDto>> ChangeClassStatusAsync(int classId, ChangeClassStatusRequestDto request)
+    {
+        var classEntity = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.ClassEnrollments)
+                .ThenInclude(ce => ce.Student)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.GroupMembers)
+            .FirstOrDefaultAsync(c => c.ClassId == classId);
+
+        if (classEntity == null)
+        {
+            return new ResultModel<ChangeClassStatusResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = CommonMessageConstants.NOT_FOUND,
+                Message = "Class not found",
+                Data = null,
+                StatusCode = StatusCodes.Status404NotFound
+            };
+        }
+
+        var oldStatus = classEntity.Status;
+        
+        // Validation when changing to "In Progress"
+        if (request.Status == "In Progress")
+        {
+            // Get all enrolled students
+            var totalStudents = classEntity.ClassEnrollments?.Count ?? 0;
+            if (totalStudents == 0)
+            {
+                return new ResultModel<ChangeClassStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "NO_STUDENTS",
+                    Message = "Cannot change status to 'In Progress': Class has no enrolled students",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            // Get students who are in groups
+            var studentIdsInGroups = classEntity.Groups?
+                .SelectMany(g => g.GroupMembers ?? new List<GroupMember>())
+                .Select(gm => gm.UserId)
+                .Distinct()
+                .ToHashSet() ?? new HashSet<int>();
+
+            var enrolledStudentIds = classEntity.ClassEnrollments?
+                .Select(ce => ce.StudentId ?? 0)
+                .Where(id => id > 0)
+                .ToHashSet() ?? new HashSet<int>();
+
+            var studentsWithoutGroup = enrolledStudentIds.Except(studentIdsInGroups).ToList();
+
+            if (studentsWithoutGroup.Any())
+            {
+                var studentsWithoutGroupDetails = classEntity.ClassEnrollments?
+                    .Where(ce => studentsWithoutGroup.Contains(ce.StudentId ?? 0))
+                    .Select(ce => ce.Student?.FullName ?? ce.Student?.Email ?? $"Student ID: {ce.StudentId}")
+                    .ToList() ?? new List<string>();
+
+                return new ResultModel<ChangeClassStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "STUDENTS_WITHOUT_GROUP",
+                    Message = $"Cannot change status to 'In Progress': {studentsWithoutGroup.Count} student(s) do not have a group yet. All students must be in a group before starting the class.",
+                    Data = new ChangeClassStatusResponseDto
+                    {
+                        ClassId = classId,
+                        ClassName = classEntity.ClassName,
+                        OldStatus = oldStatus,
+                        NewStatus = request.Status,
+                        ChangedAt = DateTime.UtcNow,
+                        TotalStudents = totalStudents,
+                        StudentsWithGroup = studentIdsInGroups.Count,
+                        StudentsWithoutGroup = studentsWithoutGroup.Count,
+                        Warnings = studentsWithoutGroupDetails
+                    },
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+        }
+
+        // Update status
+        classEntity.Status = request.Status;
+        await _context.SaveChangesAsync();
+
+        // Prepare response
+        var totalEnrolled = classEntity.ClassEnrollments?.Count ?? 0;
+        var studentsInGroups = classEntity.Groups?
+            .SelectMany(g => g.GroupMembers ?? new List<GroupMember>())
+            .Select(gm => gm.UserId)
+            .Distinct()
+            .Count() ?? 0;
+
+        return new ResultModel<ChangeClassStatusResponseDto>
+        {
+            IsSuccess = true,
+            ResponseCode = CommonMessageConstants.SUCCESS,
+            Message = $"Class status changed from '{oldStatus}' to '{request.Status}' successfully",
+            Data = new ChangeClassStatusResponseDto
+            {
+                ClassId = classId,
+                ClassName = classEntity.ClassName,
+                OldStatus = oldStatus,
+                NewStatus = request.Status,
+                ChangedAt = DateTime.UtcNow,
+                TotalStudents = totalEnrolled,
+                StudentsWithGroup = studentsInGroups,
+                StudentsWithoutGroup = totalEnrolled - studentsInGroups,
+                Warnings = new List<string>()
+            },
             StatusCode = StatusCodes.Status200OK
         };
     }

@@ -31,6 +31,14 @@ public partial class Class
     [Column("semester_id")]
     public int? SemesterId { get; set; }
 
+    [Column("status")]
+    [StringLength(50)]
+    public string Status { get; set; } = "Not Started";
+
+    [Column("start_time")]
+    [Precision(0)]
+    public DateTime? StartTime { get; set; }
+
     [InverseProperty("Class")]
     public virtual ICollection<ClassEnrollment> ClassEnrollments { get; set; } = new List<ClassEnrollment>();
 

@@ -14,6 +14,8 @@ public class ClassDetailDto
     public string? SemesterCode { get; set; }
     public string? Description { get; set; }
     public DateTime? CreatedAt { get; set; }
+    public string Status { get; set; } = "Not Started";
+    public DateTime? StartTime { get; set; }
     public int TotalStudents { get; set; }
     public int TotalGroups { get; set; }
     public int TotalProjects { get; set; }
@@ -54,6 +56,8 @@ public class CreateClassRequestDto
     public string? Description { get; set; }
 
     public int? InstructorId { get; set; }
+
+    public DateTime? StartTime { get; set; }
 }
 
 // Update Request DTO
@@ -66,6 +70,8 @@ public class UpdateClassRequestDto
     public string? Description { get; set; }
 
     public int? InstructorId { get; set; }
+
+    public DateTime? StartTime { get; set; }
 }
 
 // Assign Instructor Request DTO
@@ -73,4 +79,27 @@ public class AssignInstructorRequestDto
 {
     [Required(ErrorMessage = "Instructor ID is required")]
     public int InstructorId { get; set; }
+}
+
+// Change Class Status Request DTO
+public class ChangeClassStatusRequestDto
+{
+    [Required(ErrorMessage = "Status is required")]
+    [RegularExpression("^(Not Started|In Progress|Completed)$", 
+        ErrorMessage = "Status must be 'Not Started', 'In Progress', or 'Completed'")]
+    public string Status { get; set; } = null!;
+}
+
+// Change Class Status Response DTO
+public class ChangeClassStatusResponseDto
+{
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public string OldStatus { get; set; } = null!;
+    public string NewStatus { get; set; } = null!;
+    public DateTime ChangedAt { get; set; }
+    public int TotalStudents { get; set; }
+    public int StudentsWithGroup { get; set; }
+    public int StudentsWithoutGroup { get; set; }
+    public List<string> Warnings { get; set; } = new();
 }
