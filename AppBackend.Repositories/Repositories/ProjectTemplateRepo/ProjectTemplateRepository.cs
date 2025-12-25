@@ -118,6 +118,15 @@ public class ProjectTemplateRepository : IProjectTemplateRepository
 
     public async Task<ProjectTemplateRegistration> CreateRegistrationAsync(ProjectTemplateRegistration registration)
     {
+        // Load the template to increment registered count
+        var template = await _context.ProjectTemplates
+            .FirstOrDefaultAsync(t => t.TemplateId == registration.TemplateId);
+        
+        if (template != null)
+        {
+            template.RegisteredCount++;
+        }
+        
         _context.ProjectTemplateRegistrations.Add(registration);
         await _context.SaveChangesAsync();
         return registration;
@@ -126,11 +135,20 @@ public class ProjectTemplateRepository : IProjectTemplateRepository
     public async Task<bool> CancelRegistrationAsync(int registrationId)
     {
         var registration = await _context.ProjectTemplateRegistrations
+            .Include(r => r.ProjectTemplate)
             .FirstOrDefaultAsync(r => r.RegistrationId == registrationId);
         
         if (registration == null) return false;
 
+        // Update registration status
         registration.Status = "Cancelled";
+        
+        // Decrement template's registered count
+        if (registration.ProjectTemplate != null && registration.ProjectTemplate.RegisteredCount > 0)
+        {
+            registration.ProjectTemplate.RegisteredCount--;
+        }
+        
         await _context.SaveChangesAsync();
         return true;
     }

@@ -28,6 +28,17 @@ public class SyllabusService : ISyllabusService
     {
         try
         {
+            // Truncate datetime to seconds precision to match database column [Precision(0)]
+            var createdAt = new DateTime(
+                DateTime.UtcNow.Year,
+                DateTime.UtcNow.Month,
+                DateTime.UtcNow.Day,
+                DateTime.UtcNow.Hour,
+                DateTime.UtcNow.Minute,
+                DateTime.UtcNow.Second,
+                DateTimeKind.Utc
+            );
+
             var syllabus = new BusinessObjects.Models.Syllabus
             {
                 ClassId = request.ClassId,
@@ -36,7 +47,7 @@ public class SyllabusService : ISyllabusService
                 Version = request.Version,
                 AcademicYear = request.AcademicYear,
                 CreatedBy = instructorId,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = createdAt,
                 IsActive = true
             };
 
@@ -223,7 +234,17 @@ public class SyllabusService : ISyllabusService
             if (request.Version != null) syllabus.Version = request.Version;
             if (request.AcademicYear != null) syllabus.AcademicYear = request.AcademicYear;
             if (request.IsActive.HasValue) syllabus.IsActive = request.IsActive;
-            syllabus.UpdatedAt = DateTime.UtcNow;
+            
+            // Truncate datetime to seconds precision to match database column [Precision(0)]
+            syllabus.UpdatedAt = new DateTime(
+                DateTime.UtcNow.Year,
+                DateTime.UtcNow.Month,
+                DateTime.UtcNow.Day,
+                DateTime.UtcNow.Hour,
+                DateTime.UtcNow.Minute,
+                DateTime.UtcNow.Second,
+                DateTimeKind.Utc
+            );
 
             await _syllabusRepository.UpdateAsync(syllabus);
 
@@ -373,6 +394,17 @@ public class SyllabusService : ISyllabusService
 
             _logger.LogInformation("File uploaded to Cloudinary successfully. URL: {FileUrl}", uploadResult.SecureUrl);
 
+            // Truncate datetime to seconds precision to match database column [Precision(0)]
+            var uploadedAt = new DateTime(
+                DateTime.UtcNow.Year,
+                DateTime.UtcNow.Month,
+                DateTime.UtcNow.Day,
+                DateTime.UtcNow.Hour,
+                DateTime.UtcNow.Minute,
+                DateTime.UtcNow.Second,
+                DateTimeKind.Utc
+            );
+
             // Create file record in database
             var syllabusFile = new SyllabusFile
             {
@@ -383,7 +415,7 @@ public class SyllabusService : ISyllabusService
                 FileSize = file.Length,
                 Description = description,
                 UploadedBy = instructorId,
-                UploadedAt = DateTime.UtcNow,
+                UploadedAt = uploadedAt,
                 DisplayOrder = displayOrder ?? 0
             };
 
@@ -403,8 +435,8 @@ public class SyllabusService : ISyllabusService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading file to syllabus {SyllabusId}: {ErrorMessage}", 
-                syllabusId, ex.Message);
+            _logger.LogError(ex, "Error uploading file to syllabus {SyllabusId}: {ErrorMessage}. Inner exception: {InnerException}", 
+                syllabusId, ex.Message, ex.InnerException?.Message);
             
             return new ResultModel<SyllabusFileDto>
             {
