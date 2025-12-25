@@ -2,6 +2,7 @@ using AppBackend.BusinessObjects.Constants;
 using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services.Services.Notification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Http;
@@ -15,13 +16,16 @@ public class StudentDashboardService : IStudentDashboardService
 {
     private readonly IotShowroomContext _context;
     private readonly ILogger<StudentDashboardService> _logger;
+    private readonly INotificationHubService _notificationHubService;
 
     public StudentDashboardService(
         IotShowroomContext context,
-        ILogger<StudentDashboardService> logger)
+        ILogger<StudentDashboardService> logger,
+        INotificationHubService notificationHubService)
     {
         _context = context;
         _logger = logger;
+        _notificationHubService = notificationHubService;
     }
 
     /// <inheritdoc/>
@@ -431,9 +435,30 @@ public class StudentDashboardService : IStudentDashboardService
                 };
 
                 _context.Notifications.Add(rejectionNotification);
-            }
+                await _context.SaveChangesAsync();
 
-            await _context.SaveChangesAsync();
+                // Send real-time notification via SignalR
+                if (group.Leader?.Email != null)
+                {
+                    var notificationDto = new NotificationResponseDto
+                    {
+                        NotificationId = rejectionNotification.NotificationId,
+                        UserId = group.LeaderId.Value,
+                        UserName = group.Leader.FullName,
+                        Title = rejectionNotification.Title,
+                        Message = rejectionMessage,
+                        Type = "group_invitation_rejected",
+                        IsRead = false,
+                        CreatedAt = rejectionNotification.CreatedAt
+                    };
+
+                    await _notificationHubService.SendNotificationToUserAsync(group.Leader.Email, notificationDto);
+                }
+            }
+            else
+            {
+                await _context.SaveChangesAsync();
+            }
 
             var response = new RejectInvitationResponseDto
             {
@@ -539,20 +564,43 @@ public class StudentDashboardService : IStudentDashboardService
             if (group.LeaderId != null)
             {
                 var user = await _context.Users.FindAsync(userId);
+                var acceptMessage = $"{user?.FullName ?? "A student"} has accepted your invitation to join {group.GroupName}.";
+                
                 var acceptNotification = new BusinessObjects.Models.Notification
                 {
                     UserId = group.LeaderId.Value,
                     Title = "Invitation Accepted",
-                    Message = $"{user?.FullName ?? "A student"} has accepted your invitation to join {group.GroupName}.",
+                    Message = acceptMessage,
                     Type = "group_invitation_accepted",
                     IsRead = false,
                     CreatedAt = DateTime.UtcNow
                 };
 
                 _context.Notifications.Add(acceptNotification);
-            }
+                await _context.SaveChangesAsync();
 
-            await _context.SaveChangesAsync();
+                // Send real-time notification via SignalR
+                if (group.Leader?.Email != null)
+                {
+                    var notificationDto = new NotificationResponseDto
+                    {
+                        NotificationId = acceptNotification.NotificationId,
+                        UserId = group.LeaderId.Value,
+                        UserName = group.Leader.FullName,
+                        Title = acceptNotification.Title,
+                        Message = acceptMessage,
+                        Type = "group_invitation_accepted",
+                        IsRead = false,
+                        CreatedAt = acceptNotification.CreatedAt
+                    };
+
+                    await _notificationHubService.SendNotificationToUserAsync(group.Leader.Email, notificationDto);
+                }
+            }
+            else
+            {
+                await _context.SaveChangesAsync();
+            }
 
             _logger.LogInformation("User {UserId} successfully joined group {GroupId}", userId, groupId);
 

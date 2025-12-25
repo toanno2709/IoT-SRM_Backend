@@ -55,6 +55,7 @@ using AppBackend.Services.Services.MilestoneWarning;
 using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using AppBackend.Services.BackgroundServices;
 using AppBackend.Services.Services.AdminClassGrader;
+using AppBackend.ApiCore.Services;
 
 namespace AppBackend.Extensions;
 
@@ -140,6 +141,7 @@ public static class ServicesConfig
         
         // Notification services
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<INotificationHubService, NotificationHubService>();
         services.AddScoped<IOTPService, OTPService>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddSingleton<RateLimiterStore>();
