@@ -5,6 +5,9 @@ using AppBackend.Services.ApiModels.Commons;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System.Drawing;
 
 namespace AppBackend.Services.Services.StudentGrade;
 
@@ -17,6 +20,8 @@ public class StudentGradeService : IStudentGradeService
     {
         _context = context;
         _logger = logger;
+        // Set EPPlus license context
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
     public async Task<ResultModel<StudentGradesResponseDto>> GetMyGradesAsync(int userId)
@@ -343,6 +348,428 @@ public class StudentGradeService : IStudentGradeService
             throw new AppException(
                 CommonMessageConstants.ERROR,
                 $"Error calculating grade: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
+    public async Task<ResultModel<ClassGradesReportDto>> GetClassGradesAsync(int classId, int? instructorId = null)
+    {
+        try
+        {
+            var classEntity = await _context.Classes
+                .Include(c => c.Semester)
+                .Include(c => c.Instructor)
+                .FirstOrDefaultAsync(c => c.ClassId == classId);
+
+            if (classEntity == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Class not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Verify instructor access if provided
+            if (instructorId.HasValue && classEntity.InstructorId != instructorId.Value)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You do not have access to this class",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            // Get all students enrolled in the class
+            var enrolledStudents = await _context.ClassEnrollments
+                .Include(ce => ce.Student)
+                .Where(ce => ce.ClassId == classId)
+                .Where(ce => ce.Student != null)
+                .Select(ce => ce.Student!)
+                .ToListAsync();
+
+            // Get all groups in the class
+            var groupsInClass = await _context.Groups
+                .Include(g => g.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+                .Include(g => g.Projects)
+                    .ThenInclude(p => p.FinalProjectSubmission)
+                .Where(g => g.ClassId == classId)
+                .ToListAsync();
+
+            // Get all unique milestone names (from all projects in class)
+            var milestoneNames = await _context.ProjectMilestones
+                .Where(pm => pm.Project!.Group!.ClassId == classId)
+                .Select(pm => pm.Title ?? "Unnamed Milestone")
+                .Distinct()
+                .OrderBy(m => m)
+                .ToListAsync();
+
+            var studentGrades = new List<StudentGradeReportDto>();
+
+            foreach (var student in enrolledStudents)
+            {
+                // Find student's group in this class
+                var studentGroup = groupsInClass.FirstOrDefault(g => 
+                    g.GroupMembers != null && g.GroupMembers.Any(gm => gm.UserId == student.UserId));
+
+                // Get student's project from group
+                var studentProject = studentGroup?.Projects?.FirstOrDefault();
+
+                var studentGrade = new StudentGradeReportDto
+                {
+                    StudentId = student.UserId,
+                    StudentName = student.FullName,
+                    Email = student.Email,
+                    GroupId = studentGroup?.GroupId,
+                    GroupName = studentGroup?.GroupName,
+                    ProjectId = studentProject?.ProjectId,
+                    ProjectTitle = studentProject?.Title,
+                    Status = studentProject?.Status ?? "No Project"
+                };
+
+                // Get milestone grades if student has a project
+                if (studentProject != null)
+                {
+                    var projectId = studentProject.ProjectId;
+                    
+                    // Get all evaluations for this project
+                    var evaluations = await _context.MilestoneEvaluations
+                        .Include(e => e.MilestoneDef)
+                        .Where(e => e.ProjectId == projectId)
+                        .ToListAsync();
+
+                    // Get all milestones for this project
+                    var projectMilestones = await _context.ProjectMilestones
+                        .Where(pm => pm.ProjectId == projectId)
+                        .ToListAsync();
+
+                    // Map milestone grades
+                    foreach (var milestoneName in milestoneNames)
+                    {
+                        var milestone = projectMilestones.FirstOrDefault(pm => pm.Title == milestoneName);
+                        if (milestone != null)
+                        {
+                            var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
+                            studentGrade.MilestoneGrades[milestoneName] = evaluation?.Score;
+                        }
+                        else
+                        {
+                            studentGrade.MilestoneGrades[milestoneName] = null;
+                        }
+                    }
+
+                    // Get final submission grade
+                    var finalSubmission = await _context.FinalProjectSubmissions
+                        .FirstOrDefaultAsync(fps => fps.ProjectId == projectId);
+                    
+                    studentGrade.FinalSubmissionGrade = finalSubmission?.Grade;
+
+                    // Calculate overall grade (milestones + final submission)
+                    decimal totalWeightedScore = 0;
+                    decimal totalWeight = 0;
+
+                    // Add milestone scores
+                    foreach (var milestone in projectMilestones)
+                    {
+                        var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
+                        if (evaluation != null && milestone.Weight.HasValue)
+                        {
+                            totalWeightedScore += (evaluation.Score * milestone.Weight.Value) / 100;
+                            totalWeight += milestone.Weight.Value;
+                        }
+                    }
+
+                    // Add final submission score if exists (weight is remaining percentage)
+                    if (finalSubmission?.Grade != null)
+                    {
+                        decimal finalWeight = 100 - totalWeight;
+                        if (finalWeight > 0)
+                        {
+                            totalWeightedScore += (finalSubmission.Grade.Value * finalWeight) / 100;
+                            totalWeight += finalWeight;
+                        }
+                    }
+
+                    studentGrade.OverallGrade = totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : null;
+                }
+                else
+                {
+                    // No project - fill with nulls
+                    foreach (var milestoneName in milestoneNames)
+                    {
+                        studentGrade.MilestoneGrades[milestoneName] = null;
+                    }
+                    studentGrade.FinalSubmissionGrade = null;
+                }
+
+                studentGrades.Add(studentGrade);
+            }
+
+            // Sort by Group Name (nulls last) then by Student Name
+            studentGrades = studentGrades
+                .OrderBy(sg => string.IsNullOrEmpty(sg.GroupName) ? "ZZZZZ" : sg.GroupName)
+                .ThenBy(sg => sg.StudentName)
+                .ToList();
+
+            var report = new ClassGradesReportDto
+            {
+                ClassId = classId,
+                ClassName = classEntity.ClassName,
+                SemesterName = classEntity.Semester?.Name,
+                InstructorName = classEntity.Instructor?.FullName,
+                TotalStudents = enrolledStudents.Count,
+                TotalGroups = groupsInClass.Count,
+                StudentGrades = studentGrades,
+                MilestoneNames = milestoneNames
+            };
+
+            return new ResultModel<ClassGradesReportDto>
+            {
+                IsSuccess = true,
+                Message = "Class grades retrieved successfully",
+                Data = report,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting class grades");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting class grades: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
+    public async Task<ResultModel<ExportClassGradesResponseDto>> ExportClassGradesToExcelAsync(
+        int classId, 
+        bool includeMilestoneDetails = true, 
+        bool includeFeedback = false, 
+        int? instructorId = null)
+    {
+        try
+        {
+            // Get class grades data
+            var gradesResult = await GetClassGradesAsync(classId, instructorId);
+            if (!gradesResult.IsSuccess || gradesResult.Data == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    "Failed to retrieve class grades",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
+
+            var gradesData = gradesResult.Data;
+
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("Class Grades");
+
+            // Set up header
+            int row = 1;
+            int col = 1;
+
+            // Title
+            worksheet.Cells[row, col].Value = $"Class Grades Report: {gradesData.ClassName}";
+            worksheet.Cells[row, col].Style.Font.Size = 16;
+            worksheet.Cells[row, col].Style.Font.Bold = true;
+            row++;
+
+            // Class info
+            worksheet.Cells[row, col].Value = $"Semester: {gradesData.SemesterName}";
+            row++;
+            worksheet.Cells[row, col].Value = $"Instructor: {gradesData.InstructorName}";
+            row++;
+            worksheet.Cells[row, col].Value = $"Total Students: {gradesData.TotalStudents}";
+            row++;
+            worksheet.Cells[row, col].Value = $"Total Groups: {gradesData.TotalGroups}";
+            row++;
+            worksheet.Cells[row, col].Value = $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+            row++;
+            row++; // Empty row
+
+            // Column headers
+            int headerRow = row;
+            col = 1;
+            
+            worksheet.Cells[headerRow, col++].Value = "Student ID";
+            worksheet.Cells[headerRow, col++].Value = "Student Name";
+            worksheet.Cells[headerRow, col++].Value = "Email";
+            worksheet.Cells[headerRow, col++].Value = "Group Name";
+            worksheet.Cells[headerRow, col++].Value = "Project Title";
+
+            if (includeMilestoneDetails)
+            {
+                foreach (var milestoneName in gradesData.MilestoneNames)
+                {
+                    worksheet.Cells[headerRow, col++].Value = milestoneName;
+                }
+            }
+
+            // Add Final Submission column
+            worksheet.Cells[headerRow, col++].Value = "Final Submission";
+            worksheet.Cells[headerRow, col++].Value = "Overall Grade";
+            worksheet.Cells[headerRow, col++].Value = "Status";
+
+            // Style header row
+            using (var range = worksheet.Cells[headerRow, 1, headerRow, col - 1])
+            {
+                range.Style.Font.Bold = true;
+                range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                range.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+                range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                range.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            }
+
+            // Data rows
+            row++;
+            foreach (var studentGrade in gradesData.StudentGrades)
+            {
+                col = 1;
+                worksheet.Cells[row, col++].Value = studentGrade.StudentId;
+                worksheet.Cells[row, col++].Value = studentGrade.StudentName;
+                worksheet.Cells[row, col++].Value = studentGrade.Email;
+                worksheet.Cells[row, col++].Value = studentGrade.GroupName ?? "No Group";
+                worksheet.Cells[row, col++].Value = studentGrade.ProjectTitle ?? "No Project";
+
+                if (includeMilestoneDetails)
+                {
+                    foreach (var milestoneName in gradesData.MilestoneNames)
+                    {
+                        if (studentGrade.MilestoneGrades.TryGetValue(milestoneName, out var grade) && grade.HasValue)
+                        {
+                            worksheet.Cells[row, col].Value = grade.Value;
+                            worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                            
+                            // Color coding for grades
+                            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            if (grade.Value >= 80)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                            }
+                            else if (grade.Value >= 50)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                            }
+                            else
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                            }
+                        }
+                        else
+                        {
+                            worksheet.Cells[row, col].Value = "N/A";
+                        }
+                        col++;
+                    }
+                }
+
+                // Final Submission Grade
+                if (studentGrade.FinalSubmissionGrade.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = studentGrade.FinalSubmissionGrade.Value;
+                    worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                    
+                    // Color coding for final submission
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    if (studentGrade.FinalSubmissionGrade.Value >= 80)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                    }
+                    else if (studentGrade.FinalSubmissionGrade.Value >= 50)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                    }
+                    else
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                    }
+                }
+                else
+                {
+                    worksheet.Cells[row, col].Value = "N/A";
+                }
+                col++;
+
+                // Overall Grade (now includes final submission)
+                if (studentGrade.OverallGrade.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = studentGrade.OverallGrade.Value;
+                    worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                    
+                    // Color coding for overall grade
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    if (studentGrade.OverallGrade.Value >= 80)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                    }
+                    else if (studentGrade.OverallGrade.Value >= 50)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                    }
+                    else
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                    }
+                }
+                else
+                {
+                    worksheet.Cells[row, col].Value = "N/A";
+                }
+                col++;
+
+                worksheet.Cells[row, col++].Value = studentGrade.Status;
+                row++;
+            }
+
+            // Auto-fit columns
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+
+            // Add borders to all cells
+            using (var range = worksheet.Cells[headerRow, 1, row - 1, col - 1])
+            {
+                range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            }
+
+            var fileContent = package.GetAsByteArray();
+            var fileName = $"ClassGrades_{gradesData.ClassName}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return new ResultModel<ExportClassGradesResponseDto>
+            {
+                IsSuccess = true,
+                Message = "Class grades exported successfully",
+                Data = new ExportClassGradesResponseDto
+                {
+                    FileName = fileName,
+                    FileContent = fileContent,
+                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    TotalStudents = gradesData.TotalStudents,
+                    TotalProjects = gradesData.StudentGrades.Count(sg => sg.ProjectId.HasValue),
+                    GeneratedAt = DateTime.Now
+                },
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting class grades to Excel");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error exporting grades: {ex.Message}",
                 StatusCodes.Status500InternalServerError
             );
         }

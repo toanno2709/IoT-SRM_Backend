@@ -2,6 +2,7 @@ using AppBackend.Repositories.Repositories.NotificationRepo;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.BusinessObjects.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Services.Services.Notification;
 
@@ -9,13 +10,19 @@ public class NotificationService : INotificationService
 {
     private readonly INotificationRepository _notificationRepository;
     private readonly IClassRepository _classRepository;
+    private readonly INotificationHubService _notificationHubService;
+    private readonly AppBackend.BusinessObjects.Data.IotShowroomContext _context;
 
     public NotificationService(
         INotificationRepository notificationRepository,
-        IClassRepository classRepository)
+        IClassRepository classRepository,
+        INotificationHubService notificationHubService,
+        AppBackend.BusinessObjects.Data.IotShowroomContext context)
     {
         _notificationRepository = notificationRepository;
         _classRepository = classRepository;
+        _notificationHubService = notificationHubService;
+        _context = context;
     }
 
     public async Task<ResultModel<NotificationResponseDto>> SendNotificationAsync(NotificationCreateRequestDto request)
@@ -35,11 +42,20 @@ public class NotificationService : INotificationService
             await _notificationRepository.AddAsync(notification);
             await _notificationRepository.SaveChangesAsync();
 
+            var dto = MapToDto(notification);
+
+            // Send real-time notification via SignalR
+            var user = await _context.Users.FindAsync(request.UserId);
+            if (user != null && !string.IsNullOrEmpty(user.Email))
+            {
+                await _notificationHubService.SendNotificationToUserAsync(user.Email, dto);
+            }
+
             return new ResultModel<NotificationResponseDto>
             {
                 IsSuccess = true,
                 Message = "Notification sent successfully",
-                Data = MapToDto(notification)
+                Data = dto
             };
         }
         catch (Exception ex)
@@ -60,6 +76,7 @@ public class NotificationService : INotificationService
             var successCount = 0;
             var failedCount = 0;
             var failedUserIds = new List<int>();
+            var userEmails = new List<string>();
 
             foreach (var userId in request.UserIds)
             {
@@ -76,6 +93,14 @@ public class NotificationService : INotificationService
                     };
 
                     await _notificationRepository.AddAsync(notification);
+                    
+                    // Get user email for SignalR
+                    var user = await _context.Users.FindAsync(userId);
+                    if (user != null && !string.IsNullOrEmpty(user.Email))
+                    {
+                        userEmails.Add(user.Email);
+                    }
+                    
                     successCount++;
                 }
                 catch
@@ -86,6 +111,19 @@ public class NotificationService : INotificationService
             }
 
             await _notificationRepository.SaveChangesAsync();
+
+            // Send real-time notifications via SignalR
+            if (userEmails.Any())
+            {
+                var notificationDto = new NotificationResponseDto
+                {
+                    Title = request.Title,
+                    Message = request.Message,
+                    Type = request.Type ?? "info",
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _notificationHubService.SendNotificationToUsersAsync(userEmails, notificationDto);
+            }
 
             return new ResultModel<BulkNotificationResponseDto>
             {

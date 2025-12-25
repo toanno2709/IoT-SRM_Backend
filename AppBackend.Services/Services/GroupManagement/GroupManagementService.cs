@@ -3,6 +3,9 @@ using AppBackend.Repositories.Repositories.GroupMemberRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.BusinessObjects.Models;
+using AppBackend.BusinessObjects.Data;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Services.Services.GroupManagement;
 
@@ -11,15 +14,21 @@ public class GroupManagementService : IGroupManagementService
     private readonly IGroupRepository _groupRepository;
     private readonly IGroupMemberRepository _groupMemberRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IotShowroomContext _context;
+    private readonly ILogger<GroupManagementService> _logger;
 
     public GroupManagementService(
         IGroupRepository groupRepository,
         IGroupMemberRepository groupMemberRepository,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        IotShowroomContext context,
+        ILogger<GroupManagementService> logger)
     {
         _groupRepository = groupRepository;
         _groupMemberRepository = groupMemberRepository;
         _userRepository = userRepository;
+        _context = context;
+        _logger = logger;
     }
 
     public async Task<ResultModel<GroupResponseDto>> UpdateGroupInfoAsync(int groupId, GroupUpdateRequestDto request)
@@ -120,22 +129,44 @@ public class GroupManagementService : IGroupManagementService
                 };
             }
 
-            // Add member
-            var newMember = new GroupMember
+            // ? FIX: Check if invitation already exists
+            var existingInvitation = await _context.Notifications
+                .FirstOrDefaultAsync(n =>
+                    n.UserId == request.UserId &&
+                    n.Type == "group_invitation" &&
+                    (n.Message ?? "").Contains($"groupId:{groupId}") &&
+                    (n.IsRead == null || n.IsRead == false));
+
+            if (existingInvitation != null)
             {
-                GroupId = groupId,
+                return new ResultModel<GroupMemberOperationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "An invitation to this group is already pending for this user",
+                    Data = null
+                };
+            }
+
+            // ? FIX: Create invitation notification instead of adding directly
+            var invitation = new BusinessObjects.Models.Notification
+            {
                 UserId = request.UserId,
-                RoleInGroup = request.RoleInGroup ?? "Member",
-                JoinedAt = DateTime.UtcNow
+                Title = "Group Invitation",
+                Message = $"You have been invited to join {group.GroupName} (groupId:{groupId})",
+                Type = "group_invitation",
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
             };
 
-            await _groupMemberRepository.AddAsync(newMember);
-            await _groupMemberRepository.SaveChangesAsync();
+            _context.Notifications.Add(invitation);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Invitation sent to user {UserId} for group {GroupId}", request.UserId, groupId);
 
             return new ResultModel<GroupMemberOperationResponseDto>
             {
                 IsSuccess = true,
-                Message = "Member added successfully",
+                Message = "Invitation sent successfully. Student will receive a notification and can accept or reject the invitation.",
                 Data = new GroupMemberOperationResponseDto
                 {
                     GroupId = groupId,
@@ -143,18 +174,19 @@ public class GroupManagementService : IGroupManagementService
                     UserId = request.UserId,
                     UserName = user.FullName,
                     Email = user.Email,
-                    RoleInGroup = newMember.RoleInGroup,
-                    Operation = "Added",
-                    OperationDate = newMember.JoinedAt
+                    RoleInGroup = request.RoleInGroup ?? "Member",
+                    Operation = "Invited",
+                    OperationDate = DateTime.UtcNow
                 }
             };
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error sending invitation to user {UserId} for group {GroupId}", request.UserId, groupId);
             return new ResultModel<GroupMemberOperationResponseDto>
             {
                 IsSuccess = false,
-                Message = $"Error adding member: {ex.Message}",
+                Message = $"Error sending invitation: {ex.Message}",
                 Data = null
             };
         }

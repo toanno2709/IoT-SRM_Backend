@@ -67,23 +67,16 @@ public class ProjectFeedbackResponseDto
     public string? ProjectStatus { get; set; }
     public ProposalFeedbackDto? ProposalFeedback { get; set; }
     public List<MilestoneFeedbackDto> MilestoneFeedback { get; set; } = new();
-    public string? FinalFeedback { get; set; }
 }
 
-/// <summary>
-/// DTO cho proposal feedback
-/// </summary>
 public class ProposalFeedbackDto
 {
-    public string Status { get; set; } = "Pending"; // Pending, Approved, Revision, Rejected
+    public string Status { get; set; } = "Pending";
     public string? ReviewedBy { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public string? Comment { get; set; }
 }
 
-/// <summary>
-/// DTO cho milestone feedback
-/// </summary>
 public class MilestoneFeedbackDto
 {
     public int MilestoneId { get; set; }
@@ -95,7 +88,7 @@ public class MilestoneFeedbackDto
 }
 
 /// <summary>
-/// DTO cho overall grade c?a project
+/// DTO cho overall grade calculation
 /// </summary>
 public class ProjectOverallGradeDto
 {
@@ -109,14 +102,69 @@ public class ProjectOverallGradeDto
     public int GradedMilestones { get; set; }
 }
 
-/// <summary>
-/// DTO cho contribution c?a milestone vào overall grade
-/// </summary>
 public class MilestoneGradeContributionDto
 {
     public string? MilestoneTitle { get; set; }
-    public decimal? Weight { get; set; }
+    public decimal Weight { get; set; }
     public decimal? Grade { get; set; }
     public decimal WeightedScore { get; set; }
     public bool IsGraded { get; set; }
+}
+
+/// <summary>
+/// Request DTO for exporting class grades to Excel
+/// </summary>
+public class ExportClassGradesRequestDto
+{
+    [Required]
+    public int ClassId { get; set; }
+    
+    public bool IncludeMilestoneDetails { get; set; } = true;
+    public bool IncludeFeedback { get; set; } = false;
+}
+
+/// <summary>
+/// Response DTO for class grades export
+/// </summary>
+public class ExportClassGradesResponseDto
+{
+    public string FileName { get; set; } = string.Empty;
+    public byte[] FileContent { get; set; } = Array.Empty<byte>();
+    public string ContentType { get; set; } = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    public int TotalStudents { get; set; }
+    public int TotalProjects { get; set; }
+    public DateTime GeneratedAt { get; set; }
+}
+
+/// <summary>
+/// DTO for all students grades in a class
+/// </summary>
+public class ClassGradesReportDto
+{
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public string? SemesterName { get; set; }
+    public string? InstructorName { get; set; }
+    public int TotalStudents { get; set; }
+    public int TotalGroups { get; set; }
+    public List<StudentGradeReportDto> StudentGrades { get; set; } = new();
+    public List<string> MilestoneNames { get; set; } = new();
+}
+
+/// <summary>
+/// DTO for individual student grade in class report
+/// </summary>
+public class StudentGradeReportDto
+{
+    public int StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public string? Email { get; set; }
+    public int? GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int? ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public Dictionary<string, decimal?> MilestoneGrades { get; set; } = new();
+    public decimal? FinalSubmissionGrade { get; set; }
+    public decimal? OverallGrade { get; set; }
+    public string? Status { get; set; }
 }

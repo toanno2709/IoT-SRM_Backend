@@ -52,6 +52,9 @@ public class MilestoneSubmissionRepository : GenericRepository<MilestoneSubmissi
         return await _context.MilestoneSubmissions
             .Include(s => s.Project)
                 .ThenInclude(p => p!.Group)
+                    .ThenInclude(g => g!.GroupMembers) // ✅ FIX: Include GroupMembers for authorization check
+            .Include(s => s.Project)
+                .ThenInclude(p => p!.Group)
                     .ThenInclude(g => g!.Leader)
             .Include(s => s.Project)
                 .ThenInclude(p => p!.Group)

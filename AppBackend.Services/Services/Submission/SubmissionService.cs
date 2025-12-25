@@ -5,6 +5,7 @@ using AppBackend.BusinessObjects.Data;
 using AppBackend.Repositories.Repositories.MilestoneSubmissionRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -90,6 +91,8 @@ public class SubmissionService : ISubmissionService
                 request.MilestoneId
             );
 
+            bool isNewSubmission = false;
+            
             if (submission == null)
             {
                 // Create new submission
@@ -100,7 +103,9 @@ public class SubmissionService : ISubmissionService
                     LastVersionNo = 1,
                     LastSubmittedAt = DateTime.UtcNow
                 };
+                
                 await _submissionRepository.AddAsync(submission);
+                isNewSubmission = true;
             }
             else
             {
@@ -119,7 +124,28 @@ public class SubmissionService : ISubmissionService
                 await _submissionRepository.UpdateAsync(submission);
             }
 
+            // ? FIX: Save changes to get auto-generated SubmissionId
             await _submissionRepository.SaveChangesAsync();
+
+            // ? FIX: If new submission, reload to get the generated ID
+            if (isNewSubmission)
+            {
+                // Reload the entity with the generated ID
+                await _context.Entry(submission).ReloadAsync();
+                
+                // Double-check we have a valid ID
+                if (submission.SubmissionId == 0)
+                {
+                    _logger.LogError("SubmissionId is still 0 after SaveChanges. ProjectId: {ProjectId}, MilestoneId: {MilestoneId}", 
+                        request.ProjectId, request.MilestoneId);
+                    
+                    throw new AppException(
+                        CommonMessageConstants.ERROR,
+                        "Failed to create submission - database error",
+                        StatusCodes.Status500InternalServerError
+                    );
+                }
+            }
 
             // 5. Send notification to instructor
             var instructorId = project.Group?.Class?.InstructorId;
@@ -174,14 +200,20 @@ public class SubmissionService : ISubmissionService
     {
         try
         {
+            _logger.LogInformation("=== GetSubmissionHistoryAsync START === ProjectId: {ProjectId}, MilestoneDefId: {MilestoneDefId}, UserId: {UserId}", 
+                projectId, milestoneDefId, userId);
+
             // Validate access
             var project = await _context.Projects
                 .Include(p => p.Group)
                     .ThenInclude(g => g!.GroupMembers)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
                 .FirstOrDefaultAsync(p => p.ProjectId == projectId);
 
             if (project == null)
             {
+                _logger.LogWarning("Project {ProjectId} not found", projectId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Project not found",
@@ -189,15 +221,60 @@ public class SubmissionService : ISubmissionService
                 );
             }
 
-            var isMember = project.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
-            if (!isMember)
+            _logger.LogInformation("Found project {ProjectId}. GroupId: {GroupId}", projectId, project.GroupId);
+            
+            // Log navigation properties
+            _logger.LogInformation("Project.Group is null: {IsNull}", project.Group == null);
+            if (project.Group != null)
             {
+                _logger.LogInformation("Group {GroupId} found. ClassId: {ClassId}", 
+                    project.Group.GroupId, 
+                    project.Group.ClassId);
+                
+                _logger.LogInformation("Group.Class is null: {IsNull}", project.Group.Class == null);
+                if (project.Group.Class != null)
+                {
+                    _logger.LogInformation("Class {ClassId} found. InstructorId: {InstructorId}", 
+                        project.Group.Class.ClassId, 
+                        project.Group.Class.InstructorId);
+                }
+                
+                _logger.LogInformation("Group.GroupMembers is null: {IsNull}, Count: {Count}", 
+                    project.Group.GroupMembers == null, 
+                    project.Group.GroupMembers?.Count ?? 0);
+                
+                if (project.Group.GroupMembers != null)
+                {
+                    var memberIds = string.Join(", ", project.Group.GroupMembers.Select(m => m.UserId));
+                    _logger.LogInformation("Group has {MemberCount} members: [{MemberIds}]", 
+                        project.Group.GroupMembers.Count, 
+                        memberIds);
+                }
+            }
+
+            // ? Check if user is a member of the project group
+            var isMember = project.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
+            
+            // ? Check if user is the instructor of the class
+            var instructorId = project.Group?.Class?.InstructorId;
+            var isInstructor = instructorId == userId;
+            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is instructor: {IsInstructor}", 
+                instructorId, userId, isInstructor);
+            
+            // ? Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
+            {
+                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsInstructor: {IsInstructor}", 
+                    userId, isMember, isInstructor);
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
-                    "You are not a member of this project's group",
+                    "You are not authorized to view this submission history",
                     StatusCodes.Status403Forbidden
                 );
             }
+
+            _logger.LogInformation("Access granted for user {UserId}", userId);
 
             // Get submission
             var submission = await _submissionRepository.GetSubmissionByProjectAndMilestoneAsync(
@@ -210,6 +287,9 @@ public class SubmissionService : ISubmissionService
 
             if (submission == null)
             {
+                _logger.LogInformation("No submissions found for ProjectId: {ProjectId}, MilestoneDefId: {MilestoneDefId}", 
+                    projectId, milestoneDefId);
+                
                 // No submissions yet
                 return new ResultModel<MilestoneSubmissionHistoryDto>
                 {
@@ -270,6 +350,8 @@ public class SubmissionService : ISubmissionService
                 AllVersions = versions
             };
 
+            _logger.LogInformation("=== GetSubmissionHistoryAsync SUCCESS ===");
+
             return new ResultModel<MilestoneSubmissionHistoryDto>
             {
                 IsSuccess = true,
@@ -278,8 +360,9 @@ public class SubmissionService : ISubmissionService
                 StatusCode = StatusCodes.Status200OK
             };
         }
-        catch (AppException)
+        catch (AppException ex)
         {
+            _logger.LogError(ex, "AppException in GetSubmissionHistoryAsync: {Message}", ex.Message);
             throw;
         }
         catch (Exception ex)
@@ -302,20 +385,50 @@ public class SubmissionService : ISubmissionService
         {
             var history = await GetSubmissionHistoryAsync(projectId, milestoneDefId, userId);
             
-            if (!history.IsSuccess || history.Data?.LatestSubmission == null)
+            // ? FIX: Check if GetSubmissionHistoryAsync failed
+            if (!history.IsSuccess)
             {
                 throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "No submission found",
-                    StatusCodes.Status404NotFound
+                    CommonMessageConstants.ERROR,
+                    history.Message ?? "Failed to retrieve submission history",
+                    history.StatusCode
                 );
+            }
+
+            // ? FIX: If no data or no submissions, return 200 OK with null instead of 404
+            // This is the correct behavior - milestone exists but no submission yet
+            if (history.Data == null)
+            {
+                return new ResultModel<MilestoneSubmissionResponseDto>
+                {
+                    IsSuccess = true,
+                    Message = "No submission found for this milestone",
+                    Data = null,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            // Try to get latest submission from LatestSubmission first, then from AllVersions
+            var latestSubmission = history.Data.LatestSubmission 
+                ?? history.Data.AllVersions?.FirstOrDefault();
+
+            // ? FIX: Return 200 OK with null data instead of throwing 404
+            if (latestSubmission == null)
+            {
+                return new ResultModel<MilestoneSubmissionResponseDto>
+                {
+                    IsSuccess = true,
+                    Message = "No submission found for this milestone",
+                    Data = null,
+                    StatusCode = StatusCodes.Status200OK
+                };
             }
 
             return new ResultModel<MilestoneSubmissionResponseDto>
             {
                 IsSuccess = true,
                 Message = "Latest submission retrieved successfully",
-                Data = history.Data.LatestSubmission,
+                Data = latestSubmission,
                 StatusCode = StatusCodes.Status200OK
             };
         }
@@ -341,9 +454,13 @@ public class SubmissionService : ISubmissionService
     {
         try
         {
+            _logger.LogInformation("Attempting to upload {FileCount} files to submission {SubmissionId} by user {UserId}", 
+                files.Count, submissionId, userId);
+
             var submission = await _submissionRepository.GetSubmissionWithDetailsAsync(submissionId);
             if (submission == null)
             {
+                _logger.LogWarning("Submission {SubmissionId} not found", submissionId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Submission not found",
@@ -351,14 +468,80 @@ public class SubmissionService : ISubmissionService
                 );
             }
 
+            _logger.LogInformation("Found submission {SubmissionId} for project {ProjectId}", 
+                submissionId, submission.ProjectId);
+
+            // Load full project details with group members if not already loaded
+            if (submission.Project?.Group == null || submission.Project.Group.GroupMembers == null)
+            {
+                _logger.LogInformation("Reloading project {ProjectId} with full group details", submission.ProjectId);
+                
+                submission.Project = await _context.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                    .FirstOrDefaultAsync(p => p.ProjectId == submission.ProjectId);
+            }
+
+            if (submission.Project == null)
+            {
+                _logger.LogError("Project {ProjectId} not found for submission {SubmissionId}", 
+                    submission.ProjectId, submissionId);
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Project not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            if (submission.Project.Group == null)
+            {
+                _logger.LogError("Project {ProjectId} has no group", submission.ProjectId);
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    "Project has no associated group",
+                    StatusCodes.Status400BadRequest
+                );
+            }
+
+            // Log group information
+            _logger.LogInformation("Project {ProjectId} belongs to group {GroupId} with {MemberCount} members",
+                submission.ProjectId, 
+                submission.Project.Group.GroupId,
+                submission.Project.Group.GroupMembers?.Count ?? 0);
+
             // Validate user is member of project group
-            var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            var isMember = submission.Project.Group.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
             if (!isMember)
             {
+                _logger.LogWarning(
+                    "User {UserId} is not a member of group {GroupId}. Group has members: {MemberIds}",
+                    userId,
+                    submission.Project.Group.GroupId,
+                    string.Join(", ", submission.Project.Group.GroupMembers?.Select(m => m.UserId.ToString()) ?? Array.Empty<string>())
+                );
+                
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
                     "You are not authorized to upload files to this submission",
                     StatusCodes.Status403Forbidden
+                );
+            }
+
+            _logger.LogInformation("User {UserId} is a valid member of group {GroupId}", 
+                userId, submission.Project.Group.GroupId);
+
+            // ? FIX: Load user information for response
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+            {
+                _logger.LogError("User {UserId} not found", userId);
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "User not found",
+                    StatusCodes.Status404NotFound
                 );
             }
 
@@ -370,14 +553,21 @@ public class SubmissionService : ISubmissionService
             {
                 try
                 {
+                    _logger.LogInformation("Uploading file: {FileName} ({Size} bytes)", 
+                        file.FileName, file.Length);
+
                     // Upload to Cloudinary
                     var uploadResult = await _cloudinaryService.UploadFileAsync(file);
 
                     if (uploadResult == null || string.IsNullOrEmpty(uploadResult.SecureUrl))
                     {
+                        _logger.LogError("Failed to upload {FileName} - upload result is null or empty", file.FileName);
                         errors.Add($"Failed to upload {file.FileName}");
                         continue;
                     }
+
+                    _logger.LogInformation("File {FileName} uploaded to Cloudinary: {Url}", 
+                        file.FileName, uploadResult.SecureUrl);
 
                     // Save file record
                     var submissionFile = new SubmissionFile
@@ -394,6 +584,9 @@ public class SubmissionService : ISubmissionService
                     _context.SubmissionFiles.Add(submissionFile);
                     await _context.SaveChangesAsync();
 
+                    _logger.LogInformation("File record saved to database with ID: {FileId}", submissionFile.FileId);
+
+                    // ? FIX: Add user's full name to response
                     uploadedFiles.Add(new MilestoneFileDto
                     {
                         FileId = submissionFile.FileId,
@@ -403,12 +596,13 @@ public class SubmissionService : ISubmissionService
                         FileSize = file.Length,
                         FileType = file.ContentType,
                         UploadedBy = userId,
+                        UploadedByName = user.FullName,
                         UploadedAt = submissionFile.UploadedAt
                     });
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Error uploading file {file.FileName}");
+                    _logger.LogError(ex, "Error uploading file {FileName}", file.FileName);
                     errors.Add($"Error uploading {file.FileName}: {ex.Message}");
                 }
             }
@@ -420,6 +614,9 @@ public class SubmissionService : ISubmissionService
                 FailedCount = errors.Count,
                 ErrorMessages = errors
             };
+
+            _logger.LogInformation("Upload completed. Success: {SuccessCount}, Failed: {FailedCount}", 
+                uploadedFiles.Count, errors.Count);
 
             return new ResultModel<FileUploadResponseDto>
             {
@@ -435,7 +632,7 @@ public class SubmissionService : ISubmissionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading files");
+            _logger.LogError(ex, "Error uploading files to submission {SubmissionId}", submissionId);
             throw new AppException(
                 CommonMessageConstants.ERROR,
                 $"Error uploading files: {ex.Message}",
@@ -561,6 +758,8 @@ public class SubmissionService : ISubmissionService
             .FirstOrDefaultAsync(m => m.MilestoneId == submission.MilestoneDefId);
 
         var project = await _context.Projects
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.Leader) // Include group leader info
             .FirstOrDefaultAsync(p => p.ProjectId == submission.ProjectId);
 
         // Get grade from MilestoneEvaluation if exists
@@ -568,6 +767,10 @@ public class SubmissionService : ISubmissionService
             .Include(e => e.Instructor)
             .FirstOrDefaultAsync(e => e.ProjectId == submission.ProjectId 
                 && e.MilestoneDefId == submission.MilestoneDefId);
+
+        // Get submitter info (group leader)
+        var submitterId = project?.Group?.LeaderId ?? 0;
+        var submitterName = project?.Group?.Leader?.FullName;
 
         return new MilestoneSubmissionResponseDto
         {
@@ -577,6 +780,10 @@ public class SubmissionService : ISubmissionService
             MilestoneId = submission.MilestoneDefId,
             MilestoneTitle = milestone?.Title,
             Version = submission.LastVersionNo ?? 1,
+            SubmittedBy = submitterId,
+            SubmittedByName = submitterName,
+            Description = null, // Not stored in MilestoneSubmission currently
+            SubmissionNotes = null, // Not stored in MilestoneSubmission currently
             SubmittedAt = submission.LastSubmittedAt ?? DateTime.UtcNow,
             Grade = evaluation?.Score,
             Feedback = evaluation?.Feedback,

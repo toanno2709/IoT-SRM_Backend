@@ -21,8 +21,8 @@ namespace AppBackend.Services.Services.Project
             _db = db;
         }
 
-        // 1. Create project (leader only, group must not already have one)
-        public async Task<ProjectCreateResultDto> CreateProjectAsync(ProjectCreateDto dto, int leaderId)
+        // 1. Create project (leader OR instructor of the class)
+        public async Task<ProjectCreateResultDto> CreateProjectAsync(ProjectCreateDto dto, int creatorUserId)
         {
             // Kiểm tra group tồn tại
             var group = await _db.Groups
@@ -36,11 +36,23 @@ namespace AppBackend.Services.Services.Project
                     StatusCodes.Status404NotFound
                 );
 
-            // Kiểm tra người tạo là leader
-            if (group.LeaderId != leaderId)
+            // Lấy thông tin user
+            var user = await _db.Users.FindAsync(creatorUserId);
+            if (user == null)
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "User not found",
+                    StatusCodes.Status404NotFound
+                );
+
+            // Kiểm tra quyền: phải là group leader HOẶC instructor của class
+            bool isGroupLeader = group.LeaderId == creatorUserId;
+            bool isInstructor = user.RoleId == 2 && group.Class?.InstructorId == creatorUserId;
+
+            if (!isGroupLeader && !isInstructor)
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
-                    "Only group leader can create project",
+                    "Only group leader or class instructor can create project",
                     StatusCodes.Status403Forbidden
                 );
 
@@ -59,44 +71,49 @@ namespace AppBackend.Services.Services.Project
                 GroupId = dto.GroupId,
                 Title = dto.Title,
                 Description = dto.Description,
+                Component = dto.Component,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
             };
             _db.Projects.Add(project);
             await _db.SaveChangesAsync();
 
-            // Gửi thông báo đến instructor
-            AppBackend.BusinessObjects.Models.User? instructor = null;
-            var instructorId = group.Class?.InstructorId;
-            if (instructorId.HasValue)
+            // Gửi thông báo đến instructor (chỉ khi được tạo bởi student)
+            if (isGroupLeader && !isInstructor)
             {
-                instructor = await _db.Users
-                    .FirstOrDefaultAsync(u => u.UserId == instructorId.Value && u.RoleId == 2);
-            }
-
-            if (instructor != null)
-            {
-                var note = new AppBackend.BusinessObjects.Models.Notification
+                AppBackend.BusinessObjects.Models.User? instructor = null;
+                var instructorId = group.Class?.InstructorId;
+                if (instructorId.HasValue)
                 {
-                    UserId = instructor.UserId,
-                    Title = $"New project submitted by group {group.GroupName}",
-                    Message = $"Group '{group.GroupName}' in class {group.Class?.ClassName ?? group.ClassId.ToString()} has created a new project: '{project.Title}'.",
-                    Type = "project_created",
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _db.Notifications.Add(note);
-                await _db.SaveChangesAsync();
+                    instructor = await _db.Users
+                        .FirstOrDefaultAsync(u => u.UserId == instructorId.Value && u.RoleId == 2);
+                }
+
+                if (instructor != null)
+                {
+                    var note = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = instructor.UserId,
+                        Title = $"New project submitted by group {group.GroupName}",
+                        Message = $"Group '{group.GroupName}' has submitted a new project: '{dto.Title}'",
+                        Type = "project_submitted",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(note);
+                    await _db.SaveChangesAsync();
+                }
             }
 
-            return new ProjectCreateResultDto(project.ProjectId, project.Title ?? string.Empty, project.Status);
+            return new ProjectCreateResultDto(project.ProjectId, project.Title, project.Status);
         }
 
-        // 2. Update project (leader only)
+        // 2. Update project (leader OR instructor of the class)
         public async Task UpdateProjectAsync(ProjectUpdateDto dto)
         {
             var project = await _db.Projects
                 .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
                 .FirstOrDefaultAsync(p => p.ProjectId == dto.ProjectId);
 
             if (project == null)
@@ -106,48 +123,94 @@ namespace AppBackend.Services.Services.Project
                     StatusCodes.Status404NotFound
                 );
 
-            if (project.Group?.LeaderId != dto.RequesterUserId)
-                throw new AppException(
-                    CommonMessageConstants.FORBIDDEN,
-                    "Only group leader can update project",
-                    StatusCodes.Status403Forbidden
-                );
-
-            if (!string.IsNullOrWhiteSpace(dto.Title)) project.Title = dto.Title;
-            if (dto.Description != null) project.Description = dto.Description;
-            project.UpdatedAt = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
-        }
-
-        // 3. Get project by group
-        public async Task<ProjectDetailDto> GetProjectByGroupAsync(int groupId)
-        {
-            var project = await _db.Projects
-                .Include(p => p.Group!).ThenInclude(g => g.GroupMembers).ThenInclude(gm => gm.User)
-                .FirstOrDefaultAsync(p => p.GroupId == groupId);
-
-            if (project == null)
+            // Lấy thông tin user
+            var user = await _db.Users.FindAsync(dto.RequesterUserId);
+            if (user == null)
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
-                    "Project not found for this group",
+                    "User not found",
                     StatusCodes.Status404NotFound
                 );
 
-            return new ProjectDetailDto
+            // Kiểm tra quyền: phải là group leader HOẶC instructor của class
+            bool isGroupLeader = project.Group?.LeaderId == dto.RequesterUserId;
+            bool isInstructor = user.RoleId == 2 && project.Group?.Class?.InstructorId == dto.RequesterUserId;
+
+            if (!isGroupLeader && !isInstructor)
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "Only group leader or class instructor can update project",
+                    StatusCodes.Status403Forbidden
+                );
+
+            // Cập nhật project
+            if (!string.IsNullOrWhiteSpace(dto.Title)) project.Title = dto.Title;
+            if (dto.Description != null) project.Description = dto.Description;
+            if (dto.Component != null) project.Component = dto.Component;
+            project.UpdatedAt = DateTime.UtcNow;
+
+            _db.Projects.Update(project);
+            await _db.SaveChangesAsync();
+        }
+
+        // 3. Get projects by group (returns list)
+        public async Task<ResultModel<List<ProjectDetailDto>>> GetProjectsByGroupAsync(int groupId)
+        {
+            try
             {
-                ProjectId = project.ProjectId,
-                Title = project.Title,
-                Description = project.Description,
-                Status = project.Status,
-                GroupId = project.GroupId ?? 0,
-                GroupName = project.Group?.GroupName,
-                CreatedAt = project.CreatedAt,
-                UpdatedAt = project.UpdatedAt,
-                MemberNames = project.Group?.GroupMembers
-                    .Select(m => m.User?.FullName ?? $"User#{m.UserId}")
-                    .ToList() ?? new List<string>()
-            };
+                var projects = await _db.Projects
+                    .Include(p => p.Group!).ThenInclude(g => g.GroupMembers).ThenInclude(gm => gm.User)
+                    .Where(p => p.GroupId == groupId)
+                    .ToListAsync();
+
+                if (!projects.Any())
+                {
+                    return new ResultModel<List<ProjectDetailDto>>
+                    {
+                        IsSuccess = true,
+                        ResponseCode = CommonMessageConstants.SUCCESS,
+                        Message = "No projects found for this group",
+                        Data = new List<ProjectDetailDto>(),
+                        StatusCode = StatusCodes.Status200OK
+                    };
+                }
+
+                var projectDtos = projects.Select(project => new ProjectDetailDto
+                {
+                    ProjectId = project.ProjectId,
+                    Title = project.Title,
+                    Description = project.Description,
+                    Component = project.Component,
+                    Status = project.Status,
+                    GroupId = project.GroupId ?? 0,
+                    GroupName = project.Group?.GroupName,
+                    CreatedAt = project.CreatedAt,
+                    UpdatedAt = project.UpdatedAt,
+                    MemberNames = project.Group?.GroupMembers
+                        .Select(m => m.User?.FullName ?? $"User#{m.UserId}")
+                        .ToList() ?? new List<string>()
+                }).ToList();
+
+                return new ResultModel<List<ProjectDetailDto>>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Projects retrieved successfully",
+                    Data = projectDtos,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<List<ProjectDetailDto>>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error retrieving projects: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
         }
 
         // 4. Change status (Instructor only)
@@ -254,11 +317,13 @@ namespace AppBackend.Services.Services.Project
                     ProjectId = p.ProjectId,
                     Title = p.Title,
                     Description = p.Description,
+                    Component = p.Component,
                     Status = p.Status,
                     LeaderId = p.Group?.LeaderId,
                     LeaderName = p.Group?.Leader?.FullName,
                     GroupId = p.GroupId ?? 0,
                     GroupName = p.Group?.GroupName,
+                    ClassId = p.Group?.ClassId,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
                     MemberCount = p.Group?.GroupMembers?.Count ?? 0,
@@ -268,6 +333,7 @@ namespace AppBackend.Services.Services.Project
                             UserId = gm.UserId,
                             FullName = gm.User?.FullName,
                             Email = gm.User?.Email,
+                            AvatarUrl = gm.User?.AvatarUrl,
                             RoleInProject = gm.RoleInGroup
                         }).ToList()
                 }).ToList();
@@ -288,6 +354,179 @@ namespace AppBackend.Services.Services.Project
                     IsSuccess = false,
                     ResponseCode = CommonMessageConstants.ERROR,
                     Message = $"Error retrieving projects: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        // 8. Update project status with comment (Instructor only) - NEW
+        public async Task<ResultModel<UpdateProjectStatusResponseDto>> UpdateProjectStatusAsync(
+            int projectId, 
+            UpdateProjectStatusRequestDto request, 
+            int instructorId)
+        {
+            try
+            {
+                // 1. Validate project exists
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                    .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+
+                if (project == null)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Project not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // 2. Validate instructor
+                var instructor = await _db.Users.FindAsync(instructorId);
+                if (instructor == null || instructor.RoleId != 2)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.FORBIDDEN,
+                        Message = "Only instructors can update project status",
+                        Data = null,
+                        StatusCode = StatusCodes.Status403Forbidden
+                    };
+                }
+
+                // 3. Update project status
+                var oldStatus = project.Status;
+                project.Status = request.Status;
+                project.UpdatedAt = DateTime.UtcNow;
+
+                // 4. Create approval history record (students can view this)
+                var history = new ProjectApprovalHistory
+                {
+                    SubmissionId = 0, // 0 means general project status update
+                    ReviewerId = instructorId,
+                    Action = request.Status,
+                    Comment = request.Comment ?? "",
+                    ActedAt = DateTime.UtcNow
+                };
+                _db.ProjectApprovalHistories.Add(history);
+
+                // 5. Send notifications to all group members
+                var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                foreach (var member in groupMembers)
+                {
+                    var notification = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = member.UserId,
+                        Title = $"Project Status Updated: {project.Title}",
+                        Message = $"Instructor {instructor.FullName} changed project status from '{oldStatus}' to '{request.Status}'. " +
+                                  $"{(!string.IsNullOrEmpty(request.Comment) ? $"Comment: {request.Comment}" : "")}",
+                        Type = "project_status_update",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(notification);
+                }
+
+                // 6. Save all changes
+                await _db.SaveChangesAsync();
+
+                // 7. Return response
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Project status updated successfully",
+                    Data = new UpdateProjectStatusResponseDto
+                    {
+                        ProjectId = project.ProjectId,
+                        ProjectTitle = project.Title,
+                        GroupId = project.GroupId,
+                        GroupName = project.Group?.GroupName,
+                        Status = request.Status,
+                        Comment = request.Comment,
+                        ReviewerId = instructorId,
+                        ReviewerName = instructor.FullName,
+                        ReviewedAt = DateTime.UtcNow
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error updating project status: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        // 9. Get project status history (for students to view) - NEW
+        public async Task<ResultModel<List<ProjectStatusHistoryDto>>> GetProjectStatusHistoryAsync(int projectId)
+        {
+            try
+            {
+                // 1. Validate project exists
+                var projectExists = await _db.Projects.AnyAsync(p => p.ProjectId == projectId);
+                if (!projectExists)
+                {
+                    return new ResultModel<List<ProjectStatusHistoryDto>>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Project not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // Get approval history records for this project
+                var historyRecords = await _db.ProjectApprovalHistories
+                    .Include(h => h.Reviewer)
+                    .Include(h => h.Submission)
+                        .ThenInclude(s => s.MilestoneDef)
+                    .Where(h => h.Submission.ProjectId == projectId)
+                    .OrderByDescending(h => h.ActedAt)
+                    .ToListAsync();
+
+                // Map to DTOs
+                var historyDtos = historyRecords.Select(h => new ProjectStatusHistoryDto
+                {
+                    HistoryId = h.HistoryId,
+                    Status = h.Action ?? "Unknown",
+                    Comment = h.Comment,
+                    ReviewerId = h.ReviewerId,
+                    ReviewerName = h.Reviewer?.FullName,
+                    ReviewedAt = h.ActedAt ?? DateTime.UtcNow
+                }).ToList();
+
+                return new ResultModel<List<ProjectStatusHistoryDto>>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = historyDtos.Count > 0 
+                        ? $"Retrieved {historyDtos.Count} status history records for project {projectId}"
+                        : "No approval history found for this project",
+                    Data = historyDtos,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<List<ProjectStatusHistoryDto>>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error retrieving status history: {ex.Message}",
                     Data = null,
                     StatusCode = StatusCodes.Status500InternalServerError
                 };

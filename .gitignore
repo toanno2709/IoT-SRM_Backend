@@ -416,3 +416,5 @@ AppBackend.BusinessObjects/Migrations/20251013121206_InitialCreate.cs
 DatabaseScripts/AddWeightColumnToProjectMilestones.sql
 DatabaseScripts/UpdateWeightStrategies.sql
 /DatabaseScripts
+SampleFiles/UserImportTemplate.csv
+README.md

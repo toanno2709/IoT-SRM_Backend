@@ -8,7 +8,7 @@ namespace AppBackend.ApiCore.Controllers;
 
 [ApiController]
 [Route("api/student/projects")]
-[Authorize(Roles = "Student")]
+
 public class FinalProjectController : ControllerBase
 {
     private readonly IFinalProjectService _finalProjectService;
@@ -30,6 +30,7 @@ public class FinalProjectController : ControllerBase
     /// Can only be done once per project.
     /// </remarks>
     [HttpPost("{projectId}/final-submission")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -76,7 +77,7 @@ public class FinalProjectController : ControllerBase
     /// Upload final project files to Cloudinary.
     /// All files are optional - you can upload them separately.
     /// Can be called multiple times to update files before deadline.
-    /// Maximum file size: 100MB per file.
+    /// Maximum file size: 500MB per file.
     /// 
     /// Sample request using form-data:
     /// - finalReport: [file]
@@ -85,12 +86,14 @@ public class FinalProjectController : ControllerBase
     /// - videoDemo: [file]
     /// </remarks>
     [HttpPost("{projectId}/final-submission/upload")]
+    [Authorize(Roles = "Student")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectFileUploadResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [RequestSizeLimit(104857600)] // 100 MB
+    [RequestSizeLimit(524288000)] // 500 MB
+    [RequestFormLimits(MultipartBodyLengthLimit = 524288000)] // 500 MB
     public async Task<ActionResult<ResultModel<FinalProjectFileUploadResponseDto>>> UploadFinalProjectFiles(
         [FromRoute] int projectId,
         [FromForm] FinalProjectFileUploadRequest files)
@@ -129,6 +132,7 @@ public class FinalProjectController : ControllerBase
     /// <param name="projectId">Project ID</param>
     /// <returns>Final submission details with all files and grade</returns>
     [HttpGet("{projectId}/final-submission")]
+    [Authorize(Roles = "Student,Instructor")] // ? Allow both Student and Instructor
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -165,6 +169,7 @@ public class FinalProjectController : ControllerBase
     /// To update files, use the upload endpoint.
     /// </remarks>
     [HttpPut("{projectId}/final-submission")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<FinalProjectSubmissionResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -213,6 +218,7 @@ public class FinalProjectController : ControllerBase
     /// Valid fileType values: report, presentation, sourcecode, video
     /// </remarks>
     [HttpDelete("{projectId}/final-submission/files/{fileType}")]
+    [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

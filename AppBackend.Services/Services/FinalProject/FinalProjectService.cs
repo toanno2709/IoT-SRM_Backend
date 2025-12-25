@@ -281,9 +281,12 @@ public class FinalProjectService : IFinalProjectService
     {
         try
         {
+            _logger.LogInformation("=== GetFinalSubmissionAsync START === ProjectId: {ProjectId}, UserId: {UserId}", projectId, userId);
+            
             var submission = await _finalProjectRepository.GetByProjectIdWithDetailsAsync(projectId);
             if (submission == null)
             {
+                _logger.LogWarning("Final submission not found for ProjectId: {ProjectId}", projectId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Final submission not found",
@@ -291,10 +294,53 @@ public class FinalProjectService : IFinalProjectService
                 );
             }
 
-            // Validate access
-            var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
-            if (!isMember)
+            _logger.LogInformation("Found submission {SubmissionId} for project {ProjectId}", submission.FinalSubmissionId, projectId);
+
+            // ? Log navigation property loading
+            _logger.LogInformation("Submission.Project is null: {IsNull}", submission.Project == null);
+            if (submission.Project != null)
             {
+                _logger.LogInformation("Submission.Project.Group is null: {IsNull}", submission.Project.Group == null);
+                if (submission.Project.Group != null)
+                {
+                    _logger.LogInformation("Group {GroupId} found. ClassId: {ClassId}", 
+                        submission.Project.Group.GroupId, 
+                        submission.Project.Group.ClassId);
+                    _logger.LogInformation("Group.Class is null: {IsNull}", submission.Project.Group.Class == null);
+                    
+                    if (submission.Project.Group.Class != null)
+                    {
+                        _logger.LogInformation("Class {ClassId} found. InstructorId: {InstructorId}", 
+                            submission.Project.Group.Class.ClassId, 
+                            submission.Project.Group.Class.InstructorId);
+                    }
+                    
+                    _logger.LogInformation("Group.GroupMembers is null: {IsNull}", submission.Project.Group.GroupMembers == null);
+                    if (submission.Project.Group.GroupMembers != null)
+                    {
+                        var memberIds = string.Join(", ", submission.Project.Group.GroupMembers.Select(m => m.UserId));
+                        _logger.LogInformation("Group has {MemberCount} members: [{MemberIds}]", 
+                            submission.Project.Group.GroupMembers.Count, 
+                            memberIds);
+                    }
+                }
+            }
+
+            // ? Check if user is a member of the project group
+            var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
+            
+            // ? Check if user is the instructor of the class
+            var instructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isInstructor = instructorId == userId;
+            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is instructor: {IsInstructor}", 
+                instructorId, userId, isInstructor);
+
+            // ? Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
+            {
+                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsInstructor: {IsInstructor}", 
+                    userId, isMember, isInstructor);
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
                     "You are not authorized to view this submission",
@@ -302,7 +348,11 @@ public class FinalProjectService : IFinalProjectService
                 );
             }
 
+            _logger.LogInformation("Access granted for user {UserId}", userId);
+
             var response = await MapToResponseDto(submission, submission.Project);
+
+            _logger.LogInformation("=== GetFinalSubmissionAsync SUCCESS ===");
 
             return new ResultModel<FinalProjectSubmissionResponseDto>
             {
@@ -312,8 +362,9 @@ public class FinalProjectService : IFinalProjectService
                 StatusCode = StatusCodes.Status200OK
             };
         }
-        catch (AppException)
+        catch (AppException ex)
         {
+            _logger.LogError(ex, "AppException in GetFinalSubmissionAsync: {Message}", ex.Message);
             throw;
         }
         catch (Exception ex)
@@ -601,12 +652,27 @@ public class FinalProjectService : IFinalProjectService
     {
         try
         {
+            _logger.LogInformation("Attempting to upload file: {FileName}, Size: {Size} bytes, ContentType: {ContentType}, Folder: {Folder}",
+                file.FileName, file.Length, file.ContentType, folder);
+
             var result = await _cloudinaryService.UploadFileAsync(file, $"SWP391/{folder}");
-            return result?.SecureUrl;
+            
+            if (result != null)
+            {
+                _logger.LogInformation("File uploaded successfully: {FileName} -> {Url}", 
+                    file.FileName, result.SecureUrl);
+                return result.SecureUrl;
+            }
+            else
+            {
+                _logger.LogError("Upload result is null for file: {FileName}", file.FileName);
+                return null;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Failed to upload file to Cloudinary: {file.FileName}");
+            _logger.LogError(ex, "Failed to upload file to Cloudinary: {FileName}, ContentType: {ContentType}", 
+                file.FileName, file.ContentType);
             return null;
         }
     }
@@ -620,10 +686,14 @@ public class FinalProjectService : IFinalProjectService
             .FirstOrDefaultAsync(p => p.ProjectId == submission.ProjectId);
 
         // Find final milestone to get deadline
-        var finalMilestone = await _context.ProjectMilestones
+        // Load all milestones for this project first, then filter in memory
+        var milestones = await _context.ProjectMilestones
             .Where(m => m.ProjectId == submission.ProjectId)
             .OrderByDescending(m => m.MilestoneId)
-            .FirstOrDefaultAsync(m => m.Title != null && 
+            .ToListAsync(); // Load to client first
+        
+        var finalMilestone = milestones
+            .FirstOrDefault(m => m.Title != null && 
                 (m.Title.Contains("Final", StringComparison.OrdinalIgnoreCase) ||
                  m.Title.Contains("Submission", StringComparison.OrdinalIgnoreCase)));
 

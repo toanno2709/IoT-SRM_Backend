@@ -250,6 +250,7 @@ public class StudentDashboardService : IStudentDashboardService
                     ProjectId = project.ProjectId,
                     Title = project.Title ?? "Untitled",
                     Description = project.Description,
+                    Component = project.Component,
                     Status = project.Status ?? "Unknown",
                     CreatedAt = project.CreatedAt
                 };
@@ -291,6 +292,8 @@ public class StudentDashboardService : IStudentDashboardService
     {
         try
         {
+            _logger.LogInformation("Getting group invitations for user {UserId}", userId);
+            
             // Find unread notifications with type "group_invitation"
             var invitationNotifications = await _context.Notifications
                 .Where(n => n.UserId == userId &&
@@ -299,20 +302,40 @@ public class StudentDashboardService : IStudentDashboardService
                 .OrderByDescending(n => n.CreatedAt)
                 .ToListAsync();
 
+            _logger.LogInformation("Found {Count} invitation notifications for user {UserId}", 
+                invitationNotifications.Count, userId);
+
             var invitations = new List<GroupInvitationDto>();
 
             foreach (var notification in invitationNotifications)
             {
+                _logger.LogInformation("Processing notification {NotificationId}: {Message}", 
+                    notification.NotificationId, notification.Message);
+                    
                 // Parse notification message to extract group info
                 var groupId = ExtractGroupIdFromMessage(notification.Message ?? "");
-                if (groupId == null) continue;
+                
+                _logger.LogInformation("Extracted groupId: {GroupId} from message: {Message}", 
+                    groupId, notification.Message);
+                    
+                if (groupId == null)
+                {
+                    _logger.LogWarning("Could not extract groupId from notification {NotificationId}", 
+                        notification.NotificationId);
+                    continue;
+                }
 
                 var group = await _context.Groups
                     .Include(g => g.Class)
                     .Include(g => g.Leader)
                     .FirstOrDefaultAsync(g => g.GroupId == groupId);
 
-                if (group == null) continue;
+                if (group == null)
+                {
+                    _logger.LogWarning("Group {GroupId} not found for notification {NotificationId}", 
+                        groupId, notification.NotificationId);
+                    continue;
+                }
 
                 invitations.Add(new GroupInvitationDto
                 {
@@ -325,6 +348,9 @@ public class StudentDashboardService : IStudentDashboardService
                     NotificationId = notification.NotificationId
                 });
             }
+
+            _logger.LogInformation("Successfully processed {Count} invitations for user {UserId}", 
+                invitations.Count, userId);
 
             var response = new GroupInvitationsResponseDto
             {
@@ -436,6 +462,129 @@ public class StudentDashboardService : IStudentDashboardService
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ResultModel<AcceptInvitationResponseDto>> AcceptGroupInvitationAsync(
+        int userId, 
+        int groupId)
+    {
+        try
+        {
+            _logger.LogInformation("User {UserId} attempting to accept invitation to group {GroupId}", userId, groupId);
+
+            // Find invitation notification
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n =>
+                    n.UserId == userId &&
+                    n.Type == "group_invitation" &&
+                    (n.Message ?? "").Contains($"groupId:{groupId}") &&
+                    (n.IsRead == null || n.IsRead == false));
+
+            if (notification == null)
+            {
+                _logger.LogWarning("No pending invitation found for user {UserId} and group {GroupId}", userId, groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Invitation not found or already processed",
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Verify group exists
+            var group = await _context.Groups
+                .Include(g => g.Leader)
+                .FirstOrDefaultAsync(g => g.GroupId == groupId);
+
+            if (group == null)
+            {
+                _logger.LogWarning("Group {GroupId} not found", groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Group not found",
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Check if already a member
+            var existingMember = await _context.GroupMembers
+                .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId);
+
+            if (existingMember)
+            {
+                _logger.LogWarning("User {UserId} is already a member of group {GroupId}", userId, groupId);
+                return new ResultModel<AcceptInvitationResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "You are already a member of this group",
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            // Add to group
+            var newMember = new GroupMember
+            {
+                GroupId = groupId,
+                UserId = userId,
+                RoleInGroup = "Member",
+                JoinedAt = DateTime.UtcNow
+            };
+
+            _context.GroupMembers.Add(newMember);
+
+            // Mark notification as read
+            notification.IsRead = true;
+
+            // Notify group leader
+            if (group.LeaderId != null)
+            {
+                var user = await _context.Users.FindAsync(userId);
+                var acceptNotification = new BusinessObjects.Models.Notification
+                {
+                    UserId = group.LeaderId.Value,
+                    Title = "Invitation Accepted",
+                    Message = $"{user?.FullName ?? "A student"} has accepted your invitation to join {group.GroupName}.",
+                    Type = "group_invitation_accepted",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Notifications.Add(acceptNotification);
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("User {UserId} successfully joined group {GroupId}", userId, groupId);
+
+            var response = new AcceptInvitationResponseDto
+            {
+                Success = true,
+                GroupId = groupId,
+                GroupName = group.GroupName ?? "Unknown",
+                Message = "Successfully joined the group",
+                JoinedAt = newMember.JoinedAt
+            };
+
+            return new ResultModel<AcceptInvitationResponseDto>
+            {
+                IsSuccess = true,
+                Message = "Invitation accepted successfully",
+                Data = response,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error accepting invitation for user {UserId} and group {GroupId}", userId, groupId);
+            return new ResultModel<AcceptInvitationResponseDto>
+            {
+                IsSuccess = false,
+                Message = $"Error accepting invitation: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
     // Helper Methods
 
     private async Task<StudentStatisticsDto> CalculateStatisticsAsync(int userId, List<int> projectIds)
@@ -455,13 +604,16 @@ public class StudentDashboardService : IStudentDashboardService
             .CountAsync();
 
         // Calculate average grade from milestone evaluations
-        // Score is decimal, not decimal?
-        var scores = await _context.MilestoneEvaluations
+        // Score is decimal (not nullable)
+        decimal? averageGrade = null;
+        var evaluations = await _context.MilestoneEvaluations
             .Where(e => projectIds.Contains(e.ProjectId))
-            .Select(e => e.Score)
             .ToListAsync();
 
-        decimal? averageGrade = scores.Any() ? (decimal)scores.Average() : null;
+        if (evaluations.Any())
+        {
+            averageGrade = evaluations.Average(e => e.Score);
+        }
 
         // Count pending submissions
         var allMilestones = await _context.ProjectMilestones
@@ -489,56 +641,59 @@ public class StudentDashboardService : IStudentDashboardService
 
     private async Task<List<UpcomingDeadlineDto>> GetUpcomingDeadlinesAsync(List<int> projectIds)
     {
+        if (!projectIds.Any())
+        {
+            return new List<UpcomingDeadlineDto>();
+        }
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var deadlines = new List<UpcomingDeadlineDto>();
 
-        var milestones = await _context.ProjectMilestones
-            .Include(m => m.Project)
-            .Where(m => projectIds.Contains(m.ProjectId) && 
-                       m.DueDate != null &&
-                       m.DueDate > today)
-            .OrderBy(m => m.DueDate)
-            .Take(10)
-            .Select(m => new
-            {
-                m.MilestoneId,
-                m.ProjectId,
-                m.Title,
-                m.DueDate,
-                ProjectTitle = m.Project.Title,
-                Weight = m.Weight
-            })
-            .ToListAsync();
-
-        foreach (var milestone in milestones)
+        try
         {
-            if (milestone.ProjectTitle == null || !milestone.DueDate.HasValue) continue;
+            var milestones = await _context.ProjectMilestones
+                .Include(m => m.Project)
+                .Where(m => projectIds.Contains(m.ProjectId) && 
+                           m.DueDate != null &&
+                           m.DueDate > today)
+                .OrderBy(m => m.DueDate)
+                .Take(10)
+                .ToListAsync();
 
-            // Check submission status
-            var submission = await _context.MilestoneSubmissions
-                .FirstOrDefaultAsync(s => s.ProjectId == milestone.ProjectId &&
-                                         s.MilestoneDefId == milestone.MilestoneId);
-
-            var evaluation = await _context.MilestoneEvaluations
-                .FirstOrDefaultAsync(e => e.ProjectId == milestone.ProjectId &&
-                                         e.MilestoneDefId == milestone.MilestoneId);
-
-            var status = evaluation != null ? "Graded" :
-                        submission != null ? "Submitted" : "NotSubmitted";
-
-            var daysRemaining = milestone.DueDate.Value.DayNumber - today.DayNumber;
-
-            deadlines.Add(new UpcomingDeadlineDto
+            foreach (var milestone in milestones)
             {
-                ProjectId = milestone.ProjectId,
-                ProjectTitle = milestone.ProjectTitle,
-                MilestoneId = milestone.MilestoneId,
-                MilestoneTitle = milestone.Title ?? "Untitled Milestone",
-                Deadline = milestone.DueDate.Value.ToDateTime(TimeOnly.MinValue),
-                DaysRemaining = daysRemaining,
-                Status = status,
-                Weight = milestone.Weight
-            });
+                if (milestone.Project == null || !milestone.DueDate.HasValue) continue;
+
+                // Check submission status
+                var submission = await _context.MilestoneSubmissions
+                    .FirstOrDefaultAsync(s => s.ProjectId == milestone.ProjectId &&
+                                             s.MilestoneDefId == milestone.MilestoneId);
+
+                var evaluation = await _context.MilestoneEvaluations
+                    .FirstOrDefaultAsync(e => e.ProjectId == milestone.ProjectId &&
+                                             e.MilestoneDefId == milestone.MilestoneId);
+
+                var status = evaluation != null ? "Graded" :
+                            submission != null ? "Submitted" : "NotSubmitted";
+
+                var daysRemaining = milestone.DueDate.Value.DayNumber - today.DayNumber;
+
+                deadlines.Add(new UpcomingDeadlineDto
+                {
+                    ProjectId = milestone.ProjectId,
+                    ProjectTitle = milestone.Project.Title ?? "Unknown Project",
+                    MilestoneId = milestone.MilestoneId,
+                    MilestoneTitle = milestone.Title ?? "Untitled Milestone",
+                    Deadline = milestone.DueDate.Value.ToDateTime(TimeOnly.MinValue),
+                    DaysRemaining = daysRemaining,
+                    Status = status,
+                    Weight = milestone.Weight
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting upcoming deadlines for projects");
         }
 
         return deadlines;
@@ -546,7 +701,12 @@ public class StudentDashboardService : IStudentDashboardService
 
     private async Task<List<RecentGradeDto>> GetRecentGradesAsync(List<int> projectIds)
     {
-        // Score is decimal, not decimal?
+        if (!projectIds.Any())
+        {
+            return new List<RecentGradeDto>();
+        }
+
+        // Score is decimal (not nullable)
         var recentEvaluations = await _context.MilestoneEvaluations
             .Include(e => e.Project)
             .Include(e => e.MilestoneDef)
@@ -563,7 +723,7 @@ public class StudentDashboardService : IStudentDashboardService
                 ProjectTitle = e.Project!.Title ?? "Unknown",
                 MilestoneId = e.MilestoneDefId,
                 MilestoneTitle = e.MilestoneDef!.Title ?? "Untitled Milestone",
-                Grade = e.Score,  // Score is decimal, not nullable
+                Grade = e.Score,  // Score is decimal (not nullable)
                 GradedAt = e.EvaluatedAt,
                 Feedback = e.Feedback
             })
@@ -593,18 +753,41 @@ public class StudentDashboardService : IStudentDashboardService
     {
         try
         {
-            if (message.Contains("groupId:"))
+            _logger.LogDebug("Attempting to extract groupId from message: {Message}", message);
+            
+            // Format 1: [groupId:X]
+            if (message.Contains("[groupId:"))
+            {
+                var startIndex = message.IndexOf("[groupId:") + 9;
+                var endIndex = message.IndexOf("]", startIndex);
+                
+                if (endIndex > startIndex)
+                {
+                    var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
+                    if (int.TryParse(idString, out var groupId))
+                    {
+                        _logger.LogDebug("Extracted groupId {GroupId} from format [groupId:X]", groupId);
+                        return groupId;
+                    }
+                }
+            }
+            
+            // Format 2: groupId:X (without brackets)
+            else if (message.Contains("groupId:"))
             {
                 var startIndex = message.IndexOf("groupId:") + 8;
-                var endIndex = message.IndexOf(")", startIndex);
+                var endIndex = message.IndexOfAny(new[] { ' ', ')', ']', '\n', '\r' }, startIndex);
                 if (endIndex == -1) endIndex = message.Length;
                 
                 var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
                 if (int.TryParse(idString, out var groupId))
                 {
+                    _logger.LogDebug("Extracted groupId {GroupId} from format groupId:X", groupId);
                     return groupId;
                 }
             }
+            
+            // Format 3: (ID: X) - This might be classId in current format, be careful
             else if (message.Contains("(ID: "))
             {
                 var startIndex = message.IndexOf("(ID: ") + 5;
@@ -613,17 +796,21 @@ public class StudentDashboardService : IStudentDashboardService
                 if (endIndex > startIndex)
                 {
                     var idString = message.Substring(startIndex, endIndex - startIndex).Trim();
-                    if (int.TryParse(idString, out var groupId))
+                    if (int.TryParse(idString, out var id))
                     {
-                        return groupId;
+                        _logger.LogDebug("Extracted ID {Id} from format (ID: X) - may be classId", id);
+                        // Note: This might be classId, not groupId in current format
+                        // Only use if other formats fail
                     }
                 }
             }
 
+            _logger.LogWarning("Could not extract groupId from message: {Message}", message);
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Error extracting groupId from message: {Message}", message);
             return null;
         }
     }

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.BusinessObjects.Models;
 
+[Table("Classes")]
 public partial class Class
 {
     [Key]
@@ -52,4 +53,13 @@ public partial class Class
 
     [InverseProperty("Class")]
     public virtual ClassConfiguration? ClassConfiguration { get; set; }
+
+    [InverseProperty("Class")]
+    public virtual ICollection<Syllabus> Syllabi { get; set; } = new List<Syllabus>();
+
+    [InverseProperty("Class")]
+    public virtual ICollection<ProjectTemplate> ProjectTemplates { get; set; } = new List<ProjectTemplate>();
+
+    [InverseProperty("Class")]
+    public virtual ICollection<ClassGrader> ClassGraders { get; set; } = new List<ClassGrader>();
 }

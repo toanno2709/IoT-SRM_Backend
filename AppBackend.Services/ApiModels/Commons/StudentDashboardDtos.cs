@@ -126,6 +126,7 @@ public class StudentGroupProjectDto
     public int ProjectId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string? Component { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? CreatedAt { get; set; }
 }
@@ -170,4 +171,16 @@ public class RejectInvitationResponseDto
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public DateTime RejectedAt { get; set; }
+}
+
+/// <summary>
+/// Accept Invitation Response DTO
+/// </summary>
+public class AcceptInvitationResponseDto
+{
+    public bool Success { get; set; }
+    public int GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public DateTime? JoinedAt { get; set; }
 }
