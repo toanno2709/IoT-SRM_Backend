@@ -52,6 +52,7 @@ using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
 using AppBackend.Services.Services.MilestoneWarning;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using AppBackend.Services.BackgroundServices;
 using AppBackend.Services.Services.AdminClassGrader;
 
@@ -132,6 +133,7 @@ public static class ServicesConfig
         services.AddScoped<IProjectTemplateService, ProjectTemplateService>();
         services.AddScoped<IClassGraderService, ClassGraderService>();
         services.AddScoped<IMilestoneWarningService, MilestoneWarningService>();
+        services.AddScoped<IMilestoneDeadlineReminderService, MilestoneDeadlineReminderService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
@@ -145,6 +147,7 @@ public static class ServicesConfig
         // Background Services
         services.AddHostedService<MilestoneWeightCheckBackgroundService>();
         services.AddHostedService<ClassStatusAutoTransitionService>();
+        services.AddHostedService<MilestoneDeadlineReminderBackgroundService>();
 
         #endregion
 

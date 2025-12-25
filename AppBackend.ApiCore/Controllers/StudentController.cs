@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -17,17 +18,97 @@ public class StudentController : ControllerBase
 {
     private readonly IProjectTemplateService _templateService;
     private readonly IClassConfigService _classConfigService;
+    private readonly IMilestoneDeadlineReminderService _deadlineReminderService;
     private readonly ILogger<StudentController> _logger;
 
     public StudentController(
         IProjectTemplateService templateService,
         IClassConfigService classConfigService,
+        IMilestoneDeadlineReminderService deadlineReminderService,
         ILogger<StudentController> logger)
     {
         _templateService = templateService;
         _classConfigService = classConfigService;
+        _deadlineReminderService = deadlineReminderService;
         _logger = logger;
     }
+
+    #region Milestone Deadlines
+
+    /// <summary>
+    /// Get upcoming milestone deadlines for current student
+    /// </summary>
+    /// <remarks>
+    /// Returns all milestones that are due in the near future (from 7 days ago to future).
+    /// 
+    /// Urgency levels:
+    /// - **critical**: Overdue or due within 1 day
+    /// - **high**: Due within 3 days
+    /// - **medium**: Due within 7 days
+    /// - **low**: Due after 7 days
+    /// 
+    /// Use this endpoint to show a dashboard of upcoming deadlines to students.
+    /// </remarks>
+    [HttpGet("deadlines/upcoming")]
+    [ProducesResponseType(typeof(ResultModel<List<StudentUpcomingMilestoneDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<StudentUpcomingMilestoneDto>>>> GetUpcomingDeadlines()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<StudentUpcomingMilestoneDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting upcoming deadlines", studentId);
+
+        var result = await _deadlineReminderService.GetStudentUpcomingDeadlinesAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get overdue milestones for current student
+    /// </summary>
+    /// <remarks>
+    /// Returns all milestones that are past their due date and haven't been submitted yet.
+    /// 
+    /// This is useful for showing a warning list of incomplete milestones.
+    /// Students should prioritize these submissions.
+    /// </remarks>
+    [HttpGet("deadlines/overdue")]
+    [ProducesResponseType(typeof(ResultModel<List<StudentOverdueMilestoneDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<StudentOverdueMilestoneDto>>>> GetOverdueMilestones()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<StudentOverdueMilestoneDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting overdue milestones", studentId);
+
+        var result = await _deadlineReminderService.GetStudentOverdueMilestonesAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
 
     #region Class Configuration
 

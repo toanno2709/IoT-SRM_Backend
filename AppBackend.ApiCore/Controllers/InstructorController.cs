@@ -18,6 +18,7 @@ using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
 using AppBackend.Services.Services.MilestoneWarning;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +46,8 @@ public class InstructorController : ControllerBase
     private readonly IProjectTemplateService _templateService;
     private readonly IClassGraderService _classGraderService;
     private readonly IMilestoneWarningService _milestoneWarningService;
+    private readonly IMilestoneDeadlineReminderService _deadlineReminderService;
+    private readonly ILogger<InstructorController> _logger;
 
     public InstructorController(
         IClassService classService, 
@@ -63,7 +66,9 @@ public class InstructorController : ControllerBase
         IStudentGradeService studentGradeService,
         IProjectTemplateService templateService,
         IClassGraderService classGraderService,
-        IMilestoneWarningService milestoneWarningService)
+        IMilestoneWarningService milestoneWarningService,
+        IMilestoneDeadlineReminderService deadlineReminderService,
+        ILogger<InstructorController> logger)
     {
         _classService = classService;
         _projectService = projectService;
@@ -82,6 +87,8 @@ public class InstructorController : ControllerBase
         _templateService = templateService;
         _classGraderService = classGraderService;
         _milestoneWarningService = milestoneWarningService;
+        _deadlineReminderService = deadlineReminderService;
+        _logger = logger;
     }
 
     #region Dashboard APIs
@@ -910,6 +917,76 @@ public class InstructorController : ControllerBase
     public async Task<ActionResult<ResultModel<MilestoneWarningResultDto>>> TriggerMilestoneWeightCheck()
     {
         var result = await _milestoneWarningService.CheckAndSendMilestoneWarningsAsync();
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Manually trigger milestone deadline reminder check
+    /// </summary>
+    /// <remarks>
+    /// Triggers the deadline reminder check manually for all classes.
+    /// 
+    /// This endpoint is useful for:
+    /// - Testing the reminder system
+    /// - Running an ad-hoc check outside the scheduled time
+    /// - Debugging notification issues
+    /// 
+    /// The background service normally runs this at 9:00 AM UTC daily.
+    /// </remarks>
+    [HttpPost("milestone-reminders/check-all")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<MilestoneDeadlineReminderResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<MilestoneDeadlineReminderResultDto>>> TriggerMilestoneDeadlineCheck()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        _logger.LogInformation("Instructor {InstructorId} manually triggering milestone deadline check", instructorId);
+
+        var result = await _deadlineReminderService.CheckAndSendMilestoneRemindersAsync();
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Check milestone deadlines for a specific class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Summary of reminders that would be sent for this class</returns>
+    /// <remarks>
+    /// Checks milestone deadlines for a specific class and shows which reminders would be sent.
+    /// 
+    /// Use this to:
+    /// - Preview which students would receive reminders
+    /// - Verify milestone deadlines are set correctly
+    /// - Debug why certain students aren't receiving reminders
+    /// </remarks>
+    [HttpGet("classes/{classId}/milestone-deadlines/preview")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<ClassDeadlineCheckResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassDeadlineCheckResultDto>>> PreviewClassMilestoneDeadlines(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        _logger.LogInformation("Instructor {InstructorId} previewing deadline reminders for class {ClassId}", 
+            instructorId, classId);
+
+        var result = await _deadlineReminderService.CheckClassMilestoneDeadlinesAsync(classId);
 
         if (result.IsSuccess)
             return Ok(result);
