@@ -438,6 +438,9 @@ public partial class IotShowroomContext : DbContext
             entity.Property(e => e.RegisteredAt).HasDefaultValueSql("(sysutcdatetime())");
             entity.Property(e => e.Status).HasDefaultValue("Active");
 
+            // Disable OUTPUT clause because this table has triggers
+            entity.ToTable(tb => tb.UseSqlOutputClause(false));
+
             entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.ProjectTemplateRegistrations)
                 .HasForeignKey(d => d.TemplateId)
                 .OnDelete(DeleteBehavior.Cascade)
