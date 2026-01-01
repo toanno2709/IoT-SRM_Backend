@@ -84,6 +84,8 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<StudentCourseHistory> StudentCourseHistories { get; set; }
 
+    public virtual DbSet<Simulation> Simulations { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // Connection string will be configured in Startup/Program.cs
@@ -528,6 +530,19 @@ public partial class IotShowroomContext : DbContext
             entity.HasOne(d => d.EvaluatedByUser).WithMany(p => p.StudentCourseHistoriesEvaluated)
                 .HasForeignKey(d => d.EvaluatedBy)
                 .HasConstraintName("FK_StudentCourseHistory_EvaluatedBy");
+        });
+
+        modelBuilder.Entity<Simulation>(entity =>
+        {
+            entity.HasKey(e => e.SimulationId).HasName("PK__Simulations__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("draft");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.Simulations)
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Simulations_Project");
         });
 
         OnModelCreatingPartial(modelBuilder);
