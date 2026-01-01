@@ -22,6 +22,7 @@ public class AdminReportService : IAdminReportService
     private readonly IProjectRepository _projectRepository;
     private readonly IMilestoneEvaluationRepository _milestoneEvaluationRepository;
     private readonly IFinalProjectRepository _finalProjectRepository;
+    private readonly IotShowroomContext _context;
 
     public AdminReportService(
         IClassRepository classRepository,
@@ -29,7 +30,8 @@ public class AdminReportService : IAdminReportService
         IGroupRepository groupRepository,
         IProjectRepository projectRepository,
         IMilestoneEvaluationRepository milestoneEvaluationRepository,
-        IFinalProjectRepository finalProjectRepository)
+        IFinalProjectRepository finalProjectRepository,
+        IotShowroomContext context)
     {
         _classRepository = classRepository;
         _userRepository = userRepository;
@@ -37,6 +39,7 @@ public class AdminReportService : IAdminReportService
         _projectRepository = projectRepository;
         _milestoneEvaluationRepository = milestoneEvaluationRepository;
         _finalProjectRepository = finalProjectRepository;
+        _context = context;
     }
 
     public async Task<ResultModel<ClassesSummaryReportDto>> GetClassesSummaryAsync(int? semesterId = null)
@@ -656,7 +659,651 @@ public class AdminReportService : IAdminReportService
         }
     }
 
-    #region Excel Generation Methods
+    public async Task<ResultModel<ReportExportResponseDto>> ExportComprehensiveSemesterReportAsync(int semesterId)
+    {
+        try
+        {
+            // Set EPPlus license context
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            // Get semester info
+            var semester = await _context.Semesters
+                .FirstOrDefaultAsync(s => s.SemesterId == semesterId);
+
+            if (semester == null)
+            {
+                return new ResultModel<ReportExportResponseDto>
+                {
+                    IsSuccess = false,
+                    StatusCode = 404,
+                    Message = "Semester not found"
+                };
+            }
+
+            // Generate comprehensive Excel file
+            var excelData = await GenerateComprehensiveSemesterExcel(semesterId, semester);
+            var fileName = $"Semester_Report_{semester.Code}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            // Convert to base64 for transmission
+            var base64Data = Convert.ToBase64String(excelData);
+
+            return new ResultModel<ReportExportResponseDto>
+            {
+                IsSuccess = true,
+                Data = new ReportExportResponseDto
+                {
+                    FileName = fileName,
+                    FileUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64Data}",
+                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    FileSizeBytes = excelData.Length,
+                    GeneratedAt = DateTime.UtcNow,
+                    ExportFormat = "Excel"
+                },
+                Message = "Comprehensive semester report exported successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ReportExportResponseDto>
+            {
+                IsSuccess = false,
+                StatusCode = 500,
+                Message = $"Error exporting comprehensive semester report: {ex.Message}"
+            };
+        }
+    }
+
+    private async Task<byte[]> GenerateComprehensiveSemesterExcel(int semesterId, AppBackend.BusinessObjects.Models.Semester semester)
+    {
+        using var package = new ExcelPackage();
+
+        // Sheet 1: T?ng quan k? h?c (Semester Overview)
+        await CreateSemesterOverviewSheet(package, semesterId, semester);
+
+        // Sheet 2: Danh sách l?p h?c (Classes)
+        await CreateClassesSheet(package, semesterId);
+
+        // Sheet 3: Danh sách giáo viên (Instructors)
+        await CreateInstructorsSheet(package, semesterId);
+
+        // Sheet 4: Danh sách sinh viên (Students)
+        await CreateStudentsSheet(package, semesterId);
+
+        // Sheet 5: ?i?m theo Milestone (Milestone Grades)
+        await CreateMilestoneGradesSheet(package, semesterId);
+
+        // Sheet 6: ?i?m cu?i k? (Final Grades)
+        await CreateFinalGradesSheet(package, semesterId);
+
+        // Sheet 7: Tr?ng thái Pass/Not Pass
+        await CreatePassStatusSheet(package, semesterId);
+
+        return package.GetAsByteArray();
+    }
+
+    private async Task CreateSemesterOverviewSheet(ExcelPackage package, int semesterId, AppBackend.BusinessObjects.Models.Semester semester)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("T?ng Quan K? H?c");
+
+        // Header
+        worksheet.Cells["A1:F1"].Merge = true;
+        worksheet.Cells["A1"].Value = $"BÁO CÁO T?NG QUAN K? H?C: {semester.Name}";
+        worksheet.Cells["A1"].Style.Font.Size = 16;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+
+        int row = 3;
+
+        // Semester info
+        worksheet.Cells[$"A{row}"].Value = "Mã k? h?c:";
+        worksheet.Cells[$"B{row}"].Value = semester.Code;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "Tên k? h?c:";
+        worksheet.Cells[$"B{row}"].Value = semester.Name;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "N?m h?c:";
+        worksheet.Cells[$"B{row}"].Value = semester.Year;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "H?c k?:";
+        worksheet.Cells[$"B{row}"].Value = semester.Term;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "Ngày b?t ??u:";
+        worksheet.Cells[$"B{row}"].Value = semester.StartDate?.ToString("dd/MM/yyyy");
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "Ngày k?t thúc:";
+        worksheet.Cells[$"B{row}"].Value = semester.EndDate?.ToString("dd/MM/yyyy");
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "Tr?ng thái:";
+        worksheet.Cells[$"B{row}"].Value = semester.IsActive == true ? "?ang ho?t ??ng" : "Không ho?t ??ng";
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row += 2;
+
+        // Statistics
+        var classes = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .Where(c => c.SemesterId == semesterId)
+            .ToListAsync();
+
+        var totalClasses = classes.Count;
+        var totalStudents = classes.Sum(c => c.ClassEnrollments.Count);
+        var totalGroups = classes.Sum(c => c.Groups.Count);
+        var totalProjects = classes.Sum(c => c.Groups.Sum(g => g.Projects.Count));
+
+        worksheet.Cells[$"A{row}"].Value = "TH?NG KÊ T?NG QUAN";
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}"].Style.Font.Size = 14;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "T?ng s? l?p:";
+        worksheet.Cells[$"B{row}"].Value = totalClasses;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "T?ng s? sinh viên:";
+        worksheet.Cells[$"B{row}"].Value = totalStudents;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "T?ng s? nhóm:";
+        worksheet.Cells[$"B{row}"].Value = totalGroups;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[$"A{row}"].Value = "T?ng s? d? án:";
+        worksheet.Cells[$"B{row}"].Value = totalProjects;
+        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
+        row++;
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreateClassesSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Danh Sách L?p");
+
+        // Header
+        worksheet.Cells["A1:H1"].Merge = true;
+        worksheet.Cells["A1"].Value = "DANH SÁCH CÁC L?P H?C";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "ID L?p";
+        worksheet.Cells[$"B{row}"].Value = "Tên L?p";
+        worksheet.Cells[$"C{row}"].Value = "Gi?ng Viên";
+        worksheet.Cells[$"D{row}"].Value = "Email GV";
+        worksheet.Cells[$"E{row}"].Value = "S? Sinh Viên";
+        worksheet.Cells[$"F{row}"].Value = "S? Nhóm";
+        worksheet.Cells[$"G{row}"].Value = "S? D? Án";
+        worksheet.Cells[$"H{row}"].Value = "Tr?ng Thái";
+
+        worksheet.Cells[$"A{row}:H{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:H{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:H{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+        worksheet.Cells[$"A{row}:H{row}"].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+
+        row++;
+
+        var classes = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .Where(c => c.SemesterId == semesterId)
+            .OrderBy(c => c.ClassName)
+            .ToListAsync();
+
+        foreach (var cls in classes)
+        {
+            worksheet.Cells[$"A{row}"].Value = cls.ClassId;
+            worksheet.Cells[$"B{row}"].Value = cls.ClassName;
+            worksheet.Cells[$"C{row}"].Value = cls.Instructor?.FullName ?? "Ch?a có";
+            worksheet.Cells[$"D{row}"].Value = cls.Instructor?.Email ?? "";
+            worksheet.Cells[$"E{row}"].Value = cls.ClassEnrollments.Count;
+            worksheet.Cells[$"F{row}"].Value = cls.Groups.Count;
+            worksheet.Cells[$"G{row}"].Value = cls.Groups.Sum(g => g.Projects.Count);
+            worksheet.Cells[$"H{row}"].Value = cls.Status;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreateInstructorsSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Danh Sách Gi?ng Viên");
+
+        // Header
+        worksheet.Cells["A1:F1"].Merge = true;
+        worksheet.Cells["A1"].Value = "DANH SÁCH GI?NG VIÊN";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "ID GV";
+        worksheet.Cells[$"B{row}"].Value = "H? Tên";
+        worksheet.Cells[$"C{row}"].Value = "Email";
+        worksheet.Cells[$"D{row}"].Value = "Các L?p Ph? Trách";
+        worksheet.Cells[$"E{row}"].Value = "S? Sinh Viên";
+        worksheet.Cells[$"F{row}"].Value = "S? D? Án";
+
+        worksheet.Cells[$"A{row}:F{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:F{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:F{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+
+        var instructors = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .Where(c => c.SemesterId == semesterId && c.InstructorId != null)
+            .GroupBy(c => new { c.InstructorId, c.Instructor!.FullName, c.Instructor.Email })
+            .Select(g => new
+            {
+                InstructorId = g.Key.InstructorId,
+                InstructorName = g.Key.FullName,
+                Email = g.Key.Email,
+                Classes = string.Join(", ", g.Select(c => c.ClassName)),
+                TotalStudents = g.Sum(c => c.ClassEnrollments.Count),
+                TotalProjects = g.Sum(c => c.Groups.Sum(gr => gr.Projects.Count))
+            })
+            .ToListAsync();
+
+        foreach (var instructor in instructors)
+        {
+            worksheet.Cells[$"A{row}"].Value = instructor.InstructorId;
+            worksheet.Cells[$"B{row}"].Value = instructor.InstructorName;
+            worksheet.Cells[$"C{row}"].Value = instructor.Email;
+            worksheet.Cells[$"D{row}"].Value = instructor.Classes;
+            worksheet.Cells[$"E{row}"].Value = instructor.TotalStudents;
+            worksheet.Cells[$"F{row}"].Value = instructor.TotalProjects;
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreateStudentsSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Danh Sách Sinh Viên");
+
+        // Header
+        worksheet.Cells["A1:G1"].Merge = true;
+        worksheet.Cells["A1"].Value = "DANH SÁCH SINH VIÊN";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "ID SV";
+        worksheet.Cells[$"B{row}"].Value = "H? Tên";
+        worksheet.Cells[$"C{row}"].Value = "Email";
+        worksheet.Cells[$"D{row}"].Value = "L?p";
+        worksheet.Cells[$"E{row}"].Value = "Nhóm";
+        worksheet.Cells[$"F{row}"].Value = "D? Án";
+        worksheet.Cells[$"G{row}"].Value = "Vai Trò";
+
+        worksheet.Cells[$"A{row}:G{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:G{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:G{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+
+        var students = await _context.ClassEnrollments
+            .Include(ce => ce.Student)
+            .Include(ce => ce.Class)
+            .Where(ce => ce.Class!.SemesterId == semesterId)
+            .OrderBy(ce => ce.Class!.ClassName)
+            .ThenBy(ce => ce.Student!.FullName)
+            .ToListAsync();
+
+        foreach (var enrollment in students)
+        {
+            var student = enrollment.Student;
+            var classEntity = enrollment.Class;
+
+            // Tìm nhóm và d? án c?a sinh viên
+            var groupMember = await _context.GroupMembers
+                .Include(gm => gm.Group)
+                    .ThenInclude(g => g.Projects)
+                .Include(gm => gm.Group)
+                    .ThenInclude(g => g.Leader)
+                .FirstOrDefaultAsync(gm => gm.UserId == student!.UserId && 
+                                          gm.Group!.ClassId == classEntity!.ClassId);
+
+            worksheet.Cells[$"A{row}"].Value = student!.UserId;
+            worksheet.Cells[$"B{row}"].Value = student.FullName;
+            worksheet.Cells[$"C{row}"].Value = student.Email;
+            worksheet.Cells[$"D{row}"].Value = classEntity!.ClassName;
+            worksheet.Cells[$"E{row}"].Value = groupMember?.Group?.GroupName ?? "Ch?a có nhóm";
+            worksheet.Cells[$"F{row}"].Value = groupMember?.Group?.Projects.FirstOrDefault()?.Title ?? "Ch?a có d? án";
+            
+            string role = "Thành viên";
+            if (groupMember != null && groupMember.Group?.LeaderId == student.UserId)
+            {
+                role = "Nhóm tr??ng";
+            }
+            worksheet.Cells[$"G{row}"].Value = role;
+            
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreateMilestoneGradesSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("?i?m Milestone");
+
+        // Header
+        worksheet.Cells["A1:J1"].Merge = true;
+        worksheet.Cells["A1"].Value = "?I?M ?ÁNH GIÁ THEO MILESTONE";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightSkyBlue);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "L?p";
+        worksheet.Cells[$"B{row}"].Value = "Nhóm";
+        worksheet.Cells[$"C{row}"].Value = "D? Án";
+        worksheet.Cells[$"D{row}"].Value = "Sinh Viên";
+        worksheet.Cells[$"E{row}"].Value = "Email SV";
+        worksheet.Cells[$"F{row}"].Value = "Milestone";
+        worksheet.Cells[$"G{row}"].Value = "Tr?ng S? (%)";
+        worksheet.Cells[$"H{row}"].Value = "?i?m";
+        worksheet.Cells[$"I{row}"].Value = "Gi?ng Viên Ch?m";
+        worksheet.Cells[$"J{row}"].Value = "Ngày Ch?m";
+
+        worksheet.Cells[$"A{row}:J{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:J{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:J{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+
+        var milestoneGrades = await _context.MilestoneEvaluations
+            .Include(me => me.Project)
+                .ThenInclude(p => p.Group)
+                    .ThenInclude(g => g.Class)
+            .Include(me => me.Project)
+                .ThenInclude(p => p.Group)
+                    .ThenInclude(g => g.GroupMembers)
+                        .ThenInclude(gm => gm.User)
+            .Include(me => me.MilestoneDef)
+            .Include(me => me.Instructor)
+            .Where(me => me.Project.Group!.Class!.SemesterId == semesterId)
+            .OrderBy(me => me.Project.Group!.Class!.ClassName)
+            .ThenBy(me => me.Project.Group!.GroupName)
+            .ThenBy(me => me.MilestoneDef.Title)
+            .ToListAsync();
+
+        foreach (var grade in milestoneGrades)
+        {
+            var project = grade.Project;
+            var group = project.Group;
+            var classEntity = group!.Class;
+
+            // M?i milestone grade s? ???c hi?n th? cho t?ng thành viên trong nhóm
+            foreach (var member in group.GroupMembers)
+            {
+                worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
+                worksheet.Cells[$"B{row}"].Value = group.GroupName;
+                worksheet.Cells[$"C{row}"].Value = project.Title;
+                worksheet.Cells[$"D{row}"].Value = member.User?.FullName;
+                worksheet.Cells[$"E{row}"].Value = member.User?.Email;
+                worksheet.Cells[$"F{row}"].Value = grade.MilestoneDef.Title;
+                worksheet.Cells[$"G{row}"].Value = grade.WeightRatioSnapshot;
+                worksheet.Cells[$"H{row}"].Value = grade.Score;
+                worksheet.Cells[$"I{row}"].Value = grade.Instructor.FullName;
+                worksheet.Cells[$"J{row}"].Value = grade.EvaluatedAt.ToString("dd/MM/yyyy HH:mm");
+                row++;
+            }
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreateFinalGradesSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("?i?m Cu?i K?");
+
+        // Header
+        worksheet.Cells["A1:L1"].Merge = true;
+        worksheet.Cells["A1"].Value = "?I?M CU?I K? (FINAL PROJECT)";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightSeaGreen);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "L?p";
+        worksheet.Cells[$"B{row}"].Value = "Nhóm";
+        worksheet.Cells[$"C{row}"].Value = "D? Án";
+        worksheet.Cells[$"D{row}"].Value = "Sinh Viên";
+        worksheet.Cells[$"E{row}"].Value = "Email SV";
+        worksheet.Cells[$"F{row}"].Value = "Grader 1";
+        worksheet.Cells[$"G{row}"].Value = "?i?m Grader 1";
+        worksheet.Cells[$"H{row}"].Value = "Grader 2";
+        worksheet.Cells[$"I{row}"].Value = "?i?m Grader 2";
+        worksheet.Cells[$"J{row}"].Value = "?i?m Trung Bình";
+        worksheet.Cells[$"K{row}"].Value = "Ngày N?p";
+        worksheet.Cells[$"L{row}"].Value = "Tr?ng Thái";
+
+        worksheet.Cells[$"A{row}:L{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+
+        var finalSubmissions = await _context.FinalProjectSubmissions
+            .Include(fs => fs.Project)
+                .ThenInclude(p => p.Group)
+                    .ThenInclude(g => g.Class)
+            .Include(fs => fs.Project)
+                .ThenInclude(p => p.Group)
+                    .ThenInclude(g => g.GroupMembers)
+                        .ThenInclude(gm => gm.User)
+            .Include(fs => fs.FinalSubmissionGrades)
+                .ThenInclude(fsg => fsg.Instructor)
+            .Where(fs => fs.Project.Group!.Class!.SemesterId == semesterId)
+            .OrderBy(fs => fs.Project.Group!.Class!.ClassName)
+            .ThenBy(fs => fs.Project.Group!.GroupName)
+            .ToListAsync();
+
+        foreach (var submission in finalSubmissions)
+        {
+            var project = submission.Project;
+            var group = project.Group;
+            var classEntity = group!.Class;
+
+            var grader1 = submission.FinalSubmissionGrades.FirstOrDefault();
+            var grader2 = submission.FinalSubmissionGrades.Skip(1).FirstOrDefault();
+
+            // M?i final submission hi?n th? cho t?ng thành viên trong nhóm
+            foreach (var member in group.GroupMembers)
+            {
+                worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
+                worksheet.Cells[$"B{row}"].Value = group.GroupName;
+                worksheet.Cells[$"C{row}"].Value = project.Title;
+                worksheet.Cells[$"D{row}"].Value = member.User?.FullName;
+                worksheet.Cells[$"E{row}"].Value = member.User?.Email;
+                worksheet.Cells[$"F{row}"].Value = grader1?.Instructor?.FullName ?? "";
+                worksheet.Cells[$"G{row}"].Value = grader1?.Grade.ToString() ?? "";
+                worksheet.Cells[$"H{row}"].Value = grader2?.Instructor?.FullName ?? "";
+                worksheet.Cells[$"I{row}"].Value = grader2?.Grade.ToString() ?? "";
+                worksheet.Cells[$"J{row}"].Value = submission.Grade?.ToString() ?? "";
+                worksheet.Cells[$"K{row}"].Value = submission.SubmittedAt.ToString("dd/MM/yyyy HH:mm");
+                worksheet.Cells[$"L{row}"].Value = submission.Status;
+                row++;
+            }
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private async Task CreatePassStatusSheet(ExcelPackage package, int semesterId)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Tr?ng Thái Pass-Not Pass");
+
+        // Header
+        worksheet.Cells["A1:K1"].Merge = true;
+        worksheet.Cells["A1"].Value = "TR?NG THÁI PASS / NOT PASS";
+        worksheet.Cells["A1"].Style.Font.Size = 14;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightGoldenrodYellow);
+
+        // Column headers
+        int row = 3;
+        worksheet.Cells[$"A{row}"].Value = "L?p";
+        worksheet.Cells[$"B{row}"].Value = "Sinh Viên";
+        worksheet.Cells[$"C{row}"].Value = "Email";
+        worksheet.Cells[$"D{row}"].Value = "Nhóm";
+        worksheet.Cells[$"E{row}"].Value = "D? Án";
+        worksheet.Cells[$"F{row}"].Value = "T?ng ?i?m Milestone";
+        worksheet.Cells[$"G{row}"].Value = "?i?m Final";
+        worksheet.Cells[$"H{row}"].Value = "?i?m T?ng K?t";
+        worksheet.Cells[$"I{row}"].Value = "Tr?ng Thái D? Án";
+        worksheet.Cells[$"J{row}"].Value = "?ã N?p Final";
+        worksheet.Cells[$"K{row}"].Value = "K?t Qu?";
+
+        worksheet.Cells[$"A{row}:K{row}"].Style.Font.Bold = true;
+        worksheet.Cells[$"A{row}:K{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[$"A{row}:K{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+        row++;
+
+        var students = await _context.ClassEnrollments
+            .Include(ce => ce.Student)
+            .Include(ce => ce.Class)
+            .Where(ce => ce.Class!.SemesterId == semesterId)
+            .OrderBy(ce => ce.Class!.ClassName)
+            .ThenBy(ce => ce.Student!.FullName)
+            .ToListAsync();
+
+        foreach (var enrollment in students)
+        {
+            var student = enrollment.Student;
+            var classEntity = enrollment.Class;
+
+            // Tìm nhóm và d? án
+            var groupMember = await _context.GroupMembers
+                .Include(gm => gm.Group)
+                    .ThenInclude(g => g.Projects)
+                .FirstOrDefaultAsync(gm => gm.UserId == student!.UserId && 
+                                          gm.Group!.ClassId == classEntity!.ClassId);
+
+            var project = groupMember?.Group?.Projects.FirstOrDefault();
+
+            decimal? totalMilestoneScore = null;
+            decimal? finalScore = null;
+            decimal? totalScore = null;
+            string hasSubmittedFinal = "Ch?a n?p";
+            string result = "NOT PASS";
+
+            if (project != null)
+            {
+                // Tính t?ng ?i?m milestone (weighted average)
+                var milestoneGrades = await _context.MilestoneEvaluations
+                    .Where(me => me.ProjectId == project.ProjectId)
+                    .ToListAsync();
+
+                if (milestoneGrades.Any())
+                {
+                    totalMilestoneScore = milestoneGrades.Sum(me => me.Score * me.WeightRatioSnapshot / 100);
+                }
+
+                // L?y ?i?m final
+                var finalSubmission = await _context.FinalProjectSubmissions
+                    .FirstOrDefaultAsync(fs => fs.ProjectId == project.ProjectId);
+
+                if (finalSubmission != null)
+                {
+                    hasSubmittedFinal = "?ã n?p";
+                    finalScore = finalSubmission.Grade;
+
+                    // Tính ?i?m t?ng k?t (gi? s? milestone 40%, final 60%)
+                    if (totalMilestoneScore.HasValue && finalScore.HasValue)
+                    {
+                        totalScore = totalMilestoneScore.Value * 0.4m + finalScore.Value * 0.6m;
+
+                        // ?i?u ki?n pass: ?i?m t?ng >= 50 và project status = Completed
+                        if (totalScore >= 50 && project.Status == "Completed")
+                        {
+                            result = "PASS";
+                        }
+                    }
+                }
+            }
+
+            worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
+            worksheet.Cells[$"B{row}"].Value = student!.FullName;
+            worksheet.Cells[$"C{row}"].Value = student.Email;
+            worksheet.Cells[$"D{row}"].Value = groupMember?.Group?.GroupName ?? "Ch?a có nhóm";
+            worksheet.Cells[$"E{row}"].Value = project?.Title ?? "Ch?a có d? án";
+            worksheet.Cells[$"F{row}"].Value = totalMilestoneScore?.ToString("F2") ?? "";
+            worksheet.Cells[$"G{row}"].Value = finalScore?.ToString("F2") ?? "";
+            worksheet.Cells[$"H{row}"].Value = totalScore?.ToString("F2") ?? "";
+            worksheet.Cells[$"I{row}"].Value = project?.Status ?? "";
+            worksheet.Cells[$"J{row}"].Value = hasSubmittedFinal;
+            worksheet.Cells[$"K{row}"].Value = result;
+
+            // Màu s?c cho k?t qu?
+            if (result == "PASS")
+            {
+                worksheet.Cells[$"K{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                worksheet.Cells[$"K{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                worksheet.Cells[$"K{row}"].Style.Font.Bold = true;
+            }
+            else if (result == "NOT PASS" && project != null)
+            {
+                worksheet.Cells[$"K{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                worksheet.Cells[$"K{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightPink);
+                worksheet.Cells[$"K{row}"].Style.Font.Bold = true;
+            }
+
+            row++;
+        }
+
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    #region Excel Generation Methods for Old Export API
 
     private byte[] GenerateClassesExcel(ClassesSummaryReportDto report)
     {

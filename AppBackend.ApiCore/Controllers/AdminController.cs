@@ -606,6 +606,83 @@ public class AdminController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    /// <summary>
+    /// Export comprehensive semester report (Excel format)
+    /// </summary>
+    /// <param name="semesterId">Semester ID to export</param>
+    /// <returns>Excel file with comprehensive semester information</returns>
+    /// <remarks>
+    /// Xu?t báo cáo toàn di?n cho m?t k? h?c bao g?m:
+    /// 
+    /// **Sheet 1 - T?ng Quan K? H?c:**
+    /// - Thông tin k? h?c (mã, tên, n?m, h?c k?, ngày b?t ??u/k?t thúc)
+    /// - Th?ng kê t?ng quan (s? l?p, sinh viên, nhóm, d? án)
+    /// 
+    /// **Sheet 2 - Danh Sách L?p:**
+    /// - ID l?p, tên l?p, gi?ng viên ph? trách
+    /// - S? sinh viên, s? nhóm, s? d? án trong m?i l?p
+    /// - Tr?ng thái l?p
+    /// 
+    /// **Sheet 3 - Danh Sách Gi?ng Viên:**
+    /// - ID, h? tên, email gi?ng viên
+    /// - Các l?p ph? trách
+    /// - T?ng s? sinh viên và d? án ???c qu?n lý
+    /// 
+    /// **Sheet 4 - Danh Sách Sinh Viên:**
+    /// - ID, h? tên, email sinh viên
+    /// - L?p ?ang h?c
+    /// - Nhóm và d? án tham gia
+    /// - Vai trò (nhóm tr??ng/thành viên)
+    /// 
+    /// **Sheet 5 - ?i?m Milestone:**
+    /// - Chi ti?t ?i?m ?ánh giá t?ng milestone
+    /// - L?p, nhóm, d? án, sinh viên
+    /// - Tên milestone, tr?ng s?, ?i?m s?
+    /// - Gi?ng viên ch?m và ngày ch?m
+    /// 
+    /// **Sheet 6 - ?i?m Cu?i K?:**
+    /// - ?i?m final project t? 2 graders
+    /// - ?i?m trung bình final
+    /// - Ngày n?p và tr?ng thái
+    /// - Chi ti?t t?ng sinh viên trong nhóm
+    /// 
+    /// **Sheet 7 - Tr?ng Thái Pass/Not Pass:**
+    /// - T?ng ?i?m milestone và final
+    /// - ?i?m t?ng k?t (40% milestone + 60% final)
+    /// - Tr?ng thái d? án
+    /// - K?t qu? cu?i cùng: PASS/NOT PASS
+    /// - Highlight màu xanh (PASS) và ?? (NOT PASS)
+    /// 
+    /// **?i?u ki?n PASS:**
+    /// - ?i?m t?ng k?t >= 50
+    /// - Project status = "Completed"
+    /// - ?ã n?p final submission
+    /// 
+    /// File Excel ???c format ??p v?i:
+    /// - Header có màu s?c riêng cho m?i sheet
+    /// - Auto-fit columns
+    /// - Bold headers
+    /// - Border cho các ô
+    /// </remarks>
+    [HttpGet("reports/semester/{semesterId}/comprehensive-export")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
+    [RateLimit(permitLimit: 5, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ReportExportResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ReportExportResponseDto>>> ExportComprehensiveSemesterReport(
+        [FromRoute] int semesterId)
+    {
+        var result = await _reportService.ExportComprehensiveSemesterReportAsync(semesterId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 
     #region Class Enrollment Management APIs
