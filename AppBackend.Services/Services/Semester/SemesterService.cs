@@ -20,6 +20,53 @@ namespace AppBackend.Services.Services.Semester
             _mapper = mapper;
         }
 
+        // Helper method to get term priority (FA > SU > SP)
+        private int GetTermPriority(string? term)
+        {
+            if (string.IsNullOrWhiteSpace(term))
+                return 0;
+
+            return term.ToUpper() switch
+            {
+                "FA" => 3,
+                "SU" => 2,
+                "SP" => 1,
+                _ => 0
+            };
+        }
+
+        // Helper method to find the previous semester based on term order
+        private async Task<BusinessObjects.Models.Semester?> FindPreviousSemesterAsync(int? year, string? term, int? excludeSemesterId = null)
+        {
+            if (!year.HasValue || string.IsNullOrWhiteSpace(term))
+                return null;
+
+            var allSemesters = await _semesterRepository.GetAllAsync();
+            var semestersList = allSemesters
+                .Where(s => !excludeSemesterId.HasValue || s.SemesterId != excludeSemesterId.Value)
+                .ToList();
+
+            var currentTermPriority = GetTermPriority(term);
+
+            // First, try to find previous term in the same year
+            var samYearSemesters = semestersList
+                .Where(s => s.Year == year && GetTermPriority(s.Term) < currentTermPriority)
+                .OrderByDescending(s => GetTermPriority(s.Term))
+                .FirstOrDefault();
+
+            if (samYearSemesters != null)
+                return samYearSemesters;
+
+            // If no semester found in the same year, look for the previous year
+            // Priority: FA (3) > SU (2) > SP (1)
+            var previousYearSemesters = semestersList
+                .Where(s => s.Year == year - 1)
+                .OrderByDescending(s => GetTermPriority(s.Term))
+                .FirstOrDefault();
+
+            return previousYearSemesters;
+        }
+
         public async Task<ResultModel<List<SemesterResponseDto>>> GetAllSemestersAsync()
         {
             var semesters = await _semesterRepository.GetAllAsync();
@@ -193,6 +240,27 @@ namespace AppBackend.Services.Services.Semester
                 };
             }
 
+            // Validate start date is after the end date of the previous semester
+            if (request.StartDate.HasValue && request.Year.HasValue && !string.IsNullOrWhiteSpace(request.Term))
+            {
+                var previousSemester = await FindPreviousSemesterAsync(request.Year, request.Term);
+                
+                if (previousSemester != null && previousSemester.EndDate.HasValue)
+                {
+                    if (request.StartDate.Value <= previousSemester.EndDate.Value)
+                    {
+                        return new ResultModel<SemesterResponseDto>
+                        {
+                            IsSuccess = false,
+                            ResponseCode = CommonMessageConstants.INVALID,
+                            Message = $"Start date ({request.StartDate.Value:yyyy-MM-dd}) must be after the end date ({previousSemester.EndDate.Value:yyyy-MM-dd}) of the previous semester ({previousSemester.Code})",
+                            Data = null,
+                            StatusCode = StatusCodes.Status400BadRequest
+                        };
+                    }
+                }
+            }
+
             // If setting this as active, deactivate other semesters
             if (request.IsActive == true)
             {
@@ -285,6 +353,27 @@ namespace AppBackend.Services.Services.Semester
                     Data = null,
                     StatusCode = StatusCodes.Status400BadRequest
                 };
+            }
+
+            // Validate start date is after the end date of the previous semester
+            if (semester.StartDate.HasValue && semester.Year.HasValue && !string.IsNullOrWhiteSpace(semester.Term))
+            {
+                var previousSemester = await FindPreviousSemesterAsync(semester.Year, semester.Term, semesterId);
+                
+                if (previousSemester != null && previousSemester.EndDate.HasValue)
+                {
+                    if (semester.StartDate.Value <= previousSemester.EndDate.Value)
+                    {
+                        return new ResultModel<SemesterResponseDto>
+                        {
+                            IsSuccess = false,
+                            ResponseCode = CommonMessageConstants.INVALID,
+                            Message = $"Start date ({semester.StartDate.Value:yyyy-MM-dd}) must be after the end date ({previousSemester.EndDate.Value:yyyy-MM-dd}) of the previous semester ({previousSemester.Code})",
+                            Data = null,
+                            StatusCode = StatusCodes.Status400BadRequest
+                        };
+                    }
+                }
             }
 
             // Handle IsActive status
