@@ -17,6 +17,9 @@ public interface IMilestoneSubmissionRepository : IGenericRepository<MilestoneSu
     Task<int> GetNextVersionNumberAsync(int submissionId);
     Task<bool> CanResubmitAsync(int projectId, int milestoneDefId);
     Task<List<MilestoneSubmission>> GetSubmissionsByProjectAsync(int projectId);
+    
+    // New method for admin dashboard
+    Task<List<MilestoneSubmission>> GetAllWithMilestoneDefAsync();
 }
 
 public class MilestoneSubmissionRepository : GenericRepository<MilestoneSubmission>, IMilestoneSubmissionRepository
@@ -139,6 +142,16 @@ public class MilestoneSubmissionRepository : GenericRepository<MilestoneSubmissi
             .Include(s => s.ProjectApprovalHistories)
             .Where(s => s.ProjectId == projectId)
             .OrderBy(s => s.MilestoneDef.CreatedAt)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get all submissions with MilestoneDef included (for admin dashboard charts)
+    /// </summary>
+    public async Task<List<MilestoneSubmission>> GetAllWithMilestoneDefAsync()
+    {
+        return await _context.MilestoneSubmissions
+            .Include(s => s.MilestoneDef)
             .ToListAsync();
     }
 }

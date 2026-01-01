@@ -412,12 +412,13 @@ public class AdminDashboardService : IAdminDashboardService
     {
         try
         {
-            var allSubmissions = (await _submissionRepository.GetAllAsync()).ToList();
+            var allSubmissions = await _submissionRepository.GetAllWithMilestoneDefAsync();
             var allEvaluations = (await _evaluationRepository.GetAllAsync()).ToList();
 
             // Group by milestone and calculate completion rate
             var milestoneGroups = allSubmissions
-                .GroupBy(s => s.MilestoneDef?.Title ?? "Unknown")
+                .Where(s => s.MilestoneDef != null) // Filter out submissions without MilestoneDef
+                .GroupBy(s => s.MilestoneDef!.Title ?? "Unknown")
                 .Select(g => new ChartDataPointDto
                 {
                     Label = g.Key,
