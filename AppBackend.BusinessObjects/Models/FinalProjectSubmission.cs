@@ -94,4 +94,7 @@ public partial class FinalProjectSubmission
 
     [InverseProperty("FinalSubmission")]
     public virtual ICollection<FinalSubmissionGrade> FinalSubmissionGrades { get; set; } = new List<FinalSubmissionGrade>();
+
+    [InverseProperty("FinalSubmission")]
+    public virtual ICollection<StudentCourseHistory> StudentCourseHistories { get; set; } = new List<StudentCourseHistory>();
 }

@@ -90,6 +90,7 @@ public static class ServicesConfig
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISyllabusRepository, SyllabusRepository>();
         services.AddScoped<IProjectTemplateRepository, ProjectTemplateRepository>();
+        services.AddScoped<Repositories.Repositories.StudentCourseHistoryRepo.IStudentCourseHistoryRepository, Repositories.Repositories.StudentCourseHistoryRepo.StudentCourseHistoryRepository>();
         #endregion
 
         #region Services
@@ -135,6 +136,7 @@ public static class ServicesConfig
         services.AddScoped<IClassGraderService, ClassGraderService>();
         services.AddScoped<IMilestoneWarningService, MilestoneWarningService>();
         services.AddScoped<IMilestoneDeadlineReminderService, MilestoneDeadlineReminderService>();
+        services.AddScoped<Services.Services.StudentCourseHistory.IStudentCourseHistoryService, Services.Services.StudentCourseHistory.StudentCourseHistoryService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();

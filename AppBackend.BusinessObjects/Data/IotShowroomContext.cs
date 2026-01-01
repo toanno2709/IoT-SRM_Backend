@@ -82,6 +82,8 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<FinalSubmissionGrade> FinalSubmissionGrades { get; set; }
 
+    public virtual DbSet<StudentCourseHistory> StudentCourseHistories { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // Connection string will be configured in Startup/Program.cs
@@ -498,6 +500,34 @@ public partial class IotShowroomContext : DbContext
                 .HasForeignKey(d => d.InstructorId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_FinalSubmissionGrades_Instructor");
+        });
+
+        modelBuilder.Entity<StudentCourseHistory>(entity =>
+        {
+            entity.HasKey(e => e.HistoryId).HasName("PK__Student_Course_History__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("Not Started");
+            entity.Property(e => e.IsRetake).HasDefaultValue(false);
+            entity.Property(e => e.IsCurrent).HasDefaultValue(true);
+
+            entity.HasOne(d => d.Student).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.StudentId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_StudentCourseHistory_Student");
+
+            entity.HasOne(d => d.Class).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.ClassId)
+                .HasConstraintName("FK_StudentCourseHistory_Class");
+
+            entity.HasOne(d => d.FinalSubmission).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.FinalSubmissionId)
+                .HasConstraintName("FK_StudentCourseHistory_FinalSubmission");
+
+            entity.HasOne(d => d.EvaluatedByUser).WithMany(p => p.StudentCourseHistoriesEvaluated)
+                .HasForeignKey(d => d.EvaluatedBy)
+                .HasConstraintName("FK_StudentCourseHistory_EvaluatedBy");
         });
 
         OnModelCreatingPartial(modelBuilder);

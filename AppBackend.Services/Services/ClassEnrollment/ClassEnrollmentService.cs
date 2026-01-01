@@ -1,6 +1,7 @@
 using AppBackend.BusinessObjects.Constants;
 using AppBackend.Repositories.Repositories.ClassRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
+using AppBackend.Repositories.Repositories.StudentCourseHistoryRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -15,15 +16,18 @@ public class ClassEnrollmentService : IClassEnrollmentService
 {
     private readonly IClassRepository _classRepo;
     private readonly IUserRepository _userRepo;
+    private readonly IStudentCourseHistoryRepository _studentCourseHistoryRepo;
     private readonly IotShowroomContext _context;
 
     public ClassEnrollmentService(
         IClassRepository classRepo,
         IUserRepository userRepo,
+        IStudentCourseHistoryRepository studentCourseHistoryRepo,
         IotShowroomContext context)
     {
         _classRepo = classRepo;
         _userRepo = userRepo;
+        _studentCourseHistoryRepo = studentCourseHistoryRepo;
         _context = context;
         
         // Set EPPlus license context
@@ -84,13 +88,26 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 .Select(ce => ce.StudentId)
                 .ToListAsync();
 
-            // 5. Tìm students available (role_id = 3, ch?a có trong class)
+            // 5. T?m students available (role_id = 3, ch?a c? trong class, AND ch?a hoàn thành môn)
             var availableStudents = await _context.Users
                 .Where(u => u.RoleId == 3 && !existingStudentIds.Contains(u.UserId))
-                .Take(studentsToAdd)
+                .Take(studentsToAdd * 2) // L?y nhi?u h?n ?? filter
                 .ToListAsync();
 
-            if (!availableStudents.Any())
+            // Filter out students who have passed the course
+            var eligibleStudents = new List<UserModel>();
+            foreach (var student in availableStudents)
+            {
+                var isEligible = await _studentCourseHistoryRepo.IsEligibleForEnrollmentAsync(student.UserId);
+                if (isEligible)
+                {
+                    eligibleStudents.Add(student);
+                    if (eligibleStudents.Count >= studentsToAdd)
+                        break;
+                }
+            }
+
+            if (!eligibleStudents.Any())
             {
                 return new ResultModel<BulkAddStudentsResponseDto>
                 {
@@ -105,8 +122,8 @@ public class ClassEnrollmentService : IClassEnrollmentService
                         NewStudentsAdded = 0,
                         TotalStudentsNow = currentStudentCount,
                         StudentsNotAdded = studentsToAdd,
-                        Message = $"No available students found to add to class",
-                        Warnings = new List<string> { "All students are already enrolled in this class or no students exist" }
+                        Message = $"No eligible students found to add to class",
+                        Warnings = new List<string> { "All available students have either already enrolled, already passed the course, or no students exist" }
                     },
                     StatusCode = StatusCodes.Status200OK
                 };
@@ -117,7 +134,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
             var addedStudentDtos = new List<StudentEnrollmentDto>();
             var enrolledAt = DateTime.UtcNow;
 
-            foreach (var student in availableStudents)
+            foreach (var student in eligibleStudents)
             {
                 var enrollment = new ClassEnrollmentModel
                 {
@@ -137,33 +154,33 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 });
             }
 
-            // 7. Bulk insert vào database
+            // 7. Bulk insert v?o database
             await _context.ClassEnrollments.AddRangeAsync(enrollments);
             await _context.SaveChangesAsync();
 
             // 8. T?o response
-            var newTotalCount = currentStudentCount + availableStudents.Count;
+            var newTotalCount = currentStudentCount + eligibleStudents.Count;
             var warnings = new List<string>();
 
-            if (availableStudents.Count < studentsToAdd)
+            if (eligibleStudents.Count < studentsToAdd)
             {
-                warnings.Add($"Only {availableStudents.Count} students were available to add (requested {studentsToAdd})");
+                warnings.Add($"Only {eligibleStudents.Count} eligible students were available to add (requested {studentsToAdd})");
             }
 
             return new ResultModel<BulkAddStudentsResponseDto>
             {
                 IsSuccess = true,
                 ResponseCode = CommonMessageConstants.SUCCESS,
-                Message = $"Successfully added {availableStudents.Count} students to class",
+                Message = $"Successfully added {eligibleStudents.Count} students to class",
                 Data = new BulkAddStudentsResponseDto
                 {
                     ClassId = request.ClassId,
                     ClassName = classEntity.ClassName,
                     PreviousStudentCount = currentStudentCount,
-                    NewStudentsAdded = availableStudents.Count,
+                    NewStudentsAdded = eligibleStudents.Count,
                     TotalStudentsNow = newTotalCount,
-                    StudentsNotAdded = studentsToAdd - availableStudents.Count,
-                    Message = $"Added {availableStudents.Count} out of {studentsToAdd} requested students",
+                    StudentsNotAdded = studentsToAdd - eligibleStudents.Count,
+                    Message = $"Added {eligibleStudents.Count} out of {studentsToAdd} requested students",
                     AddedStudents = addedStudentDtos,
                     Warnings = warnings
                 },
@@ -217,7 +234,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 3. Ki?m tra student ?ã có trong class ch?a
+            // 3. Ki?m tra student ?? c? trong class ch?a
             var existingEnrollment = await _context.ClassEnrollments
                 .FirstOrDefaultAsync(ce => ce.ClassId == classId && ce.StudentId == studentId);
 
@@ -233,7 +250,21 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 4. Thêm student vào class
+            // 3.5. Ki?m tra student ?ã hoàn thành môn h?c ch?a
+            var isEligible = await _studentCourseHistoryRepo.IsEligibleForEnrollmentAsync(studentId);
+            if (!isEligible)
+            {
+                return new ResultModel<AddStudentToClassResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "ALREADY_PASSED_COURSE",
+                    Message = "Student has already completed the IoT course and cannot be enrolled again",
+                    Data = null,
+                    StatusCode = StatusCodes.Status409Conflict
+                };
+            }
+
+            // 4. Th?m student v?o class
             var enrollment = new ClassEnrollmentModel
             {
                 ClassId = classId,
@@ -776,40 +807,25 @@ public class ClassEnrollmentService : IClassEnrollmentService
                         RowNumber = row.RowNumber,
                         Email = row.Email,
                         Status = row.Status,
-                        Reason = "Sinh viên ?ã có trong l?p",
+                        Reason = "Sinh vi?n ?? c? trong l?p",
                         ReasonCode = "DUPLICATE"
                     });
                     continue;
                 }
 
-                // Validation 4: Check status (must be "Passed" or empty/null for "Not Pass")
-                if (!string.IsNullOrWhiteSpace(row.Status))
+                // Validation 3.5: Check if student has already passed the course
+                var isEligible = await _studentCourseHistoryRepo.IsEligibleForEnrollmentAsync(user.UserId);
+                if (!isEligible)
                 {
-                    var statusUpper = row.Status.Trim().ToUpper();
-                    if (statusUpper == "PASSED")
+                    failedList.Add(new ImportStudentFailureDto
                     {
-                        failedList.Add(new ImportStudentFailureDto
-                        {
-                            RowNumber = row.RowNumber,
-                            Email = row.Email,
-                            Status = row.Status,
-                            Reason = "Sinh viên ?ã hoàn thành môn IOT (Status: Passed)",
-                            ReasonCode = "ALREADY_PASSED"
-                        });
-                        continue;
-                    }
-                    else if (statusUpper != "NOT PASS")
-                    {
-                        failedList.Add(new ImportStudentFailureDto
-                        {
-                            RowNumber = row.RowNumber,
-                            Email = row.Email,
-                            Status = row.Status,
-                            Reason = $"Status không h?p l? (ch? ch?p nh?n 'Passed' ho?c 'Not Pass'): {row.Status}",
-                            ReasonCode = "INVALID_STATUS"
-                        });
-                        continue;
-                    }
+                        RowNumber = row.RowNumber,
+                        Email = row.Email,
+                        Status = row.Status,
+                        Reason = "Sinh viên ?ã hoàn thành môn IoT (không th? thêm vào l?p)",
+                        ReasonCode = "ALREADY_PASSED_COURSE"
+                    });
+                    continue;
                 }
 
                 // All validations passed - add to success list
