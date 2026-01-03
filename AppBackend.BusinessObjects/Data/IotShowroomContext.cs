@@ -493,6 +493,9 @@ public partial class IotShowroomContext : DbContext
 
             entity.Property(e => e.GradedAt).HasDefaultValueSql("(sysutcdatetime())");
 
+            // Disable OUTPUT clause because this table has triggers that calculate average grades
+            entity.ToTable(tb => tb.UseSqlOutputClause(false));
+
             entity.HasOne(d => d.FinalSubmission).WithMany(p => p.FinalSubmissionGrades)
                 .HasForeignKey(d => d.FinalSubmissionId)
                 .OnDelete(DeleteBehavior.Cascade)
