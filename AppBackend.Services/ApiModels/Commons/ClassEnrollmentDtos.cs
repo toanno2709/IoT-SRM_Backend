@@ -107,7 +107,6 @@ public class StudentImportRowDto
 {
     public int RowNumber { get; set; }
     public string Email { get; set; } = string.Empty;
-    public string? Status { get; set; }
 }
 
 /// <summary>
@@ -143,7 +142,6 @@ public class ImportStudentFailureDto
 {
     public int RowNumber { get; set; }
     public string Email { get; set; } = string.Empty;
-    public string? Status { get; set; }
     public string Reason { get; set; } = string.Empty;
-    public string ReasonCode { get; set; } = string.Empty; // EMAIL_NOT_FOUND, DUPLICATE, NOT_STUDENT, ALREADY_PASSED, INVALID_STATUS
+    public string ReasonCode { get; set; } = string.Empty; // EMAIL_NOT_FOUND, DUPLICATE, NOT_STUDENT, ALREADY_PASSED_COURSE
 }

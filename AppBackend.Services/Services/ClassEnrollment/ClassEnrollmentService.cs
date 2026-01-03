@@ -721,7 +721,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     for (int row = 2; row <= rowCount; row++)
                     {
                         var email = worksheet.Cells[row, 1].Value?.ToString()?.Trim();
-                        var status = worksheet.Cells[row, 2].Value?.ToString()?.Trim();
 
                         if (string.IsNullOrWhiteSpace(email))
                         {
@@ -731,8 +730,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                         rowsData.Add(new StudentImportRowDto
                         {
                             RowNumber = row,
-                            Email = email,
-                            Status = status
+                            Email = email
                         });
                     }
                 }
@@ -776,7 +774,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Status = row.Status,
                         Reason = "Email không t?n t?i trong h? th?ng",
                         ReasonCode = "EMAIL_NOT_FOUND"
                     });
@@ -792,7 +789,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Status = row.Status,
                         Reason = "Ng??i dùng không ph?i là sinh viên",
                         ReasonCode = "NOT_STUDENT"
                     });
@@ -806,7 +802,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Status = row.Status,
                         Reason = "Sinh vi?n ?? c? trong l?p",
                         ReasonCode = "DUPLICATE"
                     });
@@ -821,7 +816,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Status = row.Status,
                         Reason = "Sinh viên ?ã hoàn thành môn IoT (không th? thêm vào l?p)",
                         ReasonCode = "ALREADY_PASSED_COURSE"
                     });

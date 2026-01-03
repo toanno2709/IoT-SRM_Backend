@@ -638,48 +638,6 @@ public class ClassService : IClassService
                     StatusCode = StatusCodes.Status400BadRequest
                 };
             }
-
-            // Get students who are in groups
-            var studentIdsInGroups = classEntity.Groups?
-                .SelectMany(g => g.GroupMembers ?? new List<GroupMember>())
-                .Select(gm => gm.UserId)
-                .Distinct()
-                .ToHashSet() ?? new HashSet<int>();
-
-            var enrolledStudentIds = classEntity.ClassEnrollments?
-                .Select(ce => ce.StudentId ?? 0)
-                .Where(id => id > 0)
-                .ToHashSet() ?? new HashSet<int>();
-
-            var studentsWithoutGroup = enrolledStudentIds.Except(studentIdsInGroups).ToList();
-
-            if (studentsWithoutGroup.Any())
-            {
-                var studentsWithoutGroupDetails = classEntity.ClassEnrollments?
-                    .Where(ce => studentsWithoutGroup.Contains(ce.StudentId ?? 0))
-                    .Select(ce => ce.Student?.FullName ?? ce.Student?.Email ?? $"Student ID: {ce.StudentId}")
-                    .ToList() ?? new List<string>();
-
-                return new ResultModel<ChangeClassStatusResponseDto>
-                {
-                    IsSuccess = false,
-                    ResponseCode = "STUDENTS_WITHOUT_GROUP",
-                    Message = $"Cannot change status to 'In Progress': {studentsWithoutGroup.Count} student(s) do not have a group yet. All students must be in a group before starting the class.",
-                    Data = new ChangeClassStatusResponseDto
-                    {
-                        ClassId = classId,
-                        ClassName = classEntity.ClassName,
-                        OldStatus = oldStatus,
-                        NewStatus = request.Status,
-                        ChangedAt = DateTime.UtcNow,
-                        TotalStudents = totalStudents,
-                        StudentsWithGroup = studentIdsInGroups.Count,
-                        StudentsWithoutGroup = studentsWithoutGroup.Count,
-                        Warnings = studentsWithoutGroupDetails
-                    },
-                    StatusCode = StatusCodes.Status400BadRequest
-                };
-            }
         }
 
         // Update status

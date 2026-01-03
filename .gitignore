@@ -418,3 +418,4 @@ DatabaseScripts/UpdateWeightStrategies.sql
 /DatabaseScripts
 SampleFiles/UserImportTemplate.csv
 README.md
+SampleFiles/ClassStudentImportTemplate.csv

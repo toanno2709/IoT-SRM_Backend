@@ -618,7 +618,7 @@ public class AdminController : ControllerBase
     /// - Thông tin k? h?c (mã, tên, n?m, h?c k?, ngày b?t ??u/k?t thúc)
     /// - Th?ng kê t?ng quan (s? l?p, sinh viên, nhóm, d? án)
     /// 
-    /// **Sheet 2 - Danh Sách L?p:**
+    /// **Sheet 2 - Danh Sách Lóp:**
     /// - ID l?p, tên l?p, gi?ng viên ph? trách
     /// - S? sinh viên, s? nhóm, s? d? án trong m?i l?p
     /// - Tr?ng thái l?p
@@ -738,53 +738,48 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Import students to class from Excel file
+    /// Import students to a class from Excel file
     /// </summary>
     /// <param name="classId">Class ID to add students to</param>
-    /// <param name="excelFile">Excel file (.xlsx or .xls) with Email and Status columns</param>
-    /// <returns>Import result with successful and failed entries</returns>
+    /// <param name="excelFile">Excel file (.xlsx or .xls) containing student emails</param>
+    /// <returns>Import result with success and failure details</returns>
     /// <remarks>
     /// Imports students to a class from an Excel template file.
     /// 
-    /// **Excel Format Requirements:**
-    /// - **Column A (Email)**: Student email address (required, must exist in system)
-    /// - **Column B (Status)**: IOT course status - "Passed" or "Not Pass"
+    /// **Excel File Format:**
+    /// - The Excel file must have a header row (row 1)
+    /// - Data starts from row 2
+    /// - Required column:
+    ///   - Column A (1): **Email** - Student's email address (must exist in system as student role)
     /// 
     /// **Validation Rules:**
-    /// 1. **Email must exist** in the Users table
-    /// 2. **User must be a student** (role_id = 3)
-    /// 3. **Student cannot already be enrolled** in this class (no duplicates)
-    /// 4. **Status must be "Not Pass"** or empty/null (students with "Passed" cannot be added)
+    /// 1. Email must exist in the system
+    /// 2. User must be a student (role_id = 3)
+    /// 3. Student must not already be enrolled in this class
+    /// 4. Student must not have already completed the IoT course (Status: Passed)
     /// 
-    /// **Response Structure:**
-    /// - Returns detailed results for each row
-    /// - Success list: Students successfully added with their details
-    /// - Failed list: Students not added with specific reason codes and messages in Vietnamese
-    /// 
-    /// **Failure Reason Codes:**
+    /// **Reason Codes (for failed imports):**
     /// - `EMAIL_NOT_FOUND`: Email không t?n t?i trong h? th?ng
     /// - `NOT_STUDENT`: Ng??i dùng không ph?i là sinh viên
     /// - `DUPLICATE`: Sinh viên ?ã có trong l?p
-    /// - `ALREADY_PASSED`: Sinh viên ?ã hoàn thành môn IOT (Status: Passed)
-    /// - `INVALID_STATUS`: Status không h?p l?
+    /// - `ALREADY_PASSED_COURSE`: Sinh viên ?ã hoàn thành môn IoT
     /// 
     /// **Example Usage:**
     /// ```
     /// POST /api/admin/classes/123/import-students
     /// Content-Type: multipart/form-data
     /// 
-    /// excelFile: [Excel file with Email and Status columns]
+    /// excelFile: [Excel file with Email column]
     /// ```
     /// 
     /// **Sample Excel Data:**
-    /// | Email | Status |
-    /// |-------|--------|
-    /// | student@fpt.edu.vn | Not Pass |
-    /// | student2@example.com | Passed |
+    /// | Email |
+    /// |-------|
+    /// | student1@fpt.edu.vn |
+    /// | student2@example.com |
+    /// | student3@fpt.edu.vn |
     /// 
-    /// In this example:
-    /// - First student will be added successfully
-    /// - Second student will fail with "ALREADY_PASSED" reason
+    /// Only students who meet all validation criteria will be added to the class.
     /// </remarks>
     [HttpPost("classes/{classId}/import-students")]
     [ApiExplorerSettings(GroupName = "admin-class-management")]
