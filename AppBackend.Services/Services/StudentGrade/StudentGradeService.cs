@@ -460,7 +460,7 @@ public class StudentGradeService : IStudentGradeService
                         }
                     }
 
-                    // Get final submission grade
+                    // Get final submission grade (average from all graders)
                     var finalSubmission = await _context.FinalProjectSubmissions
                         .FirstOrDefaultAsync(fps => fps.ProjectId == projectId);
                     
@@ -569,6 +569,41 @@ public class StudentGradeService : IStudentGradeService
 
             var gradesData = gradesResult.Data;
 
+            // Get all graders assigned to this class
+            var classGraders = await _context.ClassGraders
+                .Include(cg => cg.Instructor)
+                .Where(cg => cg.ClassId == classId && cg.IsActive == true)
+                .OrderBy(cg => cg.Instructor!.FullName)
+                .ToListAsync();
+
+            // Get all final submission grades from all graders
+            var allFinalSubmissionGrades = new Dictionary<int, List<(string GraderName, decimal Grade)>>();
+            
+            foreach (var studentGrade in gradesData.StudentGrades.Where(sg => sg.ProjectId.HasValue))
+            {
+                var projectId = studentGrade.ProjectId!.Value;
+                
+                var finalSubmission = await _context.FinalProjectSubmissions
+                    .FirstOrDefaultAsync(fps => fps.ProjectId == projectId);
+
+                if (finalSubmission != null)
+                {
+                    var graderGrades = await _context.FinalSubmissionGrades
+                        .Include(fsg => fsg.Instructor)
+                        .Where(fsg => fsg.FinalSubmissionId == finalSubmission.FinalSubmissionId)
+                        .Select(fsg => new
+                        {
+                            GraderName = fsg.Instructor!.FullName ?? "Unknown",
+                            fsg.Grade
+                        })
+                        .ToListAsync();
+
+                    allFinalSubmissionGrades[projectId] = graderGrades
+                        .Select(g => (g.GraderName, g.Grade))
+                        .ToList();
+                }
+            }
+
             using var package = new ExcelPackage();
             var worksheet = package.Workbook.Worksheets.Add("Class Grades");
 
@@ -591,6 +626,14 @@ public class StudentGradeService : IStudentGradeService
             row++;
             worksheet.Cells[row, col].Value = $"Total Groups: {gradesData.TotalGroups}";
             row++;
+            
+            // Show assigned graders
+            if (classGraders.Any())
+            {
+                worksheet.Cells[row, col].Value = $"Assigned Graders: {string.Join(", ", classGraders.Select(cg => cg.Instructor?.FullName))}";
+                row++;
+            }
+            
             worksheet.Cells[row, col].Value = $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
             row++;
             row++; // Empty row
@@ -613,8 +656,14 @@ public class StudentGradeService : IStudentGradeService
                 }
             }
 
-            // Add Final Submission column
-            worksheet.Cells[headerRow, col++].Value = "Final Submission";
+            // Add columns for each grader's grade
+            foreach (var grader in classGraders)
+            {
+                worksheet.Cells[headerRow, col++].Value = $"Final - {grader.Instructor?.FullName}";
+            }
+            
+            // Add Final Submission Average column
+            worksheet.Cells[headerRow, col++].Value = "Final Submission (Avg)";
             worksheet.Cells[headerRow, col++].Value = "Overall Grade";
             worksheet.Cells[headerRow, col++].Value = "Status";
 
@@ -626,6 +675,7 @@ public class StudentGradeService : IStudentGradeService
                 range.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
                 range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
                 range.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                range.Style.WrapText = true;
             }
 
             // Data rows
@@ -671,19 +721,75 @@ public class StudentGradeService : IStudentGradeService
                     }
                 }
 
-                // Final Submission Grade
-                if (studentGrade.FinalSubmissionGrade.HasValue)
+                // Add individual grader grades and calculate average
+                List<decimal> graderGradesForAverage = new List<decimal>();
+                
+                if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
                 {
-                    worksheet.Cells[row, col].Value = studentGrade.FinalSubmissionGrade.Value;
+                    var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                    
+                    foreach (var classGrader in classGraders)
+                    {
+                        var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
+                        
+                        if (graderGrade != default)
+                        {
+                            worksheet.Cells[row, col].Value = graderGrade.Grade;
+                            worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                            
+                            // Color coding
+                            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            if (graderGrade.Grade >= 80)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                            }
+                            else if (graderGrade.Grade >= 50)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                            }
+                            else
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                            }
+                            
+                            // Add to average calculation
+                            graderGradesForAverage.Add(graderGrade.Grade);
+                        }
+                        else
+                        {
+                            worksheet.Cells[row, col].Value = "N/A";
+                        }
+                        col++;
+                    }
+                }
+                else
+                {
+                    // No grades from any grader
+                    for (int i = 0; i < classGraders.Count; i++)
+                    {
+                        worksheet.Cells[row, col++].Value = "N/A";
+                    }
+                }
+
+                // Calculate Final Submission Average from grader grades
+                decimal? calculatedAverage = null;
+                if (graderGradesForAverage.Any())
+                {
+                    calculatedAverage = graderGradesForAverage.Average();
+                }
+                
+                if (calculatedAverage.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = calculatedAverage.Value;
                     worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
                     
                     // Color coding for final submission
                     worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    if (studentGrade.FinalSubmissionGrade.Value >= 80)
+                    if (calculatedAverage.Value >= 80)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
                     }
-                    else if (studentGrade.FinalSubmissionGrade.Value >= 50)
+                    else if (calculatedAverage.Value >= 50)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
                     }
@@ -698,19 +804,60 @@ public class StudentGradeService : IStudentGradeService
                 }
                 col++;
 
-                // Overall Grade (now includes final submission)
-                if (studentGrade.OverallGrade.HasValue)
+                // Overall Grade - recalculate with the correct final submission average
+                decimal? recalculatedOverallGrade = null;
+                
+                if (studentGrade.ProjectId.HasValue)
                 {
-                    worksheet.Cells[row, col].Value = studentGrade.OverallGrade.Value;
+                    // Get project milestones and their weights
+                    var projectMilestones = await _context.ProjectMilestones
+                        .Where(pm => pm.ProjectId == studentGrade.ProjectId.Value)
+                        .ToListAsync();
+                    
+                    var evaluations = await _context.MilestoneEvaluations
+                        .Where(e => e.ProjectId == studentGrade.ProjectId.Value)
+                        .ToListAsync();
+
+                    decimal totalWeightedScore = 0;
+                    decimal totalWeight = 0;
+
+                    // Add milestone scores
+                    foreach (var milestone in projectMilestones)
+                    {
+                        var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
+                        if (evaluation != null && milestone.Weight.HasValue)
+                        {
+                            totalWeightedScore += (evaluation.Score * milestone.Weight.Value) / 100;
+                            totalWeight += milestone.Weight.Value;
+                        }
+                    }
+
+                    // Add final submission score using the calculated average from graders
+                    if (calculatedAverage.HasValue)
+                    {
+                        decimal finalWeight = 100 - totalWeight;
+                        if (finalWeight > 0)
+                        {
+                            totalWeightedScore += (calculatedAverage.Value * finalWeight) / 100;
+                            totalWeight += finalWeight;
+                        }
+                    }
+
+                    recalculatedOverallGrade = totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : null;
+                }
+                
+                if (recalculatedOverallGrade.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = recalculatedOverallGrade.Value;
                     worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
                     
                     // Color coding for overall grade
                     worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    if (studentGrade.OverallGrade.Value >= 80)
+                    if (recalculatedOverallGrade.Value >= 80)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
                     }
-                    else if (studentGrade.OverallGrade.Value >= 50)
+                    else if (recalculatedOverallGrade.Value >= 50)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
                     }
