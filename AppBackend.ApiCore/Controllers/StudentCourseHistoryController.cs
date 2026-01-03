@@ -146,8 +146,28 @@ public class StudentCourseHistoryController : ControllerBase
     }
 
     /// <summary>
-    /// Update student course history
+    /// Update student course history by history ID
     /// </summary>
+    /// <remarks>
+    /// Updates a student course history record by history ID.
+    /// Allows updating all fields in the record including:
+    /// - SemesterId: Semester reference
+    /// - Status: Course completion status (Not Started, In Progress, Pass, Not Pass, Withdrawn)
+    /// - FinalSubmissionId: Reference to final project submission
+    /// - FinalGrade: Final grade received
+    /// - AverageGradeFromOtherInstructors: Average grade from other instructors
+    /// - Notes: Additional notes or comments
+    /// - IsRetake: Whether this is a retake attempt
+    /// - IsCurrent: Whether this is the current active record
+    /// - CompletedAt: When the course was completed
+    /// - EvaluatedAt: When the evaluation was done
+    /// 
+    /// All fields are optional. Only provided fields will be updated.
+    /// The UpdatedAt timestamp is automatically set to current time.
+    /// 
+    /// Note: When Status is changed to "Pass" or "Not Pass", CompletedAt is automatically set to current time if not already set.
+    /// When FinalGrade is provided, EvaluatedAt is automatically set to current time unless explicitly provided.
+    /// </remarks>
     [HttpPut("{historyId}")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]

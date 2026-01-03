@@ -15,19 +15,17 @@ public class StudentCourseHistoryRepository : GenericRepository<StudentCourseHis
     {
         return await _context.StudentCourseHistories
             .Include(sch => sch.Student)
-            .Include(sch => sch.Class)
+            .Include(sch => sch.Semester)
             .Include(sch => sch.FinalSubmission)
-            .Include(sch => sch.EvaluatedByUser)
-            .FirstOrDefaultAsync(sch => sch.StudentId == studentId && sch.IsCurrent);
+            .FirstOrDefaultAsync(sch => sch.StudentId == studentId && sch.IsCurrent == true);
     }
 
     public async Task<List<StudentCourseHistory>> GetAllByStudentIdAsync(int studentId)
     {
         return await _context.StudentCourseHistories
             .Include(sch => sch.Student)
-            .Include(sch => sch.Class)
+            .Include(sch => sch.Semester)
             .Include(sch => sch.FinalSubmission)
-            .Include(sch => sch.EvaluatedByUser)
             .Where(sch => sch.StudentId == studentId)
             .OrderByDescending(sch => sch.IsCurrent)
             .ThenByDescending(sch => sch.CreatedAt)
@@ -38,8 +36,8 @@ public class StudentCourseHistoryRepository : GenericRepository<StudentCourseHis
     {
         return await _context.StudentCourseHistories
             .Include(sch => sch.Student)
-            .Include(sch => sch.Class)
-            .Where(sch => sch.Status == status && sch.IsCurrent)
+            .Include(sch => sch.Semester)
+            .Where(sch => sch.Status == status && sch.IsCurrent == true)
             .OrderBy(sch => sch.Student!.FullName)
             .ToListAsync();
     }
@@ -49,7 +47,7 @@ public class StudentCourseHistoryRepository : GenericRepository<StudentCourseHis
         return await _context.StudentCourseHistories
             .AnyAsync(sch => sch.StudentId == studentId && 
                            sch.Status == "Pass" && 
-                           sch.IsCurrent);
+                           sch.IsCurrent == true);
     }
 
     public async Task<bool> IsEligibleForEnrollmentAsync(int studentId)
@@ -92,9 +90,8 @@ public class StudentCourseHistoryRepository : GenericRepository<StudentCourseHis
     {
         return await _context.StudentCourseHistories
             .Include(sch => sch.Student)
-            .Include(sch => sch.Class)
+            .Include(sch => sch.Semester)
             .Include(sch => sch.FinalSubmission)
-            .Include(sch => sch.EvaluatedByUser)
             .FirstOrDefaultAsync(sch => sch.HistoryId == historyId);
     }
 }

@@ -56,6 +56,7 @@ using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using AppBackend.Services.BackgroundServices;
 using AppBackend.Services.Services.AdminClassGrader;
 using AppBackend.ApiCore.Services;
+using AppBackend.Services.Services.ProjectGrade;
 
 namespace AppBackend.Extensions;
 
@@ -127,6 +128,7 @@ public static class ServicesConfig
         // Student services
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
         services.AddScoped<IStudentGradeService, StudentGradeService>();
+        services.AddScoped<IProjectGradeService, ProjectGradeService>();
         
         // Instructor services
         services.AddScoped<IFinalProjectService, FinalProjectService>();

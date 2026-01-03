@@ -513,26 +513,19 @@ public partial class IotShowroomContext : DbContext
 
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysutcdatetime())");
-            entity.Property(e => e.Status).HasDefaultValue("Not Started");
-            entity.Property(e => e.IsRetake).HasDefaultValue(false);
-            entity.Property(e => e.IsCurrent).HasDefaultValue(true);
 
             entity.HasOne(d => d.Student).WithMany(p => p.StudentCourseHistories)
                 .HasForeignKey(d => d.StudentId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_StudentCourseHistory_Student");
 
-            entity.HasOne(d => d.Class).WithMany(p => p.StudentCourseHistories)
-                .HasForeignKey(d => d.ClassId)
-                .HasConstraintName("FK_StudentCourseHistory_Class");
+            entity.HasOne(d => d.Semester).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.SemesterId)
+                .HasConstraintName("FK_StudentCourseHistory_Semester");
 
             entity.HasOne(d => d.FinalSubmission).WithMany(p => p.StudentCourseHistories)
                 .HasForeignKey(d => d.FinalSubmissionId)
                 .HasConstraintName("FK_StudentCourseHistory_FinalSubmission");
-
-            entity.HasOne(d => d.EvaluatedByUser).WithMany(p => p.StudentCourseHistoriesEvaluated)
-                .HasForeignKey(d => d.EvaluatedBy)
-                .HasConstraintName("FK_StudentCourseHistory_EvaluatedBy");
         });
 
         modelBuilder.Entity<Simulation>(entity =>

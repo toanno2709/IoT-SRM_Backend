@@ -70,7 +70,4 @@ public partial class Class
 
     [InverseProperty("Class")]
     public virtual ICollection<ClassGrader> ClassGraders { get; set; } = new List<ClassGrader>();
-
-    [InverseProperty("Class")]
-    public virtual ICollection<StudentCourseHistory> StudentCourseHistories { get; set; } = new List<StudentCourseHistory>();
 }

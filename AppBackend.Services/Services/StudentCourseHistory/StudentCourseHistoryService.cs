@@ -2,7 +2,7 @@ using AppBackend.BusinessObjects.Constants;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Repositories.Repositories.StudentCourseHistoryRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
-using AppBackend.Repositories.Repositories.ClassRepo;
+using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
@@ -13,18 +13,18 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
 {
     private readonly IStudentCourseHistoryRepository _repository;
     private readonly IUserRepository _userRepository;
-    private readonly IClassRepository _classRepository;
+    private readonly ISemesterRepository _semesterRepository;
     private readonly IFinalProjectRepository _finalProjectRepository;
 
     public StudentCourseHistoryService(
         IStudentCourseHistoryRepository repository,
         IUserRepository userRepository,
-        IClassRepository classRepository,
+        ISemesterRepository semesterRepository,
         IFinalProjectRepository finalProjectRepository)
     {
         _repository = repository;
         _userRepository = userRepository;
-        _classRepository = classRepository;
+        _semesterRepository = semesterRepository;
         _finalProjectRepository = finalProjectRepository;
     }
 
@@ -175,29 +175,32 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
                 };
             }
 
-            // Validate status
-            var validStatuses = new[] { "Not Started", "In Progress", "Pass", "Not Pass", "Withdrawn" };
-            if (!validStatuses.Contains(dto.Status))
+            // Validate status if provided
+            if (dto.Status != null)
             {
-                return new ResultModel<StudentCourseHistoryResponseDto>
+                var validStatuses = new[] { "Not Started", "In Progress", "Pass", "Not Pass", "Withdrawn" };
+                if (!validStatuses.Contains(dto.Status))
                 {
-                    IsSuccess = false,
-                    StatusCode = StatusCodes.Status400BadRequest,
-                    Message = "Invalid status value"
-                };
+                    return new ResultModel<StudentCourseHistoryResponseDto>
+                    {
+                        IsSuccess = false,
+                        StatusCode = StatusCodes.Status400BadRequest,
+                        Message = "Invalid status value"
+                    };
+                }
             }
 
-            // Validate class if provided
-            if (dto.ClassId.HasValue)
+            // Validate semester if provided
+            if (dto.SemesterId.HasValue)
             {
-                var classEntity = await _classRepository.GetByIdAsync(dto.ClassId.Value);
-                if (classEntity == null)
+                var semester = await _semesterRepository.GetByIdAsync(dto.SemesterId.Value);
+                if (semester == null)
                 {
                     return new ResultModel<StudentCourseHistoryResponseDto>
                     {
                         IsSuccess = false,
                         StatusCode = StatusCodes.Status404NotFound,
-                        Message = "Class not found"
+                        Message = "Semester not found"
                     };
                 }
             }
@@ -220,13 +223,13 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
             var history = new AppBackend.BusinessObjects.Models.StudentCourseHistory
             {
                 StudentId = dto.StudentId,
-                ClassId = dto.ClassId,
-                Status = dto.Status,
+                SemesterId = dto.SemesterId,
+                Status = dto.Status ?? "Not Started",
                 FinalSubmissionId = dto.FinalSubmissionId,
                 FinalGrade = dto.FinalGrade,
-                EvaluatedBy = dto.EvaluatedBy,
+                AverageGradeFromOtherInstructors = dto.AverageGradeFromOtherInstructors,
                 Notes = dto.Notes,
-                IsRetake = dto.IsRetake,
+                IsRetake = dto.IsRetake ?? false,
                 EvaluatedAt = dto.FinalGrade.HasValue ? DateTime.UtcNow : null,
                 CompletedAt = (dto.Status == "Pass" || dto.Status == "Not Pass") ? DateTime.UtcNow : null
             };
@@ -292,19 +295,19 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
                 }
             }
 
-            if (dto.ClassId.HasValue)
+            if (dto.SemesterId.HasValue)
             {
-                var classEntity = await _classRepository.GetByIdAsync(dto.ClassId.Value);
-                if (classEntity == null)
+                var semester = await _semesterRepository.GetByIdAsync(dto.SemesterId.Value);
+                if (semester == null)
                 {
                     return new ResultModel<StudentCourseHistoryResponseDto>
                     {
                         IsSuccess = false,
                         StatusCode = StatusCodes.Status404NotFound,
-                        Message = "Class not found"
+                        Message = "Semester not found"
                     };
                 }
-                history.ClassId = dto.ClassId.Value;
+                history.SemesterId = dto.SemesterId.Value;
             }
 
             if (dto.FinalSubmissionId.HasValue)
@@ -325,14 +328,30 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
             if (dto.FinalGrade.HasValue)
             {
                 history.FinalGrade = dto.FinalGrade.Value;
-                history.EvaluatedAt = DateTime.UtcNow;
+                // Only auto-set EvaluatedAt if not explicitly provided
+                if (!dto.EvaluatedAt.HasValue)
+                {
+                    history.EvaluatedAt = DateTime.UtcNow;
+                }
             }
 
-            if (dto.EvaluatedBy.HasValue)
-                history.EvaluatedBy = dto.EvaluatedBy.Value;
+            if (dto.AverageGradeFromOtherInstructors.HasValue)
+                history.AverageGradeFromOtherInstructors = dto.AverageGradeFromOtherInstructors.Value;
 
             if (dto.Notes != null)
                 history.Notes = dto.Notes;
+
+            if (dto.IsRetake.HasValue)
+                history.IsRetake = dto.IsRetake.Value;
+
+            if (dto.IsCurrent.HasValue)
+                history.IsCurrent = dto.IsCurrent.Value;
+
+            if (dto.CompletedAt.HasValue)
+                history.CompletedAt = dto.CompletedAt.Value;
+
+            if (dto.EvaluatedAt.HasValue)
+                history.EvaluatedAt = dto.EvaluatedAt.Value;
 
             history.UpdatedAt = DateTime.UtcNow;
 
@@ -389,7 +408,6 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
 
             history.Status = dto.Status;
             history.Notes = dto.Notes;
-            history.EvaluatedBy = dto.EvaluatedBy;
             history.EvaluatedAt = DateTime.UtcNow;
             history.UpdatedAt = DateTime.UtcNow;
 
@@ -463,14 +481,13 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
             StudentId = history.StudentId,
             StudentName = history.Student?.FullName,
             StudentEmail = history.Student?.Email,
-            ClassId = history.ClassId,
-            ClassName = history.Class?.ClassName,
+            SemesterId = history.SemesterId,
+            SemesterName = history.Semester?.Name,
             Status = history.Status,
             FinalSubmissionId = history.FinalSubmissionId,
             FinalGrade = history.FinalGrade,
+            AverageGradeFromOtherInstructors = history.AverageGradeFromOtherInstructors,
             EvaluatedAt = history.EvaluatedAt,
-            EvaluatedBy = history.EvaluatedBy,
-            EvaluatedByName = history.EvaluatedByUser?.FullName,
             Notes = history.Notes,
             CompletedAt = history.CompletedAt,
             IsRetake = history.IsRetake,

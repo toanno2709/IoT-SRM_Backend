@@ -13,6 +13,7 @@ namespace AppBackend.BusinessObjects.Models;
 [Index("StudentId", Name = "IX_StudentCourseHistory_Student")]
 [Index("StudentId", "IsCurrent", Name = "IX_StudentCourseHistory_IsCurrent")]
 [Index("Status", Name = "IX_StudentCourseHistory_Status")]
+[Index("SemesterId", Name = "IX_StudentCourseHistory_Semester")]
 public partial class StudentCourseHistory
 {
     [Key]
@@ -23,16 +24,15 @@ public partial class StudentCourseHistory
     [Column("student_id")]
     public int StudentId { get; set; }
 
-    [Column("class_id")]
-    public int? ClassId { get; set; }
+    [Column("semester_id")]
+    public int? SemesterId { get; set; }
 
     /// <summary>
     /// Current status: "Not Started", "In Progress", "Pass", "Not Pass", "Withdrawn"
     /// </summary>
-    [Required]
     [Column("status")]
     [StringLength(50)]
-    public string Status { get; set; } = "Not Started";
+    public string? Status { get; set; }
 
     [Column("final_submission_id")]
     public int? FinalSubmissionId { get; set; }
@@ -44,12 +44,16 @@ public partial class StudentCourseHistory
     [Precision(5, 2)]
     public decimal? FinalGrade { get; set; }
 
+    /// <summary>
+    /// Average grade from other instructors (excluding primary instructor)
+    /// </summary>
+    [Column("average_grade_from_other_instructors")]
+    [Precision(5, 2)]
+    public decimal? AverageGradeFromOtherInstructors { get; set; }
+
     [Column("evaluated_at")]
     [Precision(0)]
     public DateTime? EvaluatedAt { get; set; }
-
-    [Column("evaluated_by")]
-    public int? EvaluatedBy { get; set; }
 
     [Column("notes")]
     public string? Notes { get; set; }
@@ -61,41 +65,33 @@ public partial class StudentCourseHistory
     [Precision(0)]
     public DateTime? CompletedAt { get; set; }
 
-    [Required]
     [Column("is_retake")]
-    public bool IsRetake { get; set; } = false;
+    public bool? IsRetake { get; set; }
 
     /// <summary>
     /// Only one record per student should have this as true
     /// </summary>
-    [Required]
     [Column("is_current")]
-    public bool IsCurrent { get; set; } = true;
+    public bool? IsCurrent { get; set; }
 
-    [Required]
     [Column("created_at")]
     [Precision(0)]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CreatedAt { get; set; }
 
-    [Required]
     [Column("updated_at")]
     [Precision(0)]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 
     // Navigation properties
     [ForeignKey("StudentId")]
     [InverseProperty("StudentCourseHistories")]
     public virtual User Student { get; set; } = null!;
 
-    [ForeignKey("ClassId")]
+    [ForeignKey("SemesterId")]
     [InverseProperty("StudentCourseHistories")]
-    public virtual Class? Class { get; set; }
+    public virtual Semester? Semester { get; set; }
 
     [ForeignKey("FinalSubmissionId")]
     [InverseProperty("StudentCourseHistories")]
     public virtual FinalProjectSubmission? FinalSubmission { get; set; }
-
-    [ForeignKey("EvaluatedBy")]
-    [InverseProperty("StudentCourseHistoriesEvaluated")]
-    public virtual User? EvaluatedByUser { get; set; }
 }

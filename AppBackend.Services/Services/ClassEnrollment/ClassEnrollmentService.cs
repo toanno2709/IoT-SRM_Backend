@@ -9,6 +9,7 @@ using AppBackend.BusinessObjects.Data;
 using OfficeOpenXml;
 using ClassEnrollmentModel = AppBackend.BusinessObjects.Models.ClassEnrollment;
 using UserModel = AppBackend.BusinessObjects.Models.User;
+using StudentCourseHistoryModel = AppBackend.BusinessObjects.Models.StudentCourseHistory;
 
 namespace AppBackend.Services.Services.ClassEnrollment;
 
@@ -32,6 +33,51 @@ public class ClassEnrollmentService : IClassEnrollmentService
         
         // Set EPPlus license context
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+    }
+
+    /// <summary>
+    /// Helper method to create StudentCourseHistory record for a student
+    /// </summary>
+    private async Task CreateStudentCourseHistoryAsync(int studentId, int? semesterId)
+    {
+        try
+        {
+            // Check if student already has a current history record
+            var existingCurrent = await _studentCourseHistoryRepo.GetCurrentByStudentIdAsync(studentId);
+            
+            // If there's already a current record with "Not Started" status, don't create a new one
+            if (existingCurrent != null && existingCurrent.Status == "Not Started")
+            {
+                return; // Already has a "Not Started" record
+            }
+
+            // Create new StudentCourseHistory record
+            var history = new StudentCourseHistoryModel
+            {
+                StudentId = studentId,
+                SemesterId = semesterId,
+                Status = "Not Started",
+                IsCurrent = true,
+                IsRetake = false,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // If there's an existing current record, mark it as not current
+            if (existingCurrent != null)
+            {
+                existingCurrent.IsCurrent = false;
+                existingCurrent.UpdatedAt = DateTime.UtcNow;
+                _context.StudentCourseHistories.Update(existingCurrent);
+            }
+
+            await _context.StudentCourseHistories.AddAsync(history);
+        }
+        catch (Exception)
+        {
+            // Log error but don't fail the enrollment process
+            // This is a non-critical operation
+        }
     }
 
     public async Task<ResultModel<BulkAddStudentsResponseDto>> BulkAddStudentsAsync(BulkAddStudentsRequestDto request)
@@ -158,7 +204,14 @@ public class ClassEnrollmentService : IClassEnrollmentService
             await _context.ClassEnrollments.AddRangeAsync(enrollments);
             await _context.SaveChangesAsync();
 
-            // 8. T?o response
+            // 8. T?o StudentCourseHistory cho các sinh viên v?a thêm
+            foreach (var student in eligibleStudents)
+            {
+                await CreateStudentCourseHistoryAsync(student.UserId, classEntity.SemesterId);
+            }
+            await _context.SaveChangesAsync();
+
+            // 9. T?o response
             var newTotalCount = currentStudentCount + eligibleStudents.Count;
             var warnings = new List<string>();
 
@@ -273,6 +326,10 @@ public class ClassEnrollmentService : IClassEnrollmentService
             };
 
             await _context.ClassEnrollments.AddAsync(enrollment);
+            await _context.SaveChangesAsync();
+
+            // 5. T?o StudentCourseHistory
+            await CreateStudentCourseHistoryAsync(studentId, classEntity.SemesterId);
             await _context.SaveChangesAsync();
 
             return new ResultModel<AddStudentToClassResponseDto>
@@ -847,9 +904,16 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
                 await _context.ClassEnrollments.AddRangeAsync(enrollments);
                 await _context.SaveChangesAsync();
+
+                // 7. T?o StudentCourseHistory cho các sinh viên v?a import
+                foreach (var successItem in successList)
+                {
+                    await CreateStudentCourseHistoryAsync(successItem.UserId, classEntity.SemesterId);
+                }
+                await _context.SaveChangesAsync();
             }
 
-            // 7. Prepare result
+            // 8. Prepare result
             var result = new ImportStudentsResultDto
             {
                 ClassId = classId,

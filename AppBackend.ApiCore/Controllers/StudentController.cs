@@ -4,6 +4,7 @@ using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassConfig;
 using AppBackend.Services.Services.MilestoneDeadlineReminder;
+using AppBackend.Services.Services.ProjectGrade;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -19,17 +20,20 @@ public class StudentController : ControllerBase
     private readonly IProjectTemplateService _templateService;
     private readonly IClassConfigService _classConfigService;
     private readonly IMilestoneDeadlineReminderService _deadlineReminderService;
+    private readonly IProjectGradeService _projectGradeService;
     private readonly ILogger<StudentController> _logger;
 
     public StudentController(
         IProjectTemplateService templateService,
         IClassConfigService classConfigService,
         IMilestoneDeadlineReminderService deadlineReminderService,
+        IProjectGradeService projectGradeService,
         ILogger<StudentController> logger)
     {
         _templateService = templateService;
         _classConfigService = classConfigService;
         _deadlineReminderService = deadlineReminderService;
+        _projectGradeService = projectGradeService;
         _logger = logger;
     }
 
@@ -350,6 +354,59 @@ public class StudentController : ControllerBase
         _logger.LogInformation("Student {StudentId} requesting their group registrations", studentId);
 
         var result = await _templateService.GetMyGroupRegistrationsAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Project Grades
+
+    /// <summary>
+    /// Get all graders and their grades for a specific project
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <returns>List of all assigned graders with their grades and feedback</returns>
+    /// <remarks>
+    /// Returns all graders assigned to grade projects in the class, along with:
+    /// - Individual grades from each grader
+    /// - Feedback from each grader
+    /// - Average grade calculated from all grader scores
+    /// - Grading status (who has graded, who hasn't)
+    /// 
+    /// Only accessible to students who are members of the project's group.
+    /// 
+    /// Use this endpoint to:
+    /// - View all grades received from different graders
+    /// - See which graders have completed grading
+    /// - View individual feedback from each grader
+    /// - Check the average/final grade
+    /// </remarks>
+    [HttpGet("projects/{projectId}/graders")]
+    [ProducesResponseType(typeof(ResultModel<ProjectGradersResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ResultModel<ProjectGradersResponseDto>>> GetProjectGraders(
+        [FromRoute] int projectId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<ProjectGradersResponseDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting graders for project {ProjectId}", 
+            studentId, projectId);
+
+        var result = await _projectGradeService.GetProjectGradersAsync(projectId, studentId);
 
         if (result.IsSuccess)
             return Ok(result);
