@@ -646,6 +646,8 @@ public class ClassService : IClassService
 
         // If status changed to "In Progress", update StudentCourseHistory for all students in class
         int updatedHistoryCount = 0;
+        var warnings = new List<string>();
+        
         if (request.Status == "In Progress" && classEntity.ClassEnrollments != null)
         {
             var studentIds = classEntity.ClassEnrollments
@@ -678,6 +680,124 @@ public class ClassService : IClassService
             }
         }
 
+        // If status changed to "Completed", update StudentCourseHistory with final grades
+        if (request.Status == "Completed" && classEntity.ClassEnrollments != null)
+        {
+            var classInstructorId = classEntity.InstructorId;
+            
+            foreach (var enrollment in classEntity.ClassEnrollments.Where(e => e.StudentId.HasValue))
+            {
+                var studentId = enrollment.StudentId!.Value;
+                
+                // Get current StudentCourseHistory for this student
+                var history = await _context.StudentCourseHistories
+                    .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+
+                if (history != null)
+                {
+                    // Find student's group and project
+                    var studentGroup = await _context.GroupMembers
+                        .Include(gm => gm.Group)
+                            .ThenInclude(g => g!.Projects)
+                                .ThenInclude(p => p.FinalProjectSubmission)
+                                    .ThenInclude(fs => fs!.FinalSubmissionGrades)
+                        .Where(gm => gm.UserId == studentId && gm.Group!.ClassId == classId)
+                        .Select(gm => gm.Group)
+                        .FirstOrDefaultAsync();
+
+                    decimal? finalGrade = null;
+                    decimal? avgGradeFromOthers = null;
+                    int? finalSubmissionId = null;
+
+                    if (studentGroup != null)
+                    {
+                        var project = studentGroup.Projects?.FirstOrDefault();
+                        if (project?.FinalProjectSubmission != null)
+                        {
+                            var finalSubmission = project.FinalProjectSubmission;
+                            finalSubmissionId = finalSubmission.FinalSubmissionId;
+                            
+                            // Get the average final grade (from Final_Project_Submissions.grade)
+                            finalGrade = finalSubmission.Grade;
+
+                            // Calculate average grade from other instructors (excluding primary class instructor)
+                            if (finalSubmission.FinalSubmissionGrades != null && finalSubmission.FinalSubmissionGrades.Any())
+                            {
+                                var otherInstructorGrades = finalSubmission.FinalSubmissionGrades
+                                    .Where(g => classInstructorId.HasValue && g.InstructorId != classInstructorId.Value)
+                                    .Select(g => g.Grade)
+                                    .ToList();
+
+                                if (otherInstructorGrades.Any())
+                                {
+                                    avgGradeFromOthers = otherInstructorGrades.Average();
+                                }
+                            }
+                        }
+                    }
+
+                    // Determine Pass/Not Pass based on final grade
+                    string newStatus;
+                    bool isRetake;
+                    string notes;
+
+                    if (finalGrade.HasValue)
+                    {
+                        if (finalGrade.Value >= 5)
+                        {
+                            newStatus = "Pass";
+                            isRetake = false;
+                            notes = $"Passed with final grade: {finalGrade.Value:F2}/10";
+                        }
+                        else
+                        {
+                            newStatus = "Not Pass";
+                            isRetake = true;
+                            notes = $"Not passed with final grade: {finalGrade.Value:F2}/10 (Below passing threshold of 5.0)";
+                        }
+
+                        // Add information about other instructor grades if available
+                        if (avgGradeFromOthers.HasValue)
+                        {
+                            notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10";
+                            
+                            if (avgGradeFromOthers.Value >= 5)
+                            {
+                                notes += " (Pass)";
+                            }
+                            else
+                            {
+                                notes += " (Not Pass)";
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No final grade available - student might not have submitted or not graded
+                        newStatus = "Not Pass";
+                        isRetake = true;
+                        notes = "No final submission or final grade not available";
+                    }
+
+                    // Update the history record
+                    history.Status = newStatus;
+                    history.FinalSubmissionId = finalSubmissionId;
+                    history.FinalGrade = finalGrade;
+                    history.AverageGradeFromOtherInstructors = avgGradeFromOthers;
+                    history.IsRetake = isRetake;
+                    history.Notes = notes;
+                    history.CompletedAt = DateTime.UtcNow;
+                    history.EvaluatedAt = DateTime.UtcNow;
+                    history.UpdatedAt = DateTime.UtcNow;
+                    
+                    _context.StudentCourseHistories.Update(history);
+                    updatedHistoryCount++;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
         // Prepare response
         var totalEnrolled = classEntity.ClassEnrollments?.Count ?? 0;
         var studentsInGroups = classEntity.Groups?
@@ -686,10 +806,15 @@ public class ClassService : IClassService
             .Distinct()
             .Count() ?? 0;
 
-        var warnings = new List<string>();
         if (request.Status == "In Progress" && updatedHistoryCount > 0)
         {
             warnings.Add($"Updated {updatedHistoryCount} student course history records to 'In Progress' status");
+        }
+        
+        if (request.Status == "Completed" && updatedHistoryCount > 0)
+        {
+            warnings.Add($"Automatically evaluated and updated {updatedHistoryCount} student course history records");
+            warnings.Add("Students have been assigned Pass/Not Pass status based on final grades (threshold: 5.0)");
         }
 
         return new ResultModel<ChangeClassStatusResponseDto>
