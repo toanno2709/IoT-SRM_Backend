@@ -640,9 +640,43 @@ public class ClassService : IClassService
             }
         }
 
-        // Update status
+        // Update class status
         classEntity.Status = request.Status;
         await _context.SaveChangesAsync();
+
+        // If status changed to "In Progress", update StudentCourseHistory for all students in class
+        int updatedHistoryCount = 0;
+        if (request.Status == "In Progress" && classEntity.ClassEnrollments != null)
+        {
+            var studentIds = classEntity.ClassEnrollments
+                .Where(ce => ce.StudentId.HasValue)
+                .Select(ce => ce.StudentId!.Value)
+                .ToList();
+
+            if (studentIds.Any())
+            {
+                // Get all current StudentCourseHistory records for these students
+                var histories = await _context.StudentCourseHistories
+                    .Where(h => studentIds.Contains(h.StudentId) && h.IsCurrent == true)
+                    .ToListAsync();
+
+                // Update status to "In Progress" for histories that are not already completed
+                foreach (var history in histories)
+                {
+                    // Only update if current status is "Not Started" or other non-final status
+                    // Don't change if already "Pass" or "Not Pass"
+                    if (history.Status != "Pass" && history.Status != "Not Pass")
+                    {
+                        history.Status = "In Progress";
+                        history.UpdatedAt = DateTime.UtcNow;
+                        _context.StudentCourseHistories.Update(history);
+                        updatedHistoryCount++;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+            }
+        }
 
         // Prepare response
         var totalEnrolled = classEntity.ClassEnrollments?.Count ?? 0;
@@ -651,6 +685,12 @@ public class ClassService : IClassService
             .Select(gm => gm.UserId)
             .Distinct()
             .Count() ?? 0;
+
+        var warnings = new List<string>();
+        if (request.Status == "In Progress" && updatedHistoryCount > 0)
+        {
+            warnings.Add($"Updated {updatedHistoryCount} student course history records to 'In Progress' status");
+        }
 
         return new ResultModel<ChangeClassStatusResponseDto>
         {
@@ -667,7 +707,7 @@ public class ClassService : IClassService
                 TotalStudents = totalEnrolled,
                 StudentsWithGroup = studentsInGroups,
                 StudentsWithoutGroup = totalEnrolled - studentsInGroups,
-                Warnings = new List<string>()
+                Warnings = warnings
             },
             StatusCode = StatusCodes.Status200OK
         };
