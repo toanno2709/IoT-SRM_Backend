@@ -499,7 +499,8 @@ public class ProjectTemplateService : IProjectTemplateService
                 .Select(gm => gm.Group)
                 .FirstOrDefaultAsync();
 
-            var templates = await _templateRepo.GetAvailableByClassIdAsync(classId);
+            // Changed: Use GetByClassIdAsync to get ALL templates (not just active ones)
+            var templates = await _templateRepo.GetByClassIdAsync(classId);
 
             var result = new List<AvailableTemplateDto>();
             foreach (var template in templates)
@@ -532,6 +533,7 @@ public class ProjectTemplateService : IProjectTemplateService
                     MaxGroups = template.MaxGroups,
                     RegisteredCount = template.RegisteredCount,
                     AvailableSlots = template.MaxGroups.HasValue ? template.MaxGroups.Value - template.RegisteredCount : null,
+                    // Updated: CanRegister now considers IsActive, available slots, group exists, and not already registered
                     CanRegister = template.IsActive && 
                                   (template.MaxGroups == null || template.RegisteredCount < template.MaxGroups) &&
                                   studentGroup != null && !isMyGroupRegistered,
