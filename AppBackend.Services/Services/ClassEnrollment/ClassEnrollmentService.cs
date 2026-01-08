@@ -35,62 +35,12 @@ public class ClassEnrollmentService : IClassEnrollmentService
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
-    /// <summary>
-    /// Helper method to create StudentCourseHistory record for a student
-    /// </summary>
-    private async Task CreateStudentCourseHistoryAsync(int studentId, int? semesterId)
-    {
-        try
-        {
-            // Check if student already has a current history record
-            var existingCurrent = await _studentCourseHistoryRepo.GetCurrentByStudentIdAsync(studentId);
-            
-            // If there's already a current record with "Not Started" status, don't create a new one
-            if (existingCurrent != null && existingCurrent.Status == "Not Started")
-            {
-                return; // Already has a "Not Started" record
-            }
-
-            // Create new StudentCourseHistory record
-            var history = new StudentCourseHistoryModel
-            {
-                StudentId = studentId,
-                SemesterId = semesterId,
-                Status = "Not Started",
-                IsCurrent = true,
-                IsRetake = false,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            // If there's an existing current record, mark it as not current
-            if (existingCurrent != null)
-            {
-                existingCurrent.IsCurrent = false;
-                existingCurrent.UpdatedAt = DateTime.UtcNow;
-                _context.StudentCourseHistories.Update(existingCurrent);
-            }
-
-            await _context.StudentCourseHistories.AddAsync(history);
-        }
-        catch (Exception)
-        {
-            // Log error but don't fail the enrollment process
-            // This is a non-critical operation
-        }
-    }
-
     public async Task<ResultModel<BulkAddStudentsResponseDto>> BulkAddStudentsAsync(BulkAddStudentsRequestDto request)
     {
         try
         {
             // 1. Ki?m tra class có t?n t?i không
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == request.ClassId)
-                .Select(c => new { c.ClassId, c.ClassName, c.SemesterId })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetClassWithDetailsAsync(request.ClassId);
             if (classEntity == null)
             {
                 return new ResultModel<BulkAddStudentsResponseDto>
@@ -105,7 +55,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 2. ??m s? h?c sinh hi?n t?i trong class
             var currentStudentCount = await _context.ClassEnrollments
-                .AsNoTracking()
                 .Where(ce => ce.ClassId == request.ClassId)
                 .CountAsync();
 
@@ -136,14 +85,12 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 4. L?y danh sách student IDs ?ã có trong class
             var existingStudentIds = await _context.ClassEnrollments
-                .AsNoTracking()
                 .Where(ce => ce.ClassId == request.ClassId)
                 .Select(ce => ce.StudentId)
                 .ToListAsync();
 
             // 5. T?m students available (role_id = 3, ch?a c? trong class, AND ch?a hoàn thành môn)
             var availableStudents = await _context.Users
-                .AsNoTracking()
                 .Where(u => u.RoleId == 3 && !existingStudentIds.Contains(u.UserId))
                 .Take(studentsToAdd * 2) // L?y nhi?u h?n ?? filter
                 .ToListAsync();
@@ -194,10 +141,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 {
                     ClassId = request.ClassId,
                     StudentId = student.UserId,
-                    EnrolledAt = enrolledAt,
-                    // Don't set navigation properties
-                    Class = null,
-                    Student = null
+                    EnrolledAt = enrolledAt
                 };
 
                 enrollments.Add(enrollment);
@@ -215,14 +159,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
             await _context.ClassEnrollments.AddRangeAsync(enrollments);
             await _context.SaveChangesAsync();
 
-            // 8. T?o StudentCourseHistory cho các sinh viên v?a thêm
-            foreach (var student in eligibleStudents)
-            {
-                await CreateStudentCourseHistoryAsync(student.UserId, classEntity.SemesterId);
-            }
-            await _context.SaveChangesAsync();
-
-            // 9. T?o response
+            // 8. T?o response
             var newTotalCount = currentStudentCount + eligibleStudents.Count;
             var warnings = new List<string>();
 
@@ -269,12 +206,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         try
         {
             // 1. Ki?m tra class có t?n t?i
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == classId)
-                .Select(c => new { c.ClassId, c.ClassName, c.SemesterId })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetByIdAsync(classId);
             if (classEntity == null)
             {
                 return new ResultModel<AddStudentToClassResponseDto>
@@ -289,7 +221,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 2. Ki?m tra student có t?n t?i và có role_id = 3
             var student = await _context.Users
-                .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.UserId == studentId && u.RoleId == 3);
 
             if (student == null)
@@ -306,7 +237,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 3. Ki?m tra student ?? c? trong class ch?a
             var existingEnrollment = await _context.ClassEnrollments
-                .AsNoTracking()
                 .FirstOrDefaultAsync(ce => ce.ClassId == classId && ce.StudentId == studentId);
 
             if (existingEnrollment != null)
@@ -340,17 +270,10 @@ public class ClassEnrollmentService : IClassEnrollmentService
             {
                 ClassId = classId,
                 StudentId = studentId,
-                EnrolledAt = DateTime.UtcNow,
-                // Don't set navigation properties
-                Class = null,
-                Student = null
+                EnrolledAt = DateTime.UtcNow
             };
 
             await _context.ClassEnrollments.AddAsync(enrollment);
-            await _context.SaveChangesAsync();
-
-            // 5. T?o StudentCourseHistory
-            await CreateStudentCourseHistoryAsync(studentId, classEntity.SemesterId);
             await _context.SaveChangesAsync();
 
             return new ResultModel<AddStudentToClassResponseDto>
@@ -452,12 +375,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         try
         {
             // 1. Ki?m tra class có t?n t?i
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == classId)
-                .Select(c => new { c.ClassId, c.ClassName })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetByIdAsync(classId);
             if (classEntity == null)
             {
                 return new ResultModel<ClassStudentsResponseDto>
@@ -472,7 +390,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 2. L?y danh sách students
             var enrollments = await _context.ClassEnrollments
-                .AsNoTracking()
                 .Where(ce => ce.ClassId == classId)
                 .Include(ce => ce.Student)
                 .OrderBy(ce => ce.Student!.FullName)
@@ -522,12 +439,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         try
         {
             // 1. Ki?m tra class có t?n t?i
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == classId)
-                .Select(c => new { c.ClassId, c.ClassName })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetByIdAsync(classId);
             if (classEntity == null)
             {
                 return new ResultModel<ClassStudentsWithGroupResponseDto>
@@ -648,12 +560,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         try
         {
             // 1. Ki?m tra class có t?n t?i
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == classId)
-                .Select(c => new { c.ClassId, c.ClassName })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetByIdAsync(classId);
             if (classEntity == null)
             {
                 return new ResultModel<UnassignedStudentsResponseDto>
@@ -748,12 +655,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         try
         {
             // 1. Validate class exists
-            var classEntity = await _context.Classes
-                .AsNoTracking()
-                .Where(c => c.ClassId == classId)
-                .Select(c => new { c.ClassId, c.ClassName, c.SemesterId })
-                .FirstOrDefaultAsync();
-                
+            var classEntity = await _classRepo.GetByIdAsync(classId);
             if (classEntity == null)
             {
                 return new ResultModel<ImportStudentsResultDto>
@@ -849,7 +751,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // 4. Get existing enrollments for this class
             var existingEnrollments = await _context.ClassEnrollments
-                .AsNoTracking()
                 .Where(ce => ce.ClassId == classId)
                 .Select(ce => ce.StudentId)
                 .ToListAsync();
@@ -860,7 +761,6 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             // Get all users by email in one query
             var usersDict = await _context.Users
-                .AsNoTracking()
                 .Where(u => emailsToProcess.Contains(u.Email.ToLower()))
                 .ToDictionaryAsync(u => u.Email.ToLower(), u => u);
 
@@ -943,24 +843,14 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 {
                     ClassId = classId,
                     StudentId = s.UserId,
-                    EnrolledAt = enrolledAt,
-                    // Don't set navigation properties
-                    Class = null,
-                    Student = null
+                    EnrolledAt = enrolledAt
                 }).ToList();
 
                 await _context.ClassEnrollments.AddRangeAsync(enrollments);
                 await _context.SaveChangesAsync();
-
-                // 7. T?o StudentCourseHistory cho các sinh viên v?a import
-                foreach (var successItem in successList)
-                {
-                    await CreateStudentCourseHistoryAsync(successItem.UserId, classEntity.SemesterId);
-                }
-                await _context.SaveChangesAsync();
             }
 
-            // 8. Prepare result
+            // 7. Prepare result
             var result = new ImportStudentsResultDto
             {
                 ClassId = classId,
