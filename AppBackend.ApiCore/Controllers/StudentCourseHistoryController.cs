@@ -235,4 +235,37 @@ public class StudentCourseHistoryController : ControllerBase
             
         return StatusCode(result.StatusCode, result);
     }
+
+    /// <summary>
+    /// Manually trigger update of IsCurrent flags for all StudentCourseHistory records
+    /// </summary>
+    /// <remarks>
+    /// This endpoint is useful for:
+    /// - Testing the background service logic
+    /// - Manually forcing an update outside the scheduled interval
+    /// - Recovering from any data inconsistencies
+    /// 
+    /// The background service automatically runs every hour, but this endpoint
+    /// allows admins to trigger an immediate update.
+    /// 
+    /// Logic:
+    /// - For each StudentCourseHistory with a semester
+    /// - Check if current date is between semester start_date and end_date
+    /// - Update IsCurrent = true if within date range, false otherwise
+    /// </remarks>
+    [HttpPost("admin/update-current-flags")]
+    [Authorize(Roles = "Admin")]
+    [RateLimit(permitLimit: 5, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<UpdateCurrentFlagsResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ResultModel<UpdateCurrentFlagsResultDto>>> UpdateCurrentFlags()
+    {
+        var result = await _service.UpdateAllCurrentFlagsAsync();
+        
+        if (result.IsSuccess)
+            return Ok(result);
+            
+        return StatusCode(result.StatusCode, result);
+    }
 }

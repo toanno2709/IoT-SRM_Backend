@@ -35,12 +35,102 @@ public class ClassEnrollmentService : IClassEnrollmentService
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
+    /// <summary>
+    /// Helper method to create or update StudentCourseHistory when student enrolls in class
+    /// </summary>
+    private async Task CreateOrUpdateStudentCourseHistoryAsync(int studentId, int? semesterId)
+    {
+        try
+        {
+            // Get semester info to check if it's active
+            var semester = semesterId.HasValue 
+                ? await _context.Semesters.FirstOrDefaultAsync(s => s.SemesterId == semesterId.Value)
+                : null;
+
+            // Determine if this should be marked as current
+            // IsCurrent = true only if:
+            // 1. Semester exists
+            // 2. Semester.IsActive = true OR current date is between start_date and end_date
+            bool shouldBeCurrent = false;
+            if (semester != null)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                
+                // Check if semester is explicitly active
+                bool isSemesterActive = semester.IsActive == true;
+                
+                // Check if current date is within semester date range
+                bool isWithinDateRange = false;
+                if (semester.StartDate.HasValue && semester.EndDate.HasValue)
+                {
+                    isWithinDateRange = today >= semester.StartDate.Value && today <= semester.EndDate.Value;
+                }
+
+                shouldBeCurrent = isSemesterActive || isWithinDateRange;
+            }
+
+            // Check if student already has a record for this semester
+            var existingHistory = semesterId.HasValue
+                ? await _context.StudentCourseHistories
+                    .FirstOrDefaultAsync(sch => sch.StudentId == studentId && sch.SemesterId == semesterId)
+                : null;
+
+            if (existingHistory != null)
+            {
+                // Update existing history
+                existingHistory.IsCurrent = shouldBeCurrent;
+                existingHistory.Status = "In Progress";
+                existingHistory.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+            else
+            {
+                // If creating new record and shouldBeCurrent is true, 
+                // mark other records of this student as not current
+                if (shouldBeCurrent)
+                {
+                    var otherHistories = await _context.StudentCourseHistories
+                        .Where(sch => sch.StudentId == studentId && sch.IsCurrent == true)
+                        .ToListAsync();
+
+                    foreach (var oldHistory in otherHistories)
+                    {
+                        oldHistory.IsCurrent = false;
+                        oldHistory.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                // Create new StudentCourseHistory record with IsCurrent based on semester status
+                var newHistory = new StudentCourseHistoryModel
+                {
+                    StudentId = studentId,
+                    SemesterId = semesterId,
+                    Status = "In Progress",
+                    IsCurrent = shouldBeCurrent, // Set based on semester status
+                    IsRetake = false,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _context.StudentCourseHistories.AddAsync(newHistory);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            // Log error but don't fail the enrollment process
+            // StudentCourseHistory creation is non-critical
+        }
+    }
+
     public async Task<ResultModel<BulkAddStudentsResponseDto>> BulkAddStudentsAsync(BulkAddStudentsRequestDto request)
     {
         try
         {
-            // 1. Ki?m tra class có t?n t?i không
-            var classEntity = await _classRepo.GetClassWithDetailsAsync(request.ClassId);
+            // 1. Ki?m tra class có t?n t?i không và l?y semester_id
+            var classEntity = await _context.Classes
+                .FirstOrDefaultAsync(c => c.ClassId == request.ClassId);
+                
             if (classEntity == null)
             {
                 return new ResultModel<BulkAddStudentsResponseDto>
@@ -52,6 +142,8 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     StatusCode = StatusCodes.Status404NotFound
                 };
             }
+
+            var semesterId = classEntity.SemesterId;
 
             // 2. ??m s? h?c sinh hi?n t?i trong class
             var currentStudentCount = await _context.ClassEnrollments
@@ -89,10 +181,10 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 .Select(ce => ce.StudentId)
                 .ToListAsync();
 
-            // 5. T?m students available (role_id = 3, ch?a c? trong class, AND ch?a hoàn thành môn)
+            // 5. Tìm students available
             var availableStudents = await _context.Users
                 .Where(u => u.RoleId == 3 && !existingStudentIds.Contains(u.UserId))
-                .Take(studentsToAdd * 2) // L?y nhi?u h?n ?? filter
+                .Take(studentsToAdd * 2)
                 .ToListAsync();
 
             // Filter out students who have passed the course
@@ -155,11 +247,17 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 });
             }
 
-            // 7. Bulk insert v?o database
+            // 7. Bulk insert vào database
             await _context.ClassEnrollments.AddRangeAsync(enrollments);
             await _context.SaveChangesAsync();
 
-            // 8. T?o response
+            // 8. Auto-create StudentCourseHistory for each student with semester_id from class
+            foreach (var student in eligibleStudents)
+            {
+                await CreateOrUpdateStudentCourseHistoryAsync(student.UserId, semesterId);
+            }
+
+            // 9. T?o response
             var newTotalCount = currentStudentCount + eligibleStudents.Count;
             var warnings = new List<string>();
 
@@ -205,8 +303,10 @@ public class ClassEnrollmentService : IClassEnrollmentService
     {
         try
         {
-            // 1. Ki?m tra class có t?n t?i
-            var classEntity = await _classRepo.GetByIdAsync(classId);
+            // 1. Ki?m tra class có t?n t?i và l?y semester_id
+            var classEntity = await _context.Classes
+                .FirstOrDefaultAsync(c => c.ClassId == classId);
+                
             if (classEntity == null)
             {
                 return new ResultModel<AddStudentToClassResponseDto>
@@ -218,6 +318,8 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     StatusCode = StatusCodes.Status404NotFound
                 };
             }
+
+            var semesterId = classEntity.SemesterId;
 
             // 2. Ki?m tra student có t?n t?i và có role_id = 3
             var student = await _context.Users
@@ -235,7 +337,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 3. Ki?m tra student ?? c? trong class ch?a
+            // 3. Ki?m tra student ?ã có trong class ch?a
             var existingEnrollment = await _context.ClassEnrollments
                 .FirstOrDefaultAsync(ce => ce.ClassId == classId && ce.StudentId == studentId);
 
@@ -265,7 +367,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 4. Th?m student v?o class
+            // 4. Thêm student vào class
             var enrollment = new ClassEnrollmentModel
             {
                 ClassId = classId,
@@ -275,6 +377,9 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             await _context.ClassEnrollments.AddAsync(enrollment);
             await _context.SaveChangesAsync();
+
+            // 5. Auto-create or update StudentCourseHistory with semester_id from class
+            await CreateOrUpdateStudentCourseHistoryAsync(studentId, semesterId);
 
             return new ResultModel<AddStudentToClassResponseDto>
             {
@@ -654,8 +759,10 @@ public class ClassEnrollmentService : IClassEnrollmentService
     {
         try
         {
-            // 1. Validate class exists
-            var classEntity = await _classRepo.GetByIdAsync(classId);
+            // 1. Validate class exists and get semester_id
+            var classEntity = await _context.Classes
+                .FirstOrDefaultAsync(c => c.ClassId == classId);
+                
             if (classEntity == null)
             {
                 return new ResultModel<ImportStudentsResultDto>
@@ -667,6 +774,8 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     StatusCode = StatusCodes.Status404NotFound
                 };
             }
+
+            var semesterId = classEntity.SemesterId;
 
             // 2. Validate Excel file
             if (excelFile == null || excelFile.Length == 0)
@@ -803,7 +912,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Reason = "Sinh vi?n ?? c? trong l?p",
+                        Reason = "Sinh viên ?ã có trong l?p",
                         ReasonCode = "DUPLICATE"
                     });
                     continue;
@@ -848,9 +957,15 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
                 await _context.ClassEnrollments.AddRangeAsync(enrollments);
                 await _context.SaveChangesAsync();
+
+                // 7. Auto-create StudentCourseHistory for each imported student with semester_id from class
+                foreach (var successStudent in successList)
+                {
+                    await CreateOrUpdateStudentCourseHistoryAsync(successStudent.UserId, semesterId);
+                }
             }
 
-            // 7. Prepare result
+            // 8. Prepare result
             var result = new ImportStudentsResultDto
             {
                 ClassId = classId,

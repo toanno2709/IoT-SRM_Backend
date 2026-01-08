@@ -6,6 +6,8 @@ using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using AppBackend.BusinessObjects.Data;
 
 namespace AppBackend.Services.Services.StudentCourseHistory;
 
@@ -15,17 +17,20 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
     private readonly IUserRepository _userRepository;
     private readonly ISemesterRepository _semesterRepository;
     private readonly IFinalProjectRepository _finalProjectRepository;
+    private readonly IotShowroomContext _context;
 
     public StudentCourseHistoryService(
         IStudentCourseHistoryRepository repository,
         IUserRepository userRepository,
         ISemesterRepository semesterRepository,
-        IFinalProjectRepository finalProjectRepository)
+        IFinalProjectRepository finalProjectRepository,
+        IotShowroomContext context)
     {
         _repository = repository;
         _userRepository = userRepository;
         _semesterRepository = semesterRepository;
         _finalProjectRepository = finalProjectRepository;
+        _context = context;
     }
 
     public async Task<ResultModel<StudentCourseHistoryResponseDto>> GetByIdAsync(int historyId)
@@ -230,6 +235,7 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
                 AverageGradeFromOtherInstructors = dto.AverageGradeFromOtherInstructors,
                 Notes = dto.Notes,
                 IsRetake = dto.IsRetake ?? false,
+                IsCurrent = false, // Default to false, will be set by background service
                 EvaluatedAt = dto.FinalGrade.HasValue ? DateTime.UtcNow : null,
                 CompletedAt = (dto.Status == "Pass" || dto.Status == "Not Pass") ? DateTime.UtcNow : null
             };
@@ -469,6 +475,119 @@ public class StudentCourseHistoryService : IStudentCourseHistoryService
                 IsSuccess = false,
                 StatusCode = StatusCodes.Status500InternalServerError,
                 Message = $"Error deleting student course history: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<ResultModel<UpdateCurrentFlagsResultDto>> UpdateAllCurrentFlagsAsync()
+    {
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var executedAt = DateTime.UtcNow;
+
+            // Get all StudentCourseHistory records with semester info
+            var allHistories = await _context.StudentCourseHistories
+                .Include(sch => sch.Semester)
+                .Include(sch => sch.Student)
+                .Where(sch => sch.SemesterId != null)
+                .ToListAsync();
+
+            var updatedCount = 0;
+            var unchangedCount = 0;
+            var updateDetails = new List<CurrentFlagUpdateDetailDto>();
+
+            foreach (var history in allHistories)
+            {
+                if (history.Semester == null)
+                {
+                    unchangedCount++;
+                    continue;
+                }
+
+                var semester = history.Semester;
+                var previousIsCurrent = history.IsCurrent ?? false;
+
+                // Determine if this history should be current
+                bool shouldBeCurrent = false;
+                string reason = "";
+
+                if (semester.StartDate.HasValue && semester.EndDate.HasValue)
+                {
+                    shouldBeCurrent = today >= semester.StartDate.Value && today <= semester.EndDate.Value;
+                    
+                    if (shouldBeCurrent)
+                    {
+                        reason = $"Current date ({today}) is within semester date range ({semester.StartDate.Value} to {semester.EndDate.Value})";
+                    }
+                    else if (today < semester.StartDate.Value)
+                    {
+                        reason = $"Current date ({today}) is before semester start date ({semester.StartDate.Value})";
+                    }
+                    else
+                    {
+                        reason = $"Current date ({today}) is after semester end date ({semester.EndDate.Value})";
+                    }
+                }
+                else
+                {
+                    reason = "Semester does not have start/end dates";
+                }
+
+                // Update if different from current state
+                if (previousIsCurrent != shouldBeCurrent)
+                {
+                    history.IsCurrent = shouldBeCurrent;
+                    history.UpdatedAt = DateTime.UtcNow;
+                    updatedCount++;
+
+                    updateDetails.Add(new CurrentFlagUpdateDetailDto
+                    {
+                        HistoryId = history.HistoryId,
+                        StudentId = history.StudentId,
+                        StudentName = history.Student?.FullName,
+                        SemesterId = history.SemesterId,
+                        SemesterName = semester.Name,
+                        PreviousIsCurrent = previousIsCurrent,
+                        NewIsCurrent = shouldBeCurrent,
+                        Reason = reason
+                    });
+                }
+                else
+                {
+                    unchangedCount++;
+                }
+            }
+
+            if (updatedCount > 0)
+            {
+                await _context.SaveChangesAsync();
+            }
+
+            var result = new UpdateCurrentFlagsResultDto
+            {
+                TotalRecordsChecked = allHistories.Count,
+                RecordsUpdated = updatedCount,
+                RecordsUnchanged = unchangedCount,
+                ExecutedAt = executedAt,
+                Message = $"Successfully updated {updatedCount} out of {allHistories.Count} records. {unchangedCount} records unchanged.",
+                UpdateDetails = updateDetails
+            };
+
+            return new ResultModel<UpdateCurrentFlagsResultDto>
+            {
+                IsSuccess = true,
+                Data = result,
+                Message = CommonMessageConstants.SUCCESS
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<UpdateCurrentFlagsResultDto>
+            {
+                IsSuccess = false,
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Message = $"Error updating IsCurrent flags: {ex.Message}"
             };
         }
     }

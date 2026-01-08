@@ -12,4 +12,5 @@ public interface IStudentCourseHistoryService
     Task<ResultModel<StudentCourseHistoryResponseDto>> UpdateAsync(int historyId, StudentCourseHistoryUpdateDto dto);
     Task<ResultModel<StudentCourseHistoryResponseDto>> UpdateStatusAsync(int studentId, UpdateStudentCourseStatusDto dto);
     Task<ResultModel<bool>> DeleteAsync(int historyId);
+    Task<ResultModel<UpdateCurrentFlagsResultDto>> UpdateAllCurrentFlagsAsync();
 }

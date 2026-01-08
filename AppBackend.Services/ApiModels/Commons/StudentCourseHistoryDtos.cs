@@ -102,3 +102,31 @@ public class StudentsByStatusResponseDto
     public int Count { get; set; }
     public List<StudentCourseHistoryResponseDto> Students { get; set; } = new();
 }
+
+/// <summary>
+/// Result of manually updating IsCurrent flags
+/// </summary>
+public class UpdateCurrentFlagsResultDto
+{
+    public int TotalRecordsChecked { get; set; }
+    public int RecordsUpdated { get; set; }
+    public int RecordsUnchanged { get; set; }
+    public DateTime ExecutedAt { get; set; }
+    public string Message { get; set; } = null!;
+    public List<CurrentFlagUpdateDetailDto> UpdateDetails { get; set; } = new();
+}
+
+/// <summary>
+/// Detail of a single IsCurrent flag update
+/// </summary>
+public class CurrentFlagUpdateDetailDto
+{
+    public int HistoryId { get; set; }
+    public int StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public int? SemesterId { get; set; }
+    public string? SemesterName { get; set; }
+    public bool PreviousIsCurrent { get; set; }
+    public bool NewIsCurrent { get; set; }
+    public string Reason { get; set; } = null!;
+}

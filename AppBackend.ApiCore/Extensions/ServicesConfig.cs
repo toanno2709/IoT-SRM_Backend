@@ -156,6 +156,7 @@ public static class ServicesConfig
         services.AddHostedService<MilestoneWeightCheckBackgroundService>();
         services.AddHostedService<ClassStatusAutoTransitionService>();
         services.AddHostedService<MilestoneDeadlineReminderBackgroundService>();
+        services.AddHostedService<StudentCourseHistoryUpdateService>();
 
         #endregion
 
