@@ -7,12 +7,12 @@ using AppBackend.Attributes;
 namespace AppBackend.ApiCore.Controllers;
 
 /// <summary>
-/// Student Course History Management (Admin only)
+/// Student Course History Management
 /// Tracks student progress and completion status for IoT course
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+[AllowAnonymous] // Allow access without authentication
 public class StudentCourseHistoryController : ControllerBase
 {
     private readonly IStudentCourseHistoryService _service;
@@ -29,8 +29,6 @@ public class StudentCourseHistoryController : ControllerBase
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<StudentCourseHistoryResponseDto>>> GetById([FromRoute] int historyId)
     {
         var result = await _service.GetByIdAsync(historyId);
@@ -48,8 +46,6 @@ public class StudentCourseHistoryController : ControllerBase
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<StudentCourseHistoryResponseDto>>> GetCurrentByStudentId([FromRoute] int studentId)
     {
         var result = await _service.GetCurrentByStudentIdAsync(studentId);
@@ -66,8 +62,6 @@ public class StudentCourseHistoryController : ControllerBase
     [HttpGet("student/{studentId}/all")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<StudentCourseHistoryResponseDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<List<StudentCourseHistoryResponseDto>>>> GetAllByStudentId([FromRoute] int studentId)
     {
         var result = await _service.GetAllByStudentIdAsync(studentId);
@@ -92,8 +86,6 @@ public class StudentCourseHistoryController : ControllerBase
     [HttpGet("by-status")]
     [RateLimit(permitLimit: 30, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<List<StudentsByStatusResponseDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<List<StudentsByStatusResponseDto>>>> GetStudentsByStatus()
     {
         var result = await _service.GetStudentsByStatusAsync();
@@ -123,8 +115,6 @@ public class StudentCourseHistoryController : ControllerBase
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<StudentCourseHistoryResponseDto>>> Create([FromBody] StudentCourseHistoryCreateDto dto)
     {
         if (!ModelState.IsValid)
@@ -173,8 +163,6 @@ public class StudentCourseHistoryController : ControllerBase
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<StudentCourseHistoryResponseDto>>> Update(
         [FromRoute] int historyId,
         [FromBody] StudentCourseHistoryUpdateDto dto)
@@ -209,8 +197,6 @@ public class StudentCourseHistoryController : ControllerBase
     [ProducesResponseType(typeof(ResultModel<StudentCourseHistoryResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<StudentCourseHistoryResponseDto>>> UpdateStatus(
         [FromRoute] int studentId,
         [FromBody] UpdateStudentCourseStatusDto dto)
@@ -240,8 +226,6 @@ public class StudentCourseHistoryController : ControllerBase
     [RateLimit(permitLimit: 10, windowSeconds: 60)]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ResultModel<bool>>> Delete([FromRoute] int historyId)
     {
         var result = await _service.DeleteAsync(historyId);
