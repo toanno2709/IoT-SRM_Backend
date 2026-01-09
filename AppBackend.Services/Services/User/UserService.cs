@@ -448,8 +448,7 @@ namespace AppBackend.Services
                             }
                         }
 
-                        // Determine RoleId - ONLY accept Student role
-                        // Skip rows with Instructor or Admin role
+                        // Determine RoleId - Accept Student, Instructor, and Admin roles
                         int roleId = 3; // Default to Student
                         if (!string.IsNullOrEmpty(role))
                         {
@@ -457,21 +456,13 @@ namespace AppBackend.Services
                             {
                                 roleId = 3; // Student
                             }
-                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase) || 
-                                     role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase))
                             {
-                                // Skip Instructor and Admin rows
-                                response.Errors.Add(new ImportErrorDto
-                                {
-                                    RowNumber = row,
-                                    FullName = fullName,
-                                    Email = email,
-                                    PhoneNumber = phone,
-                                    ErrorReason = $"Cannot import {role} role. Only Student role is allowed.",
-                                    ErrorType = "InvalidRole"
-                                });
-                                response.UsersSkipped++;
-                                continue;
+                                roleId = 2; // Instructor
+                            }
+                            else if (role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+                            {
+                                roleId = 1; // Admin
                             }
                             else
                             {

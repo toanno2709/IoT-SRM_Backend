@@ -232,93 +232,243 @@ namespace AppBackend.Services.Services.Project
         // 4. Change status (Instructor only)
         public async Task ChangeStatusAsync(ProjectStatusDto dto)
         {
-            var project = await _db.Projects
-                .Include(p => p.Group).ThenInclude(g => g!.GroupMembers)
-                .FirstOrDefaultAsync(p => p.ProjectId == dto.ProjectId);
-
-            if (project == null)
-                throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "Project not found",
-                    StatusCodes.Status404NotFound
-                );
-
-            // Validate instructor role
-            var instructor = await _db.Users.FindAsync(dto.InstructorId);
-            if (instructor == null || instructor.RoleId != 2)
-                throw new AppException(
-                    CommonMessageConstants.FORBIDDEN,
-                    "Only instructor can change project status",
-                    StatusCodes.Status403Forbidden
-                );
-
-            project.Status = dto.Status;
-            project.UpdatedAt = DateTime.UtcNow;
-
-            // Add to Project_Approval_History
-            var history = new ProjectApprovalHistory
+            try
             {
-                SubmissionId = 0,
-                ReviewerId = dto.InstructorId,
-                Action = dto.Status.ToUpper(),
-                Comment = dto.Comment ?? "",
-                ActedAt = DateTime.UtcNow
-            };
-            _db.ProjectApprovalHistories.Add(history);
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                            .ThenInclude(gm => gm.User)
+                    .FirstOrDefaultAsync(p => p.ProjectId == dto.ProjectId);
 
-            // Send notification to leader + members
-            var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
-            foreach (var m in groupMembers)
-            {
-                _db.Notifications.Add(new AppBackend.BusinessObjects.Models.Notification
+                if (project == null)
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "Project not found",
+                        StatusCodes.Status404NotFound
+                    );
+
+                // Validate instructor role
+                var instructor = await _db.Users.FindAsync(dto.InstructorId);
+                if (instructor == null || instructor.RoleId != 2)
+                    throw new AppException(
+                        CommonMessageConstants.FORBIDDEN,
+                        "Only instructor can change project status",
+                        StatusCodes.Status403Forbidden
+                    );
+
+                project.Status = dto.Status;
+                project.UpdatedAt = DateTime.UtcNow;
+
+                // Add to Project_Approval_History
+                var history = new ProjectApprovalHistory
                 {
-                    UserId = m.UserId,
-                    Title = $"Project '{project.Title}' status updated",
-                    Message = $"Instructor marked project as {dto.Status}. {(string.IsNullOrEmpty(dto.Comment) ? "" : "Comment: " + dto.Comment)}",
-                    Type = "project_status",
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
+                    SubmissionId = 0,
+                    ReviewerId = dto.InstructorId,
+                    Action = dto.Status.ToUpper(),
+                    Comment = dto.Comment ?? "",
+                    ActedAt = DateTime.UtcNow
+                };
+                _db.ProjectApprovalHistories.Add(history);
 
-            await _db.SaveChangesAsync();
+                // Send notification to leader + members
+                var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                foreach (var m in groupMembers)
+                {
+                    _db.Notifications.Add(new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = m.UserId,
+                        Title = $"Project '{project.Title}' status updated",
+                        Message = $"Instructor marked project as {dto.Status}. {(string.IsNullOrEmpty(dto.Comment) ? "" : "Comment: " + dto.Comment)}",
+                        Type = "project_status",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                await _db.SaveChangesAsync();
+            }
+            catch (AppException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    $"Error updating project status: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
         }
 
         // 6. Delete project (Admin, Instructor, or Leader)
         public async Task DeleteProjectAsync(int projectId, int requesterUserId)
         {
-            var project = await _db.Projects
-                .Include(p => p.Group)
-                .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                    .Include(p => p.MilestoneEvaluations)
+                    .Include(p => p.MilestoneSubmissions)
+                        .ThenInclude(ms => ms.SubmissionFiles)
+                    .Include(p => p.MilestoneSubmissions)
+                        .ThenInclude(ms => ms.ProjectApprovalHistories)
+                    .Include(p => p.ProjectMilestones)
+                    .Include(p => p.Sensors)
+                        .ThenInclude(s => s.SensorData)
+                    .Include(p => p.LiveDemos)
+                        .ThenInclude(ld => ld.LiveDemoSensors)
+                    .Include(p => p.FinalProjectSubmission)
+                        .ThenInclude(fps => fps.FinalSubmissionGrades)
+                    .Include(p => p.HallOfFames)
+                    .Include(p => p.ProjectTemplateRegistrations)
+                    .Include(p => p.Simulations)
+                    .FirstOrDefaultAsync(p => p.ProjectId == projectId);
 
-            if (project == null)
+                if (project == null)
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "Project not found",
+                        StatusCodes.Status404NotFound
+                    );
+
+                var requester = await _db.Users.FindAsync(requesterUserId);
+                if (requester == null)
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "Requester not found",
+                        StatusCodes.Status404NotFound
+                    );
+
+                var isAdmin = requester.RoleId == 1;
+                var isInstructor = requester.RoleId == 2;
+                var isLeader = project.Group?.LeaderId == requesterUserId;
+
+                if (!isAdmin && !isInstructor && !isLeader)
+                    throw new AppException(
+                        CommonMessageConstants.FORBIDDEN,
+                        "You are not allowed to delete this project",
+                        StatusCodes.Status403Forbidden
+                    );
+
+                // Delete related entities in correct order to avoid FK constraints
+
+                // 1. Delete Hall of Fame entries
+                if (project.HallOfFames.Any())
+                {
+                    _db.HallOfFames.RemoveRange(project.HallOfFames);
+                }
+
+                // 2. Delete Live Demo Sensors first, then Live Demos
+                if (project.LiveDemos.Any())
+                {
+                    foreach (var liveDemo in project.LiveDemos)
+                    {
+                        if (liveDemo.LiveDemoSensors.Any())
+                        {
+                            _db.LiveDemoSensors.RemoveRange(liveDemo.LiveDemoSensors);
+                        }
+                    }
+                    _db.LiveDemos.RemoveRange(project.LiveDemos);
+                }
+
+                // 3. Delete Sensor Data first, then Sensors
+                if (project.Sensors.Any())
+                {
+                    foreach (var sensor in project.Sensors)
+                    {
+                        if (sensor.SensorData.Any())
+                        {
+                            _db.SensorData.RemoveRange(sensor.SensorData);
+                        }
+                    }
+                    _db.Sensors.RemoveRange(project.Sensors);
+                }
+
+                // 4. Delete Simulations
+                if (project.Simulations.Any())
+                {
+                    _db.Simulations.RemoveRange(project.Simulations);
+                }
+
+                // 5. Delete Final Project Submission and its grades
+                if (project.FinalProjectSubmission != null)
+                {
+                    if (project.FinalProjectSubmission.FinalSubmissionGrades.Any())
+                    {
+                        _db.FinalSubmissionGrades.RemoveRange(project.FinalProjectSubmission.FinalSubmissionGrades);
+                    }
+                    _db.FinalProjectSubmissions.Remove(project.FinalProjectSubmission);
+                }
+
+                // 6. Delete Milestone Submissions and related data
+                if (project.MilestoneSubmissions.Any())
+                {
+                    foreach (var submission in project.MilestoneSubmissions)
+                    {
+                        // Delete approval histories
+                        if (submission.ProjectApprovalHistories.Any())
+                        {
+                            _db.ProjectApprovalHistories.RemoveRange(submission.ProjectApprovalHistories);
+                        }
+                        
+                        // Delete submission files
+                        if (submission.SubmissionFiles.Any())
+                        {
+                            _db.SubmissionFiles.RemoveRange(submission.SubmissionFiles);
+                        }
+                    }
+                    _db.MilestoneSubmissions.RemoveRange(project.MilestoneSubmissions);
+                }
+
+                // 7. Delete Milestone Evaluations
+                if (project.MilestoneEvaluations.Any())
+                {
+                    _db.MilestoneEvaluations.RemoveRange(project.MilestoneEvaluations);
+                }
+
+                // 8. Delete Project Milestones
+                if (project.ProjectMilestones.Any())
+                {
+                    _db.ProjectMilestones.RemoveRange(project.ProjectMilestones);
+                }
+
+                // 9. Delete Project Template Registrations
+                if (project.ProjectTemplateRegistrations.Any())
+                {
+                    _db.ProjectTemplateRegistrations.RemoveRange(project.ProjectTemplateRegistrations);
+                }
+
+                // 10. Finally, delete the project itself
+                _db.Projects.Remove(project);
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (AppException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+            catch (DbUpdateException ex)
+            {
+                await transaction.RollbackAsync();
                 throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "Project not found",
-                    StatusCodes.Status404NotFound
+                    CommonMessageConstants.ERROR,
+                    $"Database error while deleting project: {ex.InnerException?.Message ?? ex.Message}",
+                    StatusCodes.Status500InternalServerError
                 );
-
-            var requester = await _db.Users.FindAsync(requesterUserId);
-            if (requester == null)
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
                 throw new AppException(
-                    CommonMessageConstants.NOT_FOUND,
-                    "Requester not found",
-                    StatusCodes.Status404NotFound
+                    CommonMessageConstants.ERROR,
+                    $"Error deleting project: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
                 );
-
-            var isAdmin = requester.RoleId == 1;
-            var isInstructor = requester.RoleId == 2;
-            var isLeader = project.Group?.LeaderId == requesterUserId;
-
-            if (!isAdmin && !isInstructor && !isLeader)
-                throw new AppException(
-                    CommonMessageConstants.FORBIDDEN,
-                    "You are not allowed to delete this project",
-                    StatusCodes.Status403Forbidden
-                );
-
-            _db.Projects.Remove(project);
-            await _db.SaveChangesAsync();
+            }
         }
 
         // 7. Get projects by class (with full details)

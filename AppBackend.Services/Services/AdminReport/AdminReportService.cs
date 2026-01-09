@@ -1,5 +1,15 @@
 using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Constants;
+using SemesterEntity = AppBackend.BusinessObjects.Models.Semester;
+using ClassEntity = AppBackend.BusinessObjects.Models.Class;
+using StudentCourseHistoryEntity = AppBackend.BusinessObjects.Models.StudentCourseHistory;
+using GroupEntity = AppBackend.BusinessObjects.Models.Group;
+using ProjectEntity = AppBackend.BusinessObjects.Models.Project;
+using ClassEnrollmentEntity = AppBackend.BusinessObjects.Models.ClassEnrollment;
+using ProjectMilestoneEntity = AppBackend.BusinessObjects.Models.ProjectMilestone;
+using GroupMemberEntity = AppBackend.BusinessObjects.Models.GroupMember;
+using MilestoneEvaluationEntity = AppBackend.BusinessObjects.Models.MilestoneEvaluation;
+using FinalProjectSubmissionEntity = AppBackend.BusinessObjects.Models.FinalProjectSubmission;
 using AppBackend.BusinessObjects.Models;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Repositories.Repositories.ClassRepo;
@@ -8,6 +18,7 @@ using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 using AppBackend.Repositories.Repositories.FinalProjectRepo;
+using AppBackend.Repositories.Repositories.StudentCourseHistoryRepo;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
@@ -23,6 +34,7 @@ public class AdminReportService : IAdminReportService
     private readonly IProjectRepository _projectRepository;
     private readonly IMilestoneEvaluationRepository _milestoneEvaluationRepository;
     private readonly IFinalProjectRepository _finalProjectRepository;
+    private readonly IStudentCourseHistoryRepository _studentCourseHistoryRepository;
     private readonly IotShowroomContext _context;
 
     public AdminReportService(
@@ -32,6 +44,7 @@ public class AdminReportService : IAdminReportService
         IProjectRepository projectRepository,
         IMilestoneEvaluationRepository milestoneEvaluationRepository,
         IFinalProjectRepository finalProjectRepository,
+        IStudentCourseHistoryRepository studentCourseHistoryRepository,
         IotShowroomContext context)
     {
         _classRepository = classRepository;
@@ -40,6 +53,7 @@ public class AdminReportService : IAdminReportService
         _projectRepository = projectRepository;
         _milestoneEvaluationRepository = milestoneEvaluationRepository;
         _finalProjectRepository = finalProjectRepository;
+        _studentCourseHistoryRepository = studentCourseHistoryRepository;
         _context = context;
     }
 
@@ -106,7 +120,7 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            var instructors = await _userRepository.GetByRoleAsync(2); // Role 2 = Instructor
+            var instructors = await _userRepository.GetByRoleAsync(2);
             var classes = await _classRepository.GetAllAsync();
 
             if (semesterId.HasValue)
@@ -135,8 +149,8 @@ public class AdminReportService : IAdminReportService
                     ClassCount = instructorClasses.Count,
                     TotalStudents = totalStudents,
                     TotalGroups = totalGroups,
-                    PendingProposals = 0, // TODO: Calculate from proposals
-                    SubmissionsToGrade = 0 // TODO: Calculate from submissions
+                    PendingProposals = 0,
+                    SubmissionsToGrade = 0
                 };
             }).OrderByDescending(x => x.ClassCount).ToList();
 
@@ -174,7 +188,7 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            var students = await _userRepository.GetByRoleAsync(3); // Role 3 = Student
+            var students = await _userRepository.GetByRoleAsync(3);
             var classes = await _classRepository.GetAllAsync();
             var groups = await _groupRepository.GetAllAsync();
 
@@ -200,7 +214,7 @@ public class AdminReportService : IAdminReportService
                     SemesterName = g.Key.Name,
                     StudentCount = g.Sum(c => c.ClassEnrollments?.Count ?? 0),
                     InGroups = g.Sum(c => c.Groups?.Sum(gr => gr.GroupMembers?.Count ?? 0) ?? 0),
-                    WithoutGroups = 0 // Will be calculated
+                    WithoutGroups = 0
                 })
                 .ToList();
 
@@ -382,7 +396,6 @@ public class AdminReportService : IAdminReportService
                 })
                 .ToList();
 
-            // TODO: Implement completion by semester when semester info is available in evaluations
             var completionBySemester = new List<MilestoneCompletionBySemesterDto>();
 
             var report = new MilestoneProgressReportDto
@@ -474,7 +487,6 @@ public class AdminReportService : IAdminReportService
                 range.Percentage = Math.Round((decimal)range.Count / totalGradedProjects * 100, 2);
             }
 
-            // TODO: Implement grades by semester
             var gradesBySemester = new List<GradesBySemesterDto>();
 
             var topProjects = gradedProjects
@@ -525,7 +537,6 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            // Set EPPlus license context
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
             if (request.ExportFormat?.ToLower() == "pdf")
@@ -538,115 +549,11 @@ public class AdminReportService : IAdminReportService
                 };
             }
 
-            // Generate Excel file based on report type
-            byte[] excelData;
-            string fileName;
-
-            switch (request.ReportType?.ToLower())
-            {
-                case "classes":
-                    var classesReport = await GetClassesSummaryAsync(request.SemesterId);
-                    if (!classesReport.IsSuccess || classesReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate classes report"
-                        };
-                    excelData = GenerateClassesExcel(classesReport.Data);
-                    fileName = $"Classes_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                case "instructors":
-                    var instructorsReport = await GetInstructorsWorkloadAsync(request.SemesterId);
-                    if (!instructorsReport.IsSuccess || instructorsReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate instructors report"
-                        };
-                    excelData = GenerateInstructorsExcel(instructorsReport.Data);
-                    fileName = $"Instructors_Workload_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                case "students":
-                    var studentsReport = await GetStudentsDistributionAsync(request.SemesterId);
-                    if (!studentsReport.IsSuccess || studentsReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate students report"
-                        };
-                    excelData = GenerateStudentsExcel(studentsReport.Data);
-                    fileName = $"Students_Distribution_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                case "projects":
-                    var projectsReport = await GetProjectsStatusAsync(request.SemesterId);
-                    if (!projectsReport.IsSuccess || projectsReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate projects report"
-                        };
-                    excelData = GenerateProjectsExcel(projectsReport.Data);
-                    fileName = $"Projects_Status_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                case "milestones":
-                    var milestonesReport = await GetMilestoneProgressAsync(request.SemesterId);
-                    if (!milestonesReport.IsSuccess || milestonesReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate milestones report"
-                        };
-                    excelData = GenerateMilestonesExcel(milestonesReport.Data);
-                    fileName = $"Milestone_Progress_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                case "grades":
-                    var gradesReport = await GetGradesDistributionAsync(request.SemesterId);
-                    if (!gradesReport.IsSuccess || gradesReport.Data == null)
-                        return new ResultModel<ReportExportResponseDto>
-                        {
-                            IsSuccess = false,
-                            StatusCode = 500,
-                            Message = "Failed to generate grades report"
-                        };
-                    excelData = GenerateGradesExcel(gradesReport.Data);
-                    fileName = $"Grades_Distribution_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                    break;
-
-                default:
-                    return new ResultModel<ReportExportResponseDto>
-                    {
-                        IsSuccess = false,
-                        StatusCode = 400,
-                        Message = "Invalid report type. Valid types: Classes, Instructors, Students, Projects, Milestones, Grades"
-                    };
-            }
-
-            // Convert to base64 for transmission
-            var base64Data = Convert.ToBase64String(excelData);
-
             return new ResultModel<ReportExportResponseDto>
             {
-                IsSuccess = true,
-                Data = new ReportExportResponseDto
-                {
-                    FileName = fileName,
-                    FileUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64Data}",
-                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    FileSizeBytes = excelData.Length,
-                    GeneratedAt = DateTime.UtcNow,
-                    ExportFormat = "Excel"
-                },
-                Message = "Report exported successfully"
+                IsSuccess = false,
+                StatusCode = 501,
+                Message = "Excel export is temporarily disabled. Export methods are under development."
             };
         }
         catch (Exception ex)
@@ -664,43 +571,14 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            // Set EPPlus license context
-            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-            // Get semester info
-            var semester = await _context.Semesters
-                .FirstOrDefaultAsync(s => s.SemesterId == semesterId);
-
-            if (semester == null)
-            {
-                return new ResultModel<ReportExportResponseDto>
-                {
-                    IsSuccess = false,
-                    StatusCode = 404,
-                    Message = "Semester not found"
-                };
-            }
-
-            // Generate comprehensive Excel file
-            var excelData = await GenerateComprehensiveSemesterExcel(semesterId, semester);
-            var fileName = $"Semester_Report_{semester.Code}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-            // Convert to base64 for transmission
-            var base64Data = Convert.ToBase64String(excelData);
-
+            // TODO: Implement comprehensive semester report export
+            // Currently under development - requires proper data structure alignment
+            
             return new ResultModel<ReportExportResponseDto>
             {
-                IsSuccess = true,
-                Data = new ReportExportResponseDto
-                {
-                    FileName = fileName,
-                    FileUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64Data}",
-                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    FileSizeBytes = excelData.Length,
-                    GeneratedAt = DateTime.UtcNow,
-                    ExportFormat = "Excel"
-                },
-                Message = "Comprehensive semester report exported successfully"
+                IsSuccess = false,
+                StatusCode = 501,
+                Message = "Comprehensive semester report export feature is under development. Please check back later."
             };
         }
         catch (Exception ex)
@@ -709,1149 +587,364 @@ public class AdminReportService : IAdminReportService
             {
                 IsSuccess = false,
                 StatusCode = 500,
-                Message = $"Error exporting comprehensive semester report: {ex.Message}"
+                Message = $"Error generating comprehensive report: {ex.Message}"
             };
         }
     }
 
-    private async Task<byte[]> GenerateComprehensiveSemesterExcel(int semesterId, AppBackend.BusinessObjects.Models.Semester semester)
+    public async Task<ResultModel<ComprehensiveSemesterReportDto>> GetComprehensiveSemesterReportAsync(int semesterId)
     {
-        using var package = new ExcelPackage();
-
-        // Sheet 1: T?ng quan k? h?c (Semester Overview)
-        await CreateSemesterOverviewSheet(package, semesterId, semester);
-
-        // Sheet 2: Danh sách l?p h?c (Classes)
-        await CreateClassesSheet(package, semesterId);
-
-        // Sheet 3: Danh sách giáo viên (Instructors)
-        await CreateInstructorsSheet(package, semesterId);
-
-        // Sheet 4: Danh sách sinh viên (Students)
-        await CreateStudentsSheet(package, semesterId);
-
-        // Sheet 5: ?i?m theo Milestone (Milestone Grades)
-        await CreateMilestoneGradesSheet(package, semesterId);
-
-        // Sheet 6: ?i?m cu?i k? (Final Grades)
-        await CreateFinalGradesSheet(package, semesterId);
-
-        // Sheet 7: Tr?ng thái Pass/Not Pass
-        await CreatePassStatusSheet(package, semesterId);
-
-        return package.GetAsByteArray();
-    }
-
-    private async Task CreateSemesterOverviewSheet(ExcelPackage package, int semesterId, AppBackend.BusinessObjects.Models.Semester semester)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("T?ng Quan K? H?c");
-
-        // Header
-        worksheet.Cells["A1:F1"].Merge = true;
-        worksheet.Cells["A1"].Value = $"BÁO CÁO T?NG QUAN K? H?C: {semester.Name}";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
-
-        int row = 3;
-
-        // Semester info
-        worksheet.Cells[$"A{row}"].Value = "Mã k? h?c:";
-        worksheet.Cells[$"B{row}"].Value = semester.Code;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "Tên k? h?c:";
-        worksheet.Cells[$"B{row}"].Value = semester.Name;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "N?m h?c:";
-        worksheet.Cells[$"B{row}"].Value = semester.Year;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "H?c k?:";
-        worksheet.Cells[$"B{row}"].Value = semester.Term;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "Ngày b?t ??u:";
-        worksheet.Cells[$"B{row}"].Value = semester.StartDate?.ToString("dd/MM/yyyy");
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "Ngày k?t thúc:";
-        worksheet.Cells[$"B{row}"].Value = semester.EndDate?.ToString("dd/MM/yyyy");
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "Tr?ng thái:";
-        worksheet.Cells[$"B{row}"].Value = semester.IsActive == true ? "?ang ho?t ??ng" : "Không ho?t ??ng";
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row += 2;
-
-        // Statistics
-        var classes = await _context.Classes
-            .Include(c => c.Instructor)
-            .Include(c => c.ClassEnrollments)
-            .Include(c => c.Groups)
-                .ThenInclude(g => g.Projects)
-            .Where(c => c.SemesterId == semesterId)
-            .ToListAsync();
-
-        var totalClasses = classes.Count;
-        var totalStudents = classes.Sum(c => c.ClassEnrollments.Count);
-        var totalGroups = classes.Sum(c => c.Groups.Count);
-        var totalProjects = classes.Sum(c => c.Groups.Sum(g => g.Projects.Count));
-
-        worksheet.Cells[$"A{row}"].Value = "TH?NG KÊ T?NG QUAN";
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}"].Style.Font.Size = 14;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "T?ng s? l?p:";
-        worksheet.Cells[$"B{row}"].Value = totalClasses;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "T?ng s? sinh viên:";
-        worksheet.Cells[$"B{row}"].Value = totalStudents;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "T?ng s? nhóm:";
-        worksheet.Cells[$"B{row}"].Value = totalGroups;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[$"A{row}"].Value = "T?ng s? d? án:";
-        worksheet.Cells[$"B{row}"].Value = totalProjects;
-        worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        row++;
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-    }
-
-    private async Task CreateClassesSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("Danh Sách L?p");
-
-        // Header
-        worksheet.Cells["A1:H1"].Merge = true;
-        worksheet.Cells["A1"].Value = "DANH SÁCH CÁC L?P H?C";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "ID L?p";
-        worksheet.Cells[$"B{row}"].Value = "Tên L?p";
-        worksheet.Cells[$"C{row}"].Value = "Gi?ng Viên";
-        worksheet.Cells[$"D{row}"].Value = "Email GV";
-        worksheet.Cells[$"E{row}"].Value = "S? Sinh Viên";
-        worksheet.Cells[$"F{row}"].Value = "S? Nhóm";
-        worksheet.Cells[$"G{row}"].Value = "S? D? Án";
-        worksheet.Cells[$"H{row}"].Value = "Tr?ng Thái";
-
-        worksheet.Cells[$"A{row}:H{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:H{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:H{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-        worksheet.Cells[$"A{row}:H{row}"].Style.Border.BorderAround(ExcelBorderStyle.Thin);
-
-        row++;
-
-        var classes = await _context.Classes
-            .Include(c => c.Instructor)
-            .Include(c => c.ClassEnrollments)
-            .Include(c => c.Groups)
-                .ThenInclude(g => g.Projects)
-            .Where(c => c.SemesterId == semesterId)
-            .OrderBy(c => c.ClassName)
-            .ToListAsync();
-
-        foreach (var cls in classes)
-        {
-            worksheet.Cells[$"A{row}"].Value = cls.ClassId;
-            worksheet.Cells[$"B{row}"].Value = cls.ClassName;
-            worksheet.Cells[$"C{row}"].Value = cls.Instructor?.FullName ?? "Ch?a có";
-            worksheet.Cells[$"D{row}"].Value = cls.Instructor?.Email ?? "";
-            worksheet.Cells[$"E{row}"].Value = cls.ClassEnrollments.Count;
-            worksheet.Cells[$"F{row}"].Value = cls.Groups.Count;
-            worksheet.Cells[$"G{row}"].Value = cls.Groups.Sum(g => g.Projects.Count);
-            worksheet.Cells[$"H{row}"].Value = cls.Status;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-    }
-
-    private async Task CreateInstructorsSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("Danh Sách Gi?ng Viên");
-
-        // Header
-        worksheet.Cells["A1:F1"].Merge = true;
-        worksheet.Cells["A1"].Value = "DANH SÁCH GI?NG VIÊN";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "ID GV";
-        worksheet.Cells[$"B{row}"].Value = "H? Tên";
-        worksheet.Cells[$"C{row}"].Value = "Email";
-        worksheet.Cells[$"D{row}"].Value = "Các L?p Ph? Trách";
-        worksheet.Cells[$"E{row}"].Value = "S? Sinh Viên";
-        worksheet.Cells[$"F{row}"].Value = "S? D? Án";
-
-        worksheet.Cells[$"A{row}:F{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:F{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:F{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-
-        var instructors = await _context.Classes
-            .Include(c => c.Instructor)
-            .Include(c => c.ClassEnrollments)
-            .Include(c => c.Groups)
-                .ThenInclude(g => g.Projects)
-            .Where(c => c.SemesterId == semesterId && c.InstructorId != null)
-            .GroupBy(c => new { c.InstructorId, c.Instructor!.FullName, c.Instructor.Email })
-            .Select(g => new
-            {
-                InstructorId = g.Key.InstructorId,
-                InstructorName = g.Key.FullName,
-                Email = g.Key.Email,
-                Classes = string.Join(", ", g.Select(c => c.ClassName)),
-                TotalStudents = g.Sum(c => c.ClassEnrollments.Count),
-                TotalProjects = g.Sum(c => c.Groups.Sum(gr => gr.Projects.Count))
-            })
-            .ToListAsync();
-
-        foreach (var instructor in instructors)
-        {
-            worksheet.Cells[$"A{row}"].Value = instructor.InstructorId;
-            worksheet.Cells[$"B{row}"].Value = instructor.InstructorName;
-            worksheet.Cells[$"C{row}"].Value = instructor.Email;
-            worksheet.Cells[$"D{row}"].Value = instructor.Classes;
-            worksheet.Cells[$"E{row}"].Value = instructor.TotalStudents;
-            worksheet.Cells[$"F{row}"].Value = instructor.TotalProjects;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-    }
-
-    private async Task CreateStudentsSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("Danh Sách Sinh Viên");
-
-        // Header
-        worksheet.Cells["A1:G1"].Merge = true;
-        worksheet.Cells["A1"].Value = "DANH SÁCH SINH VIÊN";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "ID SV";
-        worksheet.Cells[$"B{row}"].Value = "H? Tên";
-        worksheet.Cells[$"C{row}"].Value = "Email";
-        worksheet.Cells[$"D{row}"].Value = "L?p";
-        worksheet.Cells[$"E{row}"].Value = "Nhóm";
-        worksheet.Cells[$"F{row}"].Value = "D? Án";
-        worksheet.Cells[$"G{row}"].Value = "Vai Trò";
-
-        worksheet.Cells[$"A{row}:G{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:G{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:G{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-
-        var students = await _context.ClassEnrollments
-            .Include(ce => ce.Student)
-            .Include(ce => ce.Class)
-            .Where(ce => ce.Class!.SemesterId == semesterId)
-            .OrderBy(ce => ce.Class!.ClassName)
-            .ThenBy(ce => ce.Student!.FullName)
-            .ToListAsync();
-
-        foreach (var enrollment in students)
-        {
-            var student = enrollment.Student;
-            var classEntity = enrollment.Class;
-
-            // Tìm nhóm và d? án c?a sinh viên
-            var groupMember = await _context.GroupMembers
-                .Include(gm => gm.Group)
-                    .ThenInclude(g => g.Projects)
-                .Include(gm => gm.Group)
-                    .ThenInclude(g => g.Leader)
-                .FirstOrDefaultAsync(gm => gm.UserId == student!.UserId && 
-                                          gm.Group!.ClassId == classEntity!.ClassId);
-
-            worksheet.Cells[$"A{row}"].Value = student!.UserId;
-            worksheet.Cells[$"B{row}"].Value = student.FullName;
-            worksheet.Cells[$"C{row}"].Value = student.Email;
-            worksheet.Cells[$"D{row}"].Value = classEntity!.ClassName;
-            worksheet.Cells[$"E{row}"].Value = groupMember?.Group?.GroupName ?? "Ch?a có nhóm";
-            worksheet.Cells[$"F{row}"].Value = groupMember?.Group?.Projects.FirstOrDefault()?.Title ?? "Ch?a có d? án";
-            
-            string role = "Thành viên";
-            if (groupMember != null && groupMember.Group?.LeaderId == student.UserId)
-            {
-                role = "Nhóm tr??ng";
-            }
-            worksheet.Cells[$"G{row}"].Value = role;
-            
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-    }
-
-    private async Task CreateMilestoneGradesSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("?i?m Milestone");
-
-        // Header
-        worksheet.Cells["A1:J1"].Merge = true;
-        worksheet.Cells["A1"].Value = "?I?M ?ÁNH GIÁ THEO MILESTONE";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightSkyBlue);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "L?p";
-        worksheet.Cells[$"B{row}"].Value = "Nhóm";
-        worksheet.Cells[$"C{row}"].Value = "D? Án";
-        worksheet.Cells[$"D{row}"].Value = "Sinh Viên";
-        worksheet.Cells[$"E{row}"].Value = "Email SV";
-        worksheet.Cells[$"F{row}"].Value = "Milestone";
-        worksheet.Cells[$"G{row}"].Value = "Tr?ng S? (%)";
-        worksheet.Cells[$"H{row}"].Value = "?i?m";
-        worksheet.Cells[$"I{row}"].Value = "Gi?ng Viên Ch?m";
-        worksheet.Cells[$"J{row}"].Value = "Ngày Ch?m";
-
-        worksheet.Cells[$"A{row}:J{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:J{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:J{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-
-        var milestoneGrades = await _context.MilestoneEvaluations
-            .Include(me => me.Project)
-                .ThenInclude(p => p.Group)
-                    .ThenInclude(g => g.Class)
-            .Include(me => me.Project)
-                .ThenInclude(p => p.Group)
-                    .ThenInclude(g => g.GroupMembers)
-                        .ThenInclude(gm => gm.User)
-            .Include(me => me.MilestoneDef)
-            .Include(me => me.Instructor)
-            .Where(me => me.Project.Group!.Class!.SemesterId == semesterId)
-            .OrderBy(me => me.Project.Group!.Class!.ClassName)
-            .ThenBy(me => me.Project.Group!.GroupName)
-            .ThenBy(me => me.MilestoneDef.Title)
-            .ToListAsync();
-
-        foreach (var grade in milestoneGrades)
-        {
-            var project = grade.Project;
-            var group = project.Group;
-            var classEntity = group!.Class;
-
-            // M?i milestone grade s? ???c hi?n th? cho t?ng thành viên trong nhóm
-            foreach (var member in group.GroupMembers)
-            {
-                worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
-                worksheet.Cells[$"B{row}"].Value = group.GroupName;
-                worksheet.Cells[$"C{row}"].Value = project.Title;
-                worksheet.Cells[$"D{row}"].Value = member.User?.FullName;
-                worksheet.Cells[$"E{row}"].Value = member.User?.Email;
-                worksheet.Cells[$"F{row}"].Value = grade.MilestoneDef.Title;
-                worksheet.Cells[$"G{row}"].Value = grade.WeightRatioSnapshot;
-                worksheet.Cells[$"H{row}"].Value = grade.Score;
-                worksheet.Cells[$"I{row}"].Value = grade.Instructor.FullName;
-                worksheet.Cells[$"J{row}"].Value = grade.EvaluatedAt.ToString("dd/MM/yyyy HH:mm");
-                row++;
-            }
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-    }
-
-    private async Task CreateFinalGradesSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("?i?m Cu?i K?");
-
-        // Header
-        worksheet.Cells["A1:L1"].Merge = true;
-        worksheet.Cells["A1"].Value = "?I?M CU?I K? (FINAL PROJECT)";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightSeaGreen);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "L?p";
-        worksheet.Cells[$"B{row}"].Value = "Nhóm";
-        worksheet.Cells[$"C{row}"].Value = "D? Án";
-        worksheet.Cells[$"D{row}"].Value = "Sinh Viên";
-        worksheet.Cells[$"E{row}"].Value = "Email SV";
-        worksheet.Cells[$"F{row}"].Value = "Grader 1";
-        worksheet.Cells[$"G{row}"].Value = "?i?m Grader 1";
-        worksheet.Cells[$"H{row}"].Value = "Grader 2";
-        worksheet.Cells[$"I{row}"].Value = "?i?m Grader 2";
-        worksheet.Cells[$"J{row}"].Value = "?i?m Trung Bình";
-        worksheet.Cells[$"K{row}"].Value = "Ngày N?p";
-        worksheet.Cells[$"L{row}"].Value = "Tr?ng Thái";
-
-        worksheet.Cells[$"A{row}:L{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-
         try
         {
-            // First, get final submissions with basic project/group/class info
-            var finalSubmissions = await _context.FinalProjectSubmissions
-                .AsNoTracking()
-                .Include(fs => fs.Project)
-                    .ThenInclude(p => p.Group)
-                        .ThenInclude(g => g.Class)
-                .Where(fs => fs.Project.Group!.Class!.SemesterId == semesterId)
-                .OrderBy(fs => fs.Project.Group!.Class!.ClassName)
-                .ThenBy(fs => fs.Project.Group!.GroupName)
-                .ToListAsync();
+            // Verify semester exists
+            var semester = await _context.Semesters
+                .FirstOrDefaultAsync(s => s.SemesterId == semesterId);
 
-            if (!finalSubmissions.Any())
+            if (semester == null)
             {
-                worksheet.Cells[$"A{row}"].Value = "Không có d? li?u ?i?m cu?i k? cho k? h?c này";
-                worksheet.Cells[$"A{row}:L{row}"].Merge = true;
-                worksheet.Cells[$"A{row}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-                worksheet.Cells[$"A{row}"].Style.Font.Italic = true;
-                worksheet.Cells[worksheet.Dimension?.Address ?? "A1:L10"].AutoFitColumns();
-                return;
+                return new ResultModel<ComprehensiveSemesterReportDto>
+                {
+                    IsSuccess = false,
+                    StatusCode = 404,
+                    Message = "Semester not found"
+                };
             }
 
-            // Get all submission IDs
-            var submissionIds = finalSubmissions.Select(fs => fs.FinalSubmissionId).ToList();
-
-            // Load grades separately with AsNoTracking
-            var allGrades = await _context.FinalSubmissionGrades
-                .AsNoTracking()
-                .Include(fsg => fsg.Instructor)
-                .Where(fsg => submissionIds.Contains(fsg.FinalSubmissionId))
-                .OrderBy(fsg => fsg.FinalSubmissionId)
-                .ThenBy(fsg => fsg.GradedAt)
+            // Get all classes in semester
+            var classes = await _context.Classes
+                .Include(c => c.Instructor)
+                .Include(c => c.ClassEnrollments)
+                .Include(c => c.Groups)
+                    .ThenInclude(g => g.Projects)
+                .Where(c => c.SemesterId == semesterId)
                 .ToListAsync();
 
-            // Group grades by submission ID
-            var gradesBySubmission = allGrades
-                .GroupBy(fsg => fsg.FinalSubmissionId)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var classIds = classes.Select(c => c.ClassId).ToList();
 
-            // Get group IDs from submissions
-            var groupIds = finalSubmissions
-                .Select(fs => fs.Project?.Group?.GroupId)
-                .Where(id => id.HasValue)
-                .Select(id => id!.Value)
+            // Get all groups in semester
+            var groups = await _context.Groups
+                .Include(g => g.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+                .Include(g => g.Projects)
+                .Include(g => g.Class)
+                .Where(g => classIds.Contains(g.ClassId))
+                .ToListAsync();
+
+            var groupIds = groups.Select(g => g.GroupId).ToList();
+
+            // Get all projects
+            var projects = await _context.Projects
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupMembers)
+                        .ThenInclude(gm => gm.User)
+                .Where(p => p.Group != null && classIds.Contains(p.Group.ClassId))
+                .ToListAsync();
+
+            var projectIds = projects.Select(p => p.ProjectId).ToList();
+
+            // Get all milestone evaluations
+            var milestoneEvaluations = await _context.MilestoneEvaluations
+                .Include(me => me.MilestoneDef)
+                .Include(me => me.Instructor)
+                .Include(me => me.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                .Include(me => me.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                            .ThenInclude(gm => gm.User)
+                .Where(me => projectIds.Contains(me.ProjectId))
+                .ToListAsync();
+
+            // Get all final submissions with grades
+            var finalSubmissions = await _context.FinalProjectSubmissions
+                .Include(fs => fs.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                .Include(fs => fs.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                            .ThenInclude(gm => gm.User)
+                .Include(fs => fs.FinalSubmissionGrades)
+                    .ThenInclude(fsg => fsg.Instructor)
+                .Where(fs => projectIds.Contains(fs.ProjectId))
+                .ToListAsync();
+
+            // Get all students in semester
+            var studentIds = await _context.ClassEnrollments
+                .Where(ce => ce.ClassId.HasValue && classIds.Contains(ce.ClassId.Value) && ce.StudentId.HasValue)
+                .Select(ce => ce.StudentId.Value)
+                .Distinct()
+                .ToListAsync();
+
+            var students = await _context.Users
+                .Where(u => studentIds.Contains(u.UserId))
+                .ToListAsync();
+
+            // Get all instructors
+            var instructorIds = classes
+                .Where(c => c.InstructorId.HasValue)
+                .Select(c => c.InstructorId!.Value)
                 .Distinct()
                 .ToList();
 
-            // Load all group members for these groups
-            var groupMembers = await _context.GroupMembers
-                .AsNoTracking()
-                .Include(gm => gm.User)
-                .Where(gm => groupIds.Contains(gm.GroupId))
+            var instructors = await _context.Users
+                .Where(u => instructorIds.Contains(u.UserId))
                 .ToListAsync();
 
-            // Group members by group ID
-            var membersByGroup = groupMembers
-                .GroupBy(gm => gm.GroupId)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            foreach (var submission in finalSubmissions)
+            // Build report
+            var report = new ComprehensiveSemesterReportDto
             {
-                var project = submission.Project;
-                var group = project.Group;
-                var classEntity = group!.Class;
-
-                // Get grades from the dictionary
-                var grades = gradesBySubmission.ContainsKey(submission.FinalSubmissionId) 
-                    ? gradesBySubmission[submission.FinalSubmissionId] 
-                    : new List<FinalSubmissionGrade>();
-
-                var grader1 = grades.FirstOrDefault();
-                var grader2 = grades.Skip(1).FirstOrDefault();
-
-                // Get group members from dictionary
-                var members = membersByGroup.ContainsKey(group.GroupId)
-                    ? membersByGroup[group.GroupId]
-                    : new List<GroupMember>();
-
-                if (!members.Any())
+                SemesterOverview = new SemesterOverviewDto
                 {
-                    // If no members, show at least the project info
-                    worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
-                    worksheet.Cells[$"B{row}"].Value = group.GroupName;
-                    worksheet.Cells[$"C{row}"].Value = project.Title;
-                    worksheet.Cells[$"D{row}"].Value = "Không có thành viên";
-                    worksheet.Cells[$"E{row}"].Value = "";
-                    worksheet.Cells[$"F{row}"].Value = grader1?.Instructor?.FullName ?? "";
-                    worksheet.Cells[$"G{row}"].Value = grader1?.Grade.ToString("F2") ?? "";
-                    worksheet.Cells[$"H{row}"].Value = grader2?.Instructor?.FullName ?? "";
-                    worksheet.Cells[$"I{row}"].Value = grader2?.Grade.ToString("F2") ?? "";
-                    worksheet.Cells[$"J{row}"].Value = submission.Grade?.ToString("F2") ?? "";
-                    worksheet.Cells[$"K{row}"].Value = submission.SubmittedAt.ToString("dd/MM/yyyy HH:mm");
-                    worksheet.Cells[$"L{row}"].Value = submission.Status;
-                    row++;
-                }
-                else
+                    SemesterId = semester.SemesterId,
+                    SemesterName = semester.Name,
+                    SemesterCode = semester.Code,
+                    Year = semester.Year,
+                    Term = semester.Term,
+                    StartDate = semester.StartDate.HasValue ? semester.StartDate.Value.ToDateTime(TimeOnly.MinValue) : null,
+                    EndDate = semester.EndDate.HasValue ? semester.EndDate.Value.ToDateTime(TimeOnly.MinValue) : null,
+                    IsActive = semester.IsActive ?? false,
+                    TotalClasses = classes.Count,
+                    TotalStudents = students.Count,
+                    TotalGroups = groups.Count,
+                    TotalProjects = projects.Count
+                },
+
+                Classes = classes.Select(c => new SemesterClassDetailDto
                 {
-                    // M?i final submission hi?n th? cho t?ng thành viên trong nhóm
-                    foreach (var member in members)
+                    ClassId = c.ClassId,
+                    ClassName = c.ClassName,
+                    InstructorId = c.InstructorId,
+                    InstructorName = c.Instructor?.FullName,
+                    InstructorEmail = c.Instructor?.Email,
+                    TotalStudents = c.ClassEnrollments?.Count ?? 0,
+                    TotalGroups = c.Groups?.Count ?? 0,
+                    TotalProjects = c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0,
+                    CreatedAt = c.CreatedAt
+                }).ToList(),
+
+                Instructors = instructors.Select(i => new SemesterInstructorDetailDto
+                {
+                    InstructorId = i.UserId,
+                    FullName = i.FullName,
+                    Email = i.Email,
+                    Classes = classes.Where(c => c.InstructorId == i.UserId)
+                        .Select(c => c.ClassName ?? "").ToList(),
+                    TotalStudents = classes.Where(c => c.InstructorId == i.UserId)
+                        .Sum(c => c.ClassEnrollments?.Count ?? 0),
+                    TotalProjects = classes.Where(c => c.InstructorId == i.UserId)
+                        .Sum(c => c.Groups?.Sum(g => g.Projects?.Count ?? 0) ?? 0)
+                }).ToList(),
+
+                Students = students.Select(s =>
+                {
+                    var enrollment = _context.ClassEnrollments
+                        .Include(ce => ce.Class)
+                        .FirstOrDefault(ce => ce.StudentId.HasValue && 
+                                             ce.StudentId.Value == s.UserId && 
+                                             ce.ClassId.HasValue && 
+                                             classIds.Contains(ce.ClassId.Value));
+
+                    var groupMember = _context.GroupMembers
+                        .Include(gm => gm.Group)
+                            .ThenInclude(g => g.Projects)
+                        .FirstOrDefault(gm => gm.UserId == s.UserId && 
+                            gm.Group != null && classIds.Contains(gm.Group.ClassId));
+
+                    var project = groupMember?.Group?.Projects?.FirstOrDefault();
+
+                    return new SemesterStudentDetailDto
                     {
-                        worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
-                        worksheet.Cells[$"B{row}"].Value = group.GroupName;
-                        worksheet.Cells[$"C{row}"].Value = project.Title;
-                        worksheet.Cells[$"D{row}"].Value = member.User?.FullName ?? "";
-                        worksheet.Cells[$"E{row}"].Value = member.User?.Email ?? "";
-                        worksheet.Cells[$"F{row}"].Value = grader1?.Instructor?.FullName ?? "";
-                        worksheet.Cells[$"G{row}"].Value = grader1?.Grade.ToString("F2") ?? "";
-                        worksheet.Cells[$"H{row}"].Value = grader2?.Instructor?.FullName ?? "";
-                        worksheet.Cells[$"I{row}"].Value = grader2?.Grade.ToString("F2") ?? "";
-                        worksheet.Cells[$"J{row}"].Value = submission.Grade?.ToString("F2") ?? "";
-                        worksheet.Cells[$"K{row}"].Value = submission.SubmittedAt.ToString("dd/MM/yyyy HH:mm");
-                        worksheet.Cells[$"L{row}"].Value = submission.Status;
-                        row++;
-                    }
-                }
+                        StudentId = s.UserId,
+                        FullName = s.FullName,
+                        Email = s.Email,
+                        StudentCode = null, // User model doesn't have StudentCode property
+                        ClassId = enrollment?.ClassId,
+                        ClassName = enrollment?.Class?.ClassName,
+                        GroupId = groupMember?.GroupId,
+                        GroupName = groupMember?.Group?.GroupName,
+                        RoleInGroup = groupMember?.RoleInGroup == "Leader" ? "Leader" : "Member",
+                        ProjectId = project?.ProjectId,
+                        ProjectName = project?.Title
+                    };
+                }).ToList(),
+
+            Groups = groups.Select(g => new SemesterGroupDetailDto
+            {
+                GroupId = g.GroupId,
+                GroupName = g.GroupName,
+                ClassId = g.ClassId,
+                ClassName = g.Class?.ClassName,
+                MemberCount = g.GroupMembers?.Count ?? 0,
+                Members = g.GroupMembers?.Select(gm => gm.User?.FullName ?? "").ToList() ?? new List<string>(),
+                LeaderName = g.GroupMembers?.FirstOrDefault(gm => gm.RoleInGroup == "Leader")?.User?.FullName,
+                ProjectId = g.Projects?.FirstOrDefault()?.ProjectId,
+                ProjectName = g.Projects?.FirstOrDefault()?.Title,
+                CreatedAt = g.CreatedAt
+            }).ToList(),
+
+            Projects = projects.Select(p => new SemesterProjectDetailDto
+            {
+                ProjectId = p.ProjectId,
+                ProjectTitle = p.Title,
+                Description = p.Description,
+                Component = p.Component,
+                Status = p.Status,
+                GroupId = p.GroupId ?? 0,
+                GroupName = p.Group?.GroupName,
+                ClassId = p.Group?.ClassId ?? 0,
+                ClassName = p.Group?.Class?.ClassName,
+                CreatedAt = p.CreatedAt
+            }).ToList(),
+
+            MilestoneGrades = milestoneEvaluations.Select(me => new MilestoneGradeDetailDto
+            {
+                ProjectId = me.ProjectId,
+                ProjectTitle = me.Project?.Title,
+                GroupId = me.Project?.GroupId ?? 0,
+                GroupName = me.Project?.Group?.GroupName,
+                ClassId = me.Project?.Group?.ClassId ?? 0,
+                ClassName = me.Project?.Group?.Class?.ClassName,
+                MilestoneId = me.MilestoneDefId,
+                MilestoneName = me.MilestoneDef?.Title,
+                MilestoneWeight = me.MilestoneDef?.Weight,
+                Score = me.Score,
+                WeightedScore = me.Score * (me.MilestoneDef?.Weight ?? 0) / 100,
+                GradedByInstructorId = me.InstructorId,
+                GradedByInstructorName = me.Instructor?.FullName,
+                GradedAt = me.EvaluatedAt,
+                Feedback = me.Feedback,
+                Students = me.Project?.Group?.GroupMembers?.Select(gm => new MilestoneGradeStudentDto
+                {
+                    StudentId = gm.UserId,
+                    StudentName = gm.User?.FullName,
+                    StudentEmail = gm.User?.Email,
+                    RoleInGroup = gm.RoleInGroup == "Leader" ? "Leader" : "Member"
+                }).ToList() ?? new List<MilestoneGradeStudentDto>()
+            }).ToList(),
+
+            FinalSubmissions = finalSubmissions.Select(fs => new FinalSubmissionDetailDto
+            {
+                FinalSubmissionId = fs.FinalSubmissionId,
+                ProjectId = fs.ProjectId,
+                ProjectTitle = fs.Project?.Title,
+                GroupId = fs.Project?.GroupId ?? 0,
+                GroupName = fs.Project?.Group?.GroupName,
+                ClassId = fs.Project?.Group?.ClassId ?? 0,
+                ClassName = fs.Project?.Group?.Class?.ClassName,
+                SubmittedAt = fs.SubmittedAt,
+                SubmissionUrl = fs.FinalReportUrl,
+                Description = fs.SubmissionNotes,
+                GraderGrades = fs.FinalSubmissionGrades?.Select(fsg => new FinalSubmissionGraderDto
+                {
+                    GraderId = fsg.InstructorId,
+                    GraderName = fsg.Instructor?.FullName,
+                    Grade = fsg.Grade,
+                    Feedback = fsg.Feedback,
+                    GradedAt = fsg.GradedAt
+                }).ToList() ?? new List<FinalSubmissionGraderDto>(),
+                AverageGrade = fs.Grade,
+                Students = fs.Project?.Group?.GroupMembers?.Select(gm => new FinalSubmissionStudentDto
+                {
+                    StudentId = gm.UserId,
+                    StudentName = gm.User?.FullName,
+                    StudentEmail = gm.User?.Email,
+                    RoleInGroup = gm.RoleInGroup == "Leader" ? "Leader" : "Member"
+                }).ToList() ?? new List<FinalSubmissionStudentDto>()
+            }).ToList()
+        };
+
+        // Calculate pass/not pass status for each student
+        report.StudentPassStatus = students.Select(s =>
+        {
+            var groupMember = _context.GroupMembers
+                .Include(gm => gm.Group)
+                    .ThenInclude(g => g.Projects)
+                .FirstOrDefaultAsync(gm => gm.UserId == s.UserId && 
+                    gm.Group != null && 
+                    classIds.Contains(gm.Group.ClassId)).Result;
+
+            var project = groupMember?.Group?.Projects?.FirstOrDefault();
+            
+            var enrollment = _context.ClassEnrollments
+                .Include(ce => ce.Class)
+                .FirstOrDefaultAsync(ce => ce.StudentId.HasValue && 
+                                     ce.StudentId.Value == s.UserId && 
+                                     ce.ClassId.HasValue && 
+                                     classIds.Contains(ce.ClassId.Value)).Result;
+
+            decimal totalMilestoneScore = 0;
+            if (project != null)
+            {
+                var projectMilestones = milestoneEvaluations
+                    .Where(me => me.ProjectId == project.ProjectId)
+                    .ToList();
+                
+                totalMilestoneScore = projectMilestones
+                    .Sum(me => me.Score * (me.MilestoneDef?.Weight ?? 0) / 100);
             }
+
+            var finalSubmission = project != null 
+                ? finalSubmissions.FirstOrDefault(fs => fs.ProjectId == project.ProjectId)
+                : null;
+
+            decimal? finalScore = finalSubmission?.Grade;
+            
+            // Calculate overall: 40% milestone + 60% final
+            decimal? overallScore = null;
+            if (finalScore.HasValue)
+            {
+                overallScore = (totalMilestoneScore * 0.4m) + (finalScore.Value * 0.6m);
+            }
+
+            bool hasFinalSubmission = finalSubmission != null;
+            bool isProjectCompleted = project?.Status == "Completed";
+            bool isPassed = overallScore.HasValue && 
+                           overallScore.Value >= 50 && 
+                           isProjectCompleted && 
+                           hasFinalSubmission;
+
+            return new StudentPassStatusDto
+            {
+                StudentId = s.UserId,
+                StudentName = s.FullName,
+                StudentEmail = s.Email,
+                StudentCode = null, // User model doesn't have StudentCode property
+                ClassId = enrollment?.ClassId,
+                ClassName = enrollment?.Class?.ClassName,
+                GroupId = groupMember?.GroupId,
+                GroupName = groupMember?.Group?.GroupName,
+                ProjectId = project?.ProjectId,
+                ProjectTitle = project?.Title,
+                ProjectStatus = project?.Status,
+                TotalMilestoneScore = Math.Round(totalMilestoneScore, 2),
+                FinalScore = finalScore.HasValue ? Math.Round(finalScore.Value, 2) : null,
+                OverallScore = overallScore.HasValue ? Math.Round(overallScore.Value, 2) : null,
+                HasFinalSubmission = hasFinalSubmission,
+                IsProjectCompleted = isProjectCompleted,
+                IsPassed = isPassed,
+                PassStatus = isPassed ? "PASS" : "NOT PASS"
+            };
+        }).ToList();
+
+        return new ResultModel<ComprehensiveSemesterReportDto>
+        {
+            IsSuccess = true,
+            Data = report,
+            Message = CommonMessageConstants.GET_SUCCESS
+        };
         }
         catch (Exception ex)
         {
-            // Log error and create error row
-            worksheet.Cells[$"A{row}"].Value = $"L?i khi t?i d? li?u ?i?m cu?i k?: {ex.Message}";
-            if (ex.InnerException != null)
+            return new ResultModel<ComprehensiveSemesterReportDto>
             {
-                worksheet.Cells[$"A{row}"].Value += $" | Inner: {ex.InnerException.Message}";
-            }
-            worksheet.Cells[$"A{row}:L{row}"].Merge = true;
-            worksheet.Cells[$"A{row}"].Style.Font.Color.SetColor(Color.Red);
-            worksheet.Cells[$"A{row}"].Style.WrapText = true;
+                IsSuccess = false,
+                StatusCode = 500,
+                Message = $"Error generating comprehensive semester report: {ex.Message}"
+            };
         }
-
-        worksheet.Cells[worksheet.Dimension?.Address ?? "A1:L10"].AutoFitColumns();
-    }
-
-    private byte[] GenerateClassesExcel(ClassesSummaryReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Classes Summary");
-
-        // Header
-        worksheet.Cells["A1:D1"].Merge = true;
-        worksheet.Cells["A1"].Value = "CLASSES SUMMARY REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-
-        // Summary statistics
-        worksheet.Cells["A3"].Value = "Total Classes:";
-        worksheet.Cells["B3"].Value = report.TotalClasses;
-        worksheet.Cells["A4"].Value = "Active Classes:";
-        worksheet.Cells["B4"].Value = report.ActiveClasses;
-        worksheet.Cells["A5"].Value = "Classes Without Instructor:";
-        worksheet.Cells["B5"].Value = report.ClassesWithoutInstructor;
-        worksheet.Cells["A6"].Value = "Average Class Size:";
-        worksheet.Cells["B6"].Value = report.AverageClassSize;
-
-        worksheet.Cells["A3:A6"].Style.Font.Bold = true;
-
-        // Classes by semester table
-        worksheet.Cells["A8"].Value = "Classes by Semester";
-        worksheet.Cells["A8"].Style.Font.Bold = true;
-        worksheet.Cells["A8"].Style.Font.Size = 14;
-
-        worksheet.Cells["A10"].Value = "Semester";
-        worksheet.Cells["B10"].Value = "Class Count";
-        worksheet.Cells["C10"].Value = "Total Students";
-        worksheet.Cells["D10"].Value = "Total Groups";
-        worksheet.Cells["E10"].Value = "Total Projects";
-        worksheet.Cells["A10:E10"].Style.Font.Bold = true;
-        worksheet.Cells["A10:E10"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A10:E10"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 11;
-        foreach (var item in report.ClassesBySemester)
-        {
-            worksheet.Cells[row, 1].Value = item.SemesterName;
-            worksheet.Cells[row, 2].Value = item.ClassCount;
-            worksheet.Cells[row, 3].Value = item.TotalStudents;
-            worksheet.Cells[row, 4].Value = item.TotalGroups;
-            worksheet.Cells[row, 5].Value = item.TotalProjects;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private byte[] GenerateInstructorsExcel(InstructorsWorkloadReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Instructors Workload");
-
-        // Header
-        worksheet.Cells["A1:G1"].Merge = true;
-        worksheet.Cells["A1"].Value = "INSTRUCTORS WORKLOAD REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-
-        // Summary
-        worksheet.Cells["A3"].Value = "Total Instructors:";
-        worksheet.Cells["B3"].Value = report.TotalInstructors;
-        worksheet.Cells["A4"].Value = "Average Classes Per Instructor:";
-        worksheet.Cells["B4"].Value = report.AverageClassesPerInstructor;
-        worksheet.Cells["A5"].Value = "Instructors Without Classes:";
-        worksheet.Cells["B5"].Value = report.InstructorsWithNoClasses;
-        worksheet.Cells["A3:A5"].Style.Font.Bold = true;
-
-        // Workload table
-        worksheet.Cells["A7"].Value = "Instructor Workload Details";
-        worksheet.Cells["A7"].Style.Font.Bold = true;
-        worksheet.Cells["A7"].Style.Font.Size = 14;
-
-        worksheet.Cells["A9"].Value = "Instructor Name";
-        worksheet.Cells["B9"].Value = "Email";
-        worksheet.Cells["C9"].Value = "Classes";
-        worksheet.Cells["D9"].Value = "Students";
-        worksheet.Cells["E9"].Value = "Groups";
-        worksheet.Cells["F9"].Value = "Pending Proposals";
-        worksheet.Cells["G9"].Value = "Submissions to Grade";
-        worksheet.Cells["A9:G9"].Style.Font.Bold = true;
-        worksheet.Cells["A9:G9"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A9:G9"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 10;
-        foreach (var item in report.InstructorWorkloads)
-        {
-            worksheet.Cells[row, 1].Value = item.InstructorName;
-            worksheet.Cells[row, 2].Value = item.Email;
-            worksheet.Cells[row, 3].Value = item.ClassCount;
-            worksheet.Cells[row, 4].Value = item.TotalStudents;
-            worksheet.Cells[row, 5].Value = item.TotalGroups;
-            worksheet.Cells[row, 6].Value = item.PendingProposals;
-            worksheet.Cells[row, 7].Value = item.SubmissionsToGrade;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private byte[] GenerateStudentsExcel(StudentsDistributionReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Students Distribution");
-
-        // Header
-        worksheet.Cells["A1"].Value = "STUDENTS DISTRIBUTION REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-
-        // Summary
-        worksheet.Cells["A3"].Value = "Total Students:";
-        worksheet.Cells["B3"].Value = report.TotalStudents;
-        worksheet.Cells["A4"].Value = "Students in Groups:";
-        worksheet.Cells["B4"].Value = report.StudentsInGroups;
-        worksheet.Cells["A5"].Value = "Students Without Groups:";
-        worksheet.Cells["B5"].Value = report.StudentsWithoutGroups;
-        worksheet.Cells["A6"].Value = "Group Participation Rate:";
-        worksheet.Cells["B6"].Value = $"{report.GroupParticipationRate}%";
-        worksheet.Cells["A3:A6"].Style.Font.Bold = true;
-
-        // Students by class
-        worksheet.Cells["A8"].Value = "Students by Class";
-        worksheet.Cells["A8"].Style.Font.Bold = true;
-        worksheet.Cells["A8"].Style.Font.Size = 14;
-
-        worksheet.Cells["A10"].Value = "Class Name";
-        worksheet.Cells["B10"].Value = "Semester";
-        worksheet.Cells["C10"].Value = "Student Count";
-        worksheet.Cells["D10"].Value = "Group Count";
-        worksheet.Cells["E10"].Value = "Avg Group Size";
-        worksheet.Cells["A10:E10"].Style.Font.Bold = true;
-        worksheet.Cells["A10:E10"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A10:E10"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 11;
-        foreach (var item in report.StudentsByClass)
-        {
-            worksheet.Cells[row, 1].Value = item.ClassName;
-            worksheet.Cells[row, 2].Value = item.SemesterName;
-            worksheet.Cells[row, 3].Value = item.StudentCount;
-            worksheet.Cells[row, 4].Value = item.GroupCount;
-            worksheet.Cells[row, 5].Value = item.AverageGroupSize;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private byte[] GenerateProjectsExcel(ProjectsStatusReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Projects Status");
-
-        // Header
-        worksheet.Cells["A1"].Value = "PROJECTS STATUS REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-
-        // Summary
-        worksheet.Cells["A3"].Value = "Total Projects:";
-        worksheet.Cells["B3"].Value = report.TotalProjects;
-        worksheet.Cells["A4"].Value = "Pending:";
-        worksheet.Cells["B4"].Value = report.PendingProjects;
-        worksheet.Cells["A5"].Value = "Approved:";
-        worksheet.Cells["B5"].Value = report.ApprovedProjects;
-        worksheet.Cells["A6"].Value = "Completed:";
-        worksheet.Cells["B6"].Value = report.CompletedProjects;
-        worksheet.Cells["A7"].Value = "Rejected:";
-        worksheet.Cells["B7"].Value = report.RejectedProjects;
-        worksheet.Cells["A8"].Value = "Completion Rate:";
-        worksheet.Cells["B8"].Value = $"{report.CompletionRate}%";
-        worksheet.Cells["A3:A8"].Style.Font.Bold = true;
-
-        // Status breakdown
-        worksheet.Cells["A10"].Value = "Status Distribution";
-        worksheet.Cells["A10"].Style.Font.Bold = true;
-        worksheet.Cells["A10"].Style.Font.Size = 14;
-
-        worksheet.Cells["A12"].Value = "Status";
-        worksheet.Cells["B12"].Value = "Count";
-        worksheet.Cells["C12"].Value = "Percentage";
-        worksheet.Cells["A12:C12"].Style.Font.Bold = true;
-        worksheet.Cells["A12:C12"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A12:C12"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 13;
-        foreach (var item in report.ProjectsByStatus)
-        {
-            worksheet.Cells[row, 1].Value = item.Status;
-            worksheet.Cells[row, 2].Value = item.Count;
-            worksheet.Cells[row, 3].Value = $"{item.Percentage}%";
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private byte[] GenerateMilestonesExcel(MilestoneProgressReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Milestone Progress");
-
-        // Header
-        worksheet.Cells["A1"].Value = "MILESTONE PROGRESS REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-
-        // Summary
-        worksheet.Cells["A3"].Value = "Total Milestones:";
-        worksheet.Cells["B3"].Value = report.TotalMilestones;
-        worksheet.Cells["A4"].Value = "Completed:";
-        worksheet.Cells["B4"].Value = report.CompletedMilestones;
-        worksheet.Cells["A5"].Value = "Pending:";
-        worksheet.Cells["B5"].Value = report.PendingMilestones;
-        worksheet.Cells["A6"].Value = "Completion Rate:";
-        worksheet.Cells["B6"].Value = $"{report.OverallCompletionRate}%";
-        worksheet.Cells["A7"].Value = "Average Grade:";
-        worksheet.Cells["B7"].Value = report.AverageGrade;
-        worksheet.Cells["A3:A7"].Style.Font.Bold = true;
-
-        // Completion by milestone
-        worksheet.Cells["A9"].Value = "Completion by Milestone Type";
-        worksheet.Cells["A9"].Style.Font.Bold = true;
-        worksheet.Cells["A9"].Style.Font.Size = 14;
-
-        worksheet.Cells["A11"].Value = "Milestone";
-        worksheet.Cells["B11"].Value = "Total";
-        worksheet.Cells["C11"].Value = "Graded";
-        worksheet.Cells["D11"].Value = "Pending";
-        worksheet.Cells["E11"].Value = "Rate %";
-        worksheet.Cells["F11"].Value = "Avg Grade";
-        worksheet.Cells["A11:F11"].Style.Font.Bold = true;
-        worksheet.Cells["A11:F11"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A11:F11"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 12;
-        foreach (var item in report.CompletionByMilestone)
-        {
-            worksheet.Cells[row, 1].Value = item.MilestoneName;
-            worksheet.Cells[row, 2].Value = item.TotalSubmissions;
-            worksheet.Cells[row, 3].Value = item.GradedSubmissions;
-            worksheet.Cells[row, 4].Value = item.PendingSubmissions;
-            worksheet.Cells[row, 5].Value = $"{item.CompletionRate}%";
-            worksheet.Cells[row, 6].Value = item.AverageGrade;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private byte[] GenerateGradesExcel(GradesDistributionReportDto report)
-    {
-        using var package = new ExcelPackage();
-        var worksheet = package.Workbook.Worksheets.Add("Grades Distribution");
-
-        // Header
-        worksheet.Cells["A1"].Value = "GRADES DISTRIBUTION REPORT";
-        worksheet.Cells["A1"].Style.Font.Size = 16;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-
-        // Summary
-        worksheet.Cells["A3"].Value = "Total Graded Projects:";
-        worksheet.Cells["B3"].Value = report.TotalGradedProjects;
-        worksheet.Cells["A4"].Value = "Average Grade:";
-        worksheet.Cells["B4"].Value = report.AverageGrade;
-        worksheet.Cells["A5"].Value = "Highest Grade:";
-        worksheet.Cells["B5"].Value = report.HighestGrade;
-        worksheet.Cells["A6"].Value = "Lowest Grade:";
-        worksheet.Cells["B6"].Value = report.LowestGrade;
-        worksheet.Cells["A7"].Value = "Median Grade:";
-        worksheet.Cells["B7"].Value = report.MedianGrade;
-        worksheet.Cells["A3:A7"].Style.Font.Bold = true;
-
-        // Grade ranges
-        worksheet.Cells["A9"].Value = "Grade Distribution";
-        worksheet.Cells["A9"].Style.Font.Bold = true;
-        worksheet.Cells["A9"].Style.Font.Size = 14;
-
-        worksheet.Cells["A11"].Value = "Range";
-        worksheet.Cells["B11"].Value = "Count";
-        worksheet.Cells["C11"].Value = "Percentage";
-        worksheet.Cells["A11:C11"].Style.Font.Bold = true;
-        worksheet.Cells["A11:C11"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A11:C11"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        int row = 12;
-        foreach (var item in report.GradeRanges)
-        {
-            worksheet.Cells[row, 1].Value = item.Range;
-            worksheet.Cells[row, 2].Value = item.Count;
-            worksheet.Cells[row, 3].Value = $"{item.Percentage}%";
-            row++;
-        }
-
-        // Top projects
-        row += 2;
-        worksheet.Cells[row, 1].Value = "Top Performing Projects";
-        worksheet.Cells[row, 1].Style.Font.Bold = true;
-        worksheet.Cells[row, 1].Style.Font.Size = 14;
-
-        row += 2;
-        worksheet.Cells[row, 1].Value = "Project Name";
-        worksheet.Cells[row, 2].Value = "Group";
-        worksheet.Cells[row, 3].Value = "Class";
-        worksheet.Cells[row, 4].Value = "Grade";
-        worksheet.Cells[row, 5].Value = "Semester";
-        worksheet.Cells[$"A{row}:E{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:E{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:E{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-        foreach (var item in report.TopProjects)
-        {
-            worksheet.Cells[row, 1].Value = item.ProjectName;
-            worksheet.Cells[row, 2].Value = item.GroupName;
-            worksheet.Cells[row, 3].Value = item.ClassName;
-            worksheet.Cells[row, 4].Value = item.Grade;
-            worksheet.Cells[row, 5].Value = item.SemesterName;
-            row++;
-        }
-
-        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-        return package.GetAsByteArray();
-    }
-
-    private async Task CreatePassStatusSheet(ExcelPackage package, int semesterId)
-    {
-        var worksheet = package.Workbook.Worksheets.Add("Tr?ng Thái Pass");
-
-        // Header
-        worksheet.Cells["A1:L1"].Merge = true;
-        worksheet.Cells["A1"].Value = "TR?NG THÁI PASS/NOT PASS";
-        worksheet.Cells["A1"].Style.Font.Size = 14;
-        worksheet.Cells["A1"].Style.Font.Bold = true;
-        worksheet.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-        worksheet.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells["A1"].Style.Fill.BackgroundColor.SetColor(Color.LightGoldenrodYellow);
-
-        // Column headers
-        int row = 3;
-        worksheet.Cells[$"A{row}"].Value = "L?p";
-        worksheet.Cells[$"B{row}"].Value = "Nhóm";
-        worksheet.Cells[$"C{row}"].Value = "D? Án";
-        worksheet.Cells[$"D{row}"].Value = "Sinh Viên";
-        worksheet.Cells[$"E{row}"].Value = "Email SV";
-        worksheet.Cells[$"F{row}"].Value = "T?ng ?i?m Milestone";
-        worksheet.Cells[$"G{row}"].Value = "?i?m Final";
-        worksheet.Cells[$"H{row}"].Value = "?i?m Milestone (40%)";
-        worksheet.Cells[$"I{row}"].Value = "?i?m Final (60%)";
-        worksheet.Cells[$"J{row}"].Value = "?i?m T?ng K?t";
-        worksheet.Cells[$"K{row}"].Value = "Tr?ng Thái D? Án";
-        worksheet.Cells[$"L{row}"].Value = "K?t Qu?";
-
-        worksheet.Cells[$"A{row}:L{row}"].Style.Font.Bold = true;
-        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        worksheet.Cells[$"A{row}:L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-
-        row++;
-
-        try
-        {
-            // Get all projects in semester with related data
-            var projects = await _context.Projects
-                .AsNoTracking()
-                .Include(p => p.Group)
-                    .ThenInclude(g => g.Class)
-                .Include(p => p.Group)
-                    .ThenInclude(g => g.GroupMembers)
-                        .ThenInclude(gm => gm.User)
-                .Include(p => p.MilestoneEvaluations)
-                .Include(p => p.FinalProjectSubmission)
-                .Where(p => p.Group!.Class!.SemesterId == semesterId)
-                .OrderBy(p => p.Group!.Class!.ClassName)
-                .ThenBy(p => p.Group!.GroupName)
-                .ToListAsync();
-
-            if (!projects.Any())
-            {
-                worksheet.Cells[$"A{row}"].Value = "Không có d? li?u d? án cho k? h?c này";
-                worksheet.Cells[$"A{row}:L{row}"].Merge = true;
-                worksheet.Cells[$"A{row}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-                worksheet.Cells[$"A{row}"].Style.Font.Italic = true;
-                worksheet.Cells[worksheet.Dimension?.Address ?? "A1:L10"].AutoFitColumns();
-                return;
-            }
-
-            // Get all submission IDs to fetch grades
-            var projectIds = projects.Select(p => p.ProjectId).ToList();
-            var finalSubmissionIds = projects
-                .Where(p => p.FinalProjectSubmission != null)
-                .Select(p => p.FinalProjectSubmission!.FinalSubmissionId)
-                .ToList();
-
-            // Load final grades separately
-            var finalGrades = await _context.FinalSubmissionGrades
-                .AsNoTracking()
-                .Where(fsg => finalSubmissionIds.Contains(fsg.FinalSubmissionId))
-                .ToListAsync();
-
-            // Group final grades by submission ID
-            var gradesBySubmission = finalGrades
-                .GroupBy(fsg => fsg.FinalSubmissionId)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            foreach (var project in projects)
-            {
-                var group = project.Group;
-                var classEntity = group!.Class;
-                var members = group.GroupMembers ?? new List<GroupMember>();
-
-                // Calculate total milestone score (average of all milestone evaluations)
-                var milestoneEvaluations = project.MilestoneEvaluations ?? new List<MilestoneEvaluation>();
-                decimal totalMilestoneScore = 0;
-                if (milestoneEvaluations.Any())
-                {
-                    totalMilestoneScore = (decimal)milestoneEvaluations.Average(me => me.Score);
-                }
-
-                // Get final submission grade
-                decimal finalGrade = 0;
-                if (project.FinalProjectSubmission != null && project.FinalProjectSubmission.Grade.HasValue)
-                {
-                    finalGrade = project.FinalProjectSubmission.Grade.Value;
-                }
-
-                // Calculate weighted scores: 40% milestone + 60% final
-                decimal milestoneWeighted = totalMilestoneScore * 0.4m;
-                decimal finalWeighted = finalGrade * 0.6m;
-                decimal totalScore = milestoneWeighted + finalWeighted;
-
-                // Determine PASS/NOT PASS
-                // Criteria:
-                // 1. Total score >= 50
-                // 2. Project status = "Completed"
-                // 3. Has final submission
-                bool hasFinalSubmission = project.FinalProjectSubmission != null;
-                bool isCompleted = project.Status?.ToLower() == "completed";
-                bool isPassing = totalScore >= 50 && isCompleted && hasFinalSubmission;
-                string result = isPassing ? "PASS" : "NOT PASS";
-
-                if (!members.Any())
-                {
-                    // If no members, show at least the project info
-                    worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
-                    worksheet.Cells[$"B{row}"].Value = group.GroupName;
-                    worksheet.Cells[$"C{row}"].Value = project.Title;
-                    worksheet.Cells[$"D{row}"].Value = "Không có thành viên";
-                    worksheet.Cells[$"E{row}"].Value = "";
-                    worksheet.Cells[$"F{row}"].Value = totalMilestoneScore.ToString("F2");
-                    worksheet.Cells[$"G{row}"].Value = finalGrade.ToString("F2");
-                    worksheet.Cells[$"H{row}"].Value = milestoneWeighted.ToString("F2");
-                    worksheet.Cells[$"I{row}"].Value = finalWeighted.ToString("F2");
-                    worksheet.Cells[$"J{row}"].Value = totalScore.ToString("F2");
-                    worksheet.Cells[$"K{row}"].Value = project.Status ?? "Unknown";
-                    worksheet.Cells[$"L{row}"].Value = result;
-
-                    // Apply color coding for result
-                    if (isPassing)
-                    {
-                        worksheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        worksheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                        worksheet.Cells[$"L{row}"].Style.Font.Bold = true;
-                    }
-                    else
-                    {
-                        worksheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        worksheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                        worksheet.Cells[$"L{row}"].Style.Font.Bold = true;
-                    }
-
-                    row++;
-                }
-                else
-                {
-                    // Display for each member in the group
-                    foreach (var member in members)
-                    {
-                        worksheet.Cells[$"A{row}"].Value = classEntity!.ClassName;
-                        worksheet.Cells[$"B{row}"].Value = group.GroupName;
-                        worksheet.Cells[$"C{row}"].Value = project.Title;
-                        worksheet.Cells[$"D{row}"].Value = member.User?.FullName ?? "";
-                        worksheet.Cells[$"E{row}"].Value = member.User?.Email ?? "";
-                        worksheet.Cells[$"F{row}"].Value = totalMilestoneScore.ToString("F2");
-                        worksheet.Cells[$"G{row}"].Value = finalGrade.ToString("F2");
-                        worksheet.Cells[$"H{row}"].Value = milestoneWeighted.ToString("F2");
-                        worksheet.Cells[$"I{row}"].Value = finalWeighted.ToString("F2");
-                        worksheet.Cells[$"J{row}"].Value = totalScore.ToString("F2");
-                        worksheet.Cells[$"K{row}"].Value = project.Status ?? "Unknown";
-                        worksheet.Cells[$"L{row}"].Value = result;
-
-                        // Apply color coding for result
-                        if (isPassing)
-                        {
-                            worksheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                            worksheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                            worksheet.Cells[$"L{row}"].Style.Font.Bold = true;
-                        }
-                        else
-                        {
-                            worksheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                            worksheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                            worksheet.Cells[$"L{row}"].Style.Font.Bold = true;
-                        }
-
-                        row++;
-                    }
-                }
-            }
-
-            // Add summary section
-            row += 2;
-            worksheet.Cells[$"A{row}"].Value = "T?NG K?T";
-            worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-            worksheet.Cells[$"A{row}"].Style.Font.Size = 14;
-            row++;
-
-            // Count PASS and NOT PASS
-            var allRows = projects.SelectMany(p => 
-            {
-                var members = p.Group?.GroupMembers ?? new List<GroupMember>();
-                return members.Any() ? members.Select(_ => p) : new[] { p };
-            }).ToList();
-
-            int passCount = 0;
-            int notPassCount = 0;
-
-            foreach (var project in projects)
-            {
-                var milestoneEvals = project.MilestoneEvaluations ?? new List<MilestoneEvaluation>();
-                decimal milestoneScore = milestoneEvals.Any() ? (decimal)milestoneEvals.Average(me => me.Score) : 0;
-                decimal finalScore = project.FinalProjectSubmission?.Grade ?? 0;
-                decimal total = (milestoneScore * 0.4m) + (finalScore * 0.6m);
-                bool passing = total >= 50 && 
-                              project.Status?.ToLower() == "completed" && 
-                              project.FinalProjectSubmission != null;
-
-                var memberCount = project.Group?.GroupMembers?.Count ?? 1;
-                if (passing)
-                    passCount += memberCount;
-                else
-                    notPassCount += memberCount;
-            }
-
-            worksheet.Cells[$"A{row}"].Value = "T?ng s? sinh viên PASS:";
-            worksheet.Cells[$"B{row}"].Value = passCount;
-            worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-            worksheet.Cells[$"B{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            worksheet.Cells[$"B{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-            row++;
-
-            worksheet.Cells[$"A{row}"].Value = "T?ng s? sinh viên NOT PASS:";
-            worksheet.Cells[$"B{row}"].Value = notPassCount;
-            worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-            worksheet.Cells[$"B{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            worksheet.Cells[$"B{row}"].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-            row++;
-
-            decimal passRate = (passCount + notPassCount) > 0 
-                ? (decimal)passCount / (passCount + notPassCount) * 100 
-                : 0;
-            worksheet.Cells[$"A{row}"].Value = "T? l? PASS:";
-            worksheet.Cells[$"B{row}"].Value = $"{passRate:F2}%";
-            worksheet.Cells[$"A{row}"].Style.Font.Bold = true;
-        }
-        catch (Exception ex)
-        {
-            // Log error and create error row
-            worksheet.Cells[$"A{row}"].Value = $"L?i khi t?i d? li?u tr?ng thái Pass: {ex.Message}";
-            if (ex.InnerException != null)
-            {
-                worksheet.Cells[$"A{row}"].Value += $" | Inner: {ex.InnerException.Message}";
-            }
-            worksheet.Cells[$"A{row}:L{row}"].Merge = true;
-            worksheet.Cells[$"A{row}"].Style.Font.Color.SetColor(Color.Red);
-            worksheet.Cells[$"A{row}"].Style.WrapText = true;
-        }
-
-        worksheet.Cells[worksheet.Dimension?.Address ?? "A1:L10"].AutoFitColumns();
     }
 }

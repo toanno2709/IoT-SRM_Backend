@@ -683,6 +683,86 @@ public class AdminController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    /// <summary>
+    /// Get comprehensive semester report with all data
+    /// </summary>
+    /// <param name="semesterId">Semester ID</param>
+    /// <returns>Complete semester report with all details</returns>
+    /// <remarks>
+    /// Tr? v? báo cáo toàn di?n cho m?t k? h?c bao g?m:
+    /// 
+    /// **T?ng Quan K? H?c:**
+    /// - Thông tin k? h?c (tên, mã, n?m, h?c k?, ngày b?t ??u/k?t thúc)
+    /// - Th?ng kê t?ng quan (s? l?p, sinh viên, nhóm, d? án)
+    /// 
+    /// **Danh Sách L?p:**
+    /// - T?t c? l?p trong k?
+    /// - Gi?ng viên ph? trách
+    /// - S? l??ng sinh viên, nhóm, d? án
+    /// 
+    /// **Danh Sách Gi?ng Viên:**
+    /// - T?t c? gi?ng viên tham gia k? h?c
+    /// - Các l?p h? ph? trách
+    /// - T?ng s? sinh viên và d? án qu?n lý
+    /// 
+    /// **Danh Sách Sinh Viên:**
+    /// - T?t c? sinh viên trong k?
+    /// - L?p, nhóm, d? án c?a t?ng sinh viên
+    /// - Vai trò trong nhóm (Leader/Member)
+    /// 
+    /// **Danh Sách Nhóm:**
+    /// - T?t c? nhóm trong k?
+    /// - Thành viên, nhóm tr??ng
+    /// - D? án c?a nhóm
+    /// 
+    /// **Danh Sách D? Án:**
+    /// - T?t c? d? án trong k?
+    /// - Nhóm, l?p liên quan
+    /// - Tr?ng thái d? án
+    /// 
+    /// **?i?m Milestone:**
+    /// - Chi ti?t ?i?m ?ánh giá t?ng milestone
+    /// - Tr?ng s?, ?i?m s?, ?i?m có tr?ng s?
+    /// - Gi?ng viên ch?m và feedback
+    /// - Danh sách sinh viên trong nhóm
+    /// 
+    /// **?i?m Final Submission:**
+    /// - ?i?m t? các graders
+    /// - ?i?m trung bình final
+    /// - Ngày n?p, URL submission
+    /// - Danh sách sinh viên trong nhóm
+    /// 
+    /// **Tr?ng Thái Pass/Not Pass:**
+    /// - T?ng ?i?m milestone (weighted sum)
+    /// - ?i?m final
+    /// - ?i?m t?ng k?t: 40% milestone + 60% final
+    /// - Tr?ng thái d? án
+    /// - K?t qu?: PASS/NOT PASS
+    /// 
+    /// **?i?u ki?n PASS:**
+    /// - ?i?m t?ng k?t >= 50
+    /// - Project status = "Completed"
+    /// - ?ã n?p final submission
+    /// </remarks>
+    [HttpGet("reports/semester/{semesterId}/comprehensive")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ComprehensiveSemesterReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ComprehensiveSemesterReportDto>>> GetComprehensiveSemesterReport(
+        [FromRoute] int semesterId)
+    {
+        var result = await _reportService.GetComprehensiveSemesterReportAsync(semesterId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 
     #region Class Enrollment Management APIs

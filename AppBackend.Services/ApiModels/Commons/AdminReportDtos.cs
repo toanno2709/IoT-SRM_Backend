@@ -216,4 +216,219 @@ public class ReportExportResponseDto
     public string? ExportFormat { get; set; }
 }
 
+/// <summary>
+/// Comprehensive semester report with all details
+/// </summary>
+public class ComprehensiveSemesterReportDto
+{
+    // Semester overview
+    public SemesterOverviewDto? SemesterOverview { get; set; }
+    
+    // All classes in semester
+    public List<SemesterClassDetailDto> Classes { get; set; } = new();
+    
+    // All instructors in semester
+    public List<SemesterInstructorDetailDto> Instructors { get; set; } = new();
+    
+    // All students in semester
+    public List<SemesterStudentDetailDto> Students { get; set; } = new();
+    
+    // All groups in semester
+    public List<SemesterGroupDetailDto> Groups { get; set; } = new();
+    
+    // All projects in semester
+    public List<SemesterProjectDetailDto> Projects { get; set; } = new();
+    
+    // All milestone grades
+    public List<MilestoneGradeDetailDto> MilestoneGrades { get; set; } = new();
+    
+    // All final submissions with grades
+    public List<FinalSubmissionDetailDto> FinalSubmissions { get; set; } = new();
+    
+    // Pass/Not Pass summary
+    public List<StudentPassStatusDto> StudentPassStatus { get; set; } = new();
+}
+
+public class SemesterOverviewDto
+{
+    public int SemesterId { get; set; }
+    public string? SemesterName { get; set; }
+    public string? SemesterCode { get; set; }
+    public int? Year { get; set; }
+    public string? Term { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public bool IsActive { get; set; }
+    
+    // Statistics
+    public int TotalClasses { get; set; }
+    public int TotalStudents { get; set; }
+    public int TotalGroups { get; set; }
+    public int TotalProjects { get; set; }
+}
+
+public class SemesterClassDetailDto
+{
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int? InstructorId { get; set; }
+    public string? InstructorName { get; set; }
+    public string? InstructorEmail { get; set; }
+    public int TotalStudents { get; set; }
+    public int TotalGroups { get; set; }
+    public int TotalProjects { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class SemesterInstructorDetailDto
+{
+    public int InstructorId { get; set; }
+    public string? FullName { get; set; }
+    public string? Email { get; set; }
+    public List<string> Classes { get; set; } = new();
+    public int TotalStudents { get; set; }
+    public int TotalProjects { get; set; }
+}
+
+public class SemesterStudentDetailDto
+{
+    public int StudentId { get; set; }
+    public string? FullName { get; set; }
+    public string? Email { get; set; }
+    public string? StudentCode { get; set; }
+    public int? ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int? GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public string? RoleInGroup { get; set; } // "Leader" or "Member"
+    public int? ProjectId { get; set; }
+    public string? ProjectName { get; set; }
+}
+
+public class SemesterGroupDetailDto
+{
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int MemberCount { get; set; }
+    public List<string> Members { get; set; } = new();
+    public string? LeaderName { get; set; }
+    public int? ProjectId { get; set; }
+    public string? ProjectName { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class SemesterProjectDetailDto
+{
+    public int ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public string? Description { get; set; }
+    public string? Component { get; set; }
+    public string? Status { get; set; }
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class MilestoneGradeDetailDto
+{
+    public int ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    
+    public int MilestoneId { get; set; }
+    public string? MilestoneName { get; set; }
+    public decimal? MilestoneWeight { get; set; }
+    public decimal Score { get; set; }
+    public decimal WeightedScore { get; set; } // Score * Weight
+    
+    public int? GradedByInstructorId { get; set; }
+    public string? GradedByInstructorName { get; set; }
+    public DateTime? GradedAt { get; set; }
+    public string? Feedback { get; set; }
+    
+    // Student details
+    public List<MilestoneGradeStudentDto> Students { get; set; } = new();
+}
+
+public class MilestoneGradeStudentDto
+{
+    public int StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public string? StudentEmail { get; set; }
+    public string? RoleInGroup { get; set; }
+}
+
+public class FinalSubmissionDetailDto
+{
+    public int FinalSubmissionId { get; set; }
+    public int ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public int GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    
+    public DateTime? SubmittedAt { get; set; }
+    public string? SubmissionUrl { get; set; }
+    public string? Description { get; set; }
+    
+    // Grades from graders
+    public List<FinalSubmissionGraderDto> GraderGrades { get; set; } = new();
+    public decimal? AverageGrade { get; set; }
+    
+    // Student details
+    public List<FinalSubmissionStudentDto> Students { get; set; } = new();
+}
+
+public class FinalSubmissionGraderDto
+{
+    public int GraderId { get; set; }
+    public string? GraderName { get; set; }
+    public decimal Grade { get; set; }
+    public string? Feedback { get; set; }
+    public DateTime? GradedAt { get; set; }
+}
+
+public class FinalSubmissionStudentDto
+{
+    public int StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public string? StudentEmail { get; set; }
+    public string? RoleInGroup { get; set; }
+}
+
+public class StudentPassStatusDto
+{
+    public int StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public string? StudentEmail { get; set; }
+    public string? StudentCode { get; set; }
+    
+    public int? ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int? GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public int? ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public string? ProjectStatus { get; set; }
+    
+    // Grades
+    public decimal TotalMilestoneScore { get; set; } // Sum of weighted milestone scores
+    public decimal? FinalScore { get; set; }
+    public decimal? OverallScore { get; set; } // 40% milestone + 60% final
+    
+    // Pass/Not Pass
+    public bool HasFinalSubmission { get; set; }
+    public bool IsProjectCompleted { get; set; }
+    public bool IsPassed { get; set; } // True if OverallScore >= 50 AND ProjectCompleted AND HasFinalSubmission
+    public string PassStatus { get; set; } = "NOT PASS"; // "PASS" or "NOT PASS"
+}
+
 #endregion

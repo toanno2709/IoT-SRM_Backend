@@ -1,6 +1,7 @@
 ﻿using AppBackend.BusinessObjects.Dtos.Project;
 using AppBackend.Services.Services.Project;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.BusinessObjects.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
@@ -185,23 +186,51 @@ namespace AppBackend.ApiCore.Controllers
         /// - Admin: Can delete any project
         /// - Instructor: Can delete projects in their classes
         /// - Student: Can only delete if they are the group leader
+        /// 
+        /// WARNING: This will cascade delete all related data including:
+        /// - Milestone submissions and evaluations
+        /// - Final project submissions
+        /// - Sensors and sensor data
+        /// - Simulations
+        /// - Hall of Fame entries
         /// </remarks>
         [HttpDelete("{projectId}")]
         [Authorize(Roles = "Admin,Instructor,Student")]
         public async Task<ActionResult> DeleteProject(int projectId)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out var userId))
+            try
             {
-                return Unauthorized(new 
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(userIdClaim, out var userId))
+                {
+                    return Unauthorized(new 
+                    { 
+                        status = "error", 
+                        message = "User not authenticated"
+                    });
+                }
+
+                await _projectService.DeleteProjectAsync(projectId, userId);
+                return Ok(new { status = "success", message = "Project deleted successfully" });
+            }
+            catch (AppException ex)
+            {
+                return StatusCode(ex.StatusCode, new 
                 { 
                     status = "error", 
-                    message = "User not authenticated"
+                    message = ex.Message,
+                    code = ex.Code
                 });
             }
-
-            await _projectService.DeleteProjectAsync(projectId, userId);
-            return Ok(new { status = "success", message = "Project deleted successfully" });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new 
+                { 
+                    status = "error", 
+                    message = "An unexpected error occurred while deleting the project. Please try again later.",
+                    details = ex.Message
+                });
+            }
         }
 
         /// <summary>
