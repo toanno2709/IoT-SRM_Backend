@@ -214,6 +214,7 @@ public class ReportExportResponseDto
     public long FileSizeBytes { get; set; }
     public DateTime GeneratedAt { get; set; }
     public string? ExportFormat { get; set; }
+    public byte[]? FileContent { get; set; } // For direct file download
 }
 
 /// <summary>

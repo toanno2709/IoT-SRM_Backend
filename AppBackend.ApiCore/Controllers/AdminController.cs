@@ -612,75 +612,84 @@ public class AdminController : ControllerBase
     /// <param name="semesterId">Semester ID to export</param>
     /// <returns>Excel file with comprehensive semester information</returns>
     /// <remarks>
-    /// Xu?t báo cáo toàn di?n cho m?t k? h?c bao g?m:
+    /// Exports a comprehensive report for a semester including:
     /// 
-    /// **Sheet 1 - T?ng Quan K? H?c:**
-    /// - Thông tin k? h?c (mã, tên, n?m, h?c k?, ngày b?t ??u/k?t thúc)
-    /// - Th?ng kê t?ng quan (s? l?p, sinh viên, nhóm, d? án)
+    /// **Sheet 1 - Semester Overview:**
+    /// - Semester information (code, name, year, term, start/end dates)
+    /// - Overall statistics (number of classes, students, groups, projects)
     /// 
-    /// **Sheet 2 - Danh Sách Lóp:**
-    /// - ID l?p, tên l?p, gi?ng viên ph? trách
-    /// - S? sinh viên, s? nhóm, s? d? án trong m?i l?p
-    /// - Tr?ng thái l?p
+    /// **Sheet 2 - Class List:**
+    /// - Class ID, name, assigned instructor
+    /// - Number of students, groups, projects in each class
+    /// - Class status
     /// 
-    /// **Sheet 3 - Danh Sách Gi?ng Viên:**
-    /// - ID, h? tên, email gi?ng viên
-    /// - Các l?p ph? trách
-    /// - T?ng s? sinh viên và d? án ???c qu?n lý
+    /// **Sheet 3 - Instructor List:**
+    /// - Instructor ID, full name, email
+    /// - Assigned classes
+    /// - Total students and projects managed
     /// 
-    /// **Sheet 4 - Danh Sách Sinh Viên:**
-    /// - ID, h? tên, email sinh viên
-    /// - L?p ?ang h?c
-    /// - Nhóm và d? án tham gia
-    /// - Vai trò (nhóm tr??ng/thành viên)
+    /// **Sheet 4 - Student List:**
+    /// - Student ID, full name, email
+    /// - Current class
+    /// - Group and project participation
+    /// - Role (Leader/Member)
     /// 
-    /// **Sheet 5 - ?i?m Milestone:**
-    /// - Chi ti?t ?i?m ?ánh giá t?ng milestone
-    /// - L?p, nhóm, d? án, sinh viên
-    /// - Tên milestone, tr?ng s?, ?i?m s?
-    /// - Gi?ng viên ch?m và ngày ch?m
+    /// **Sheet 5 - Milestone Grades:**
+    /// - Detailed milestone evaluation scores
+    /// - Class, group, project, student details
+    /// - Milestone name, weight, score
+    /// - Grading instructor and date
     /// 
-    /// **Sheet 6 - ?i?m Cu?i K?:**
-    /// - ?i?m final project t? 2 graders
-    /// - ?i?m trung bình final
-    /// - Ngày n?p và tr?ng thái
-    /// - Chi ti?t t?ng sinh viên trong nhóm
+    /// **Sheet 6 - Final Grades:**
+    /// - Final project scores from 2 graders
+    /// - Average final score
+    /// - Submission date and status
+    /// - Individual student details in each group
     /// 
-    /// **Sheet 7 - Tr?ng Thái Pass/Not Pass:**
-    /// - T?ng ?i?m milestone và final
-    /// - ?i?m t?ng k?t (40% milestone + 60% final)
-    /// - Tr?ng thái d? án
-    /// - K?t qu? cu?i cùng: PASS/NOT PASS
-    /// - Highlight màu xanh (PASS) và ?? (NOT PASS)
+    /// **Sheet 7 - Pass/Not Pass Status:**
+    /// - Total milestone and final scores
+    /// - Overall score (40% milestone + 60% final)
+    /// - Project status
+    /// - Final result: PASS/NOT PASS
+    /// - Highlighted in green (PASS) and red (NOT PASS)
     /// 
-    /// **?i?u ki?n PASS:**
-    /// - ?i?m t?ng k?t >= 50
+    /// **Pass Criteria:**
+    /// - Overall score >= 50
     /// - Project status = "Completed"
-    /// - ?ã n?p final submission
+    /// - Final submission submitted
     /// 
-    /// File Excel ???c format ??p v?i:
-    /// - Header có màu s?c riêng cho m?i sheet
+    /// Excel file is beautifully formatted with:
+    /// - Color-coded headers for each sheet
     /// - Auto-fit columns
     /// - Bold headers
-    /// - Border cho các ô
+    /// - Cell borders
     /// </remarks>
     [HttpGet("reports/semester/{semesterId}/comprehensive-export")]
     [ApiExplorerSettings(GroupName = "admin-reports")]
     [RateLimit(permitLimit: 5, windowSeconds: 60)]
-    [ProducesResponseType(typeof(ResultModel<ReportExportResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<ResultModel<ReportExportResponseDto>>> ExportComprehensiveSemesterReport(
+    public async Task<IActionResult> ExportComprehensiveSemesterReport(
         [FromRoute] int semesterId)
     {
         var result = await _reportService.ExportComprehensiveSemesterReportAsync(semesterId);
 
-        if (result.IsSuccess)
-            return Ok(result);
+        if (result.IsSuccess && result.Data != null && result.Data.FileContent != null)
+        {
+            return File(
+                result.Data.FileContent,
+                result.Data.ContentType ?? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                result.Data.FileName ?? $"ComprehensiveReport_Semester{semesterId}.xlsx");
+        }
 
-        return StatusCode(result.StatusCode, result);
+        return StatusCode(result.StatusCode, new
+        {
+            isSuccess = false,
+            message = result.Message
+        });
     }
 
     /// <summary>
@@ -689,60 +698,60 @@ public class AdminController : ControllerBase
     /// <param name="semesterId">Semester ID</param>
     /// <returns>Complete semester report with all details</returns>
     /// <remarks>
-    /// Tr? v? báo cáo toàn di?n cho m?t k? h?c bao g?m:
+    /// Returns a comprehensive report for a semester including:
     /// 
-    /// **T?ng Quan K? H?c:**
-    /// - Thông tin k? h?c (tên, mã, n?m, h?c k?, ngày b?t ??u/k?t thúc)
-    /// - Th?ng kê t?ng quan (s? l?p, sinh viên, nhóm, d? án)
+    /// **Semester Overview:**
+    /// - Semester information (name, code, year, term, start/end dates)
+    /// - Overall statistics (number of classes, students, groups, projects)
     /// 
-    /// **Danh Sách L?p:**
-    /// - T?t c? l?p trong k?
-    /// - Gi?ng viên ph? trách
-    /// - S? l??ng sinh viên, nhóm, d? án
+    /// **Class List:**
+    /// - All classes in the semester
+    /// - Assigned instructors
+    /// - Number of students, groups, projects
     /// 
-    /// **Danh Sách Gi?ng Viên:**
-    /// - T?t c? gi?ng viên tham gia k? h?c
-    /// - Các l?p h? ph? trách
-    /// - T?ng s? sinh viên và d? án qu?n lý
+    /// **Instructor List:**
+    /// - All instructors participating in the semester
+    /// - Classes they manage
+    /// - Total students and projects managed
     /// 
-    /// **Danh Sách Sinh Viên:**
-    /// - T?t c? sinh viên trong k?
-    /// - L?p, nhóm, d? án c?a t?ng sinh viên
-    /// - Vai trò trong nhóm (Leader/Member)
+    /// **Student List:**
+    /// - All students in the semester
+    /// - Class, group, project of each student
+    /// - Role in group (Leader/Member)
     /// 
-    /// **Danh Sách Nhóm:**
-    /// - T?t c? nhóm trong k?
-    /// - Thành viên, nhóm tr??ng
-    /// - D? án c?a nhóm
+    /// **Group List:**
+    /// - All groups in the semester
+    /// - Members, group leader
+    /// - Group's project
     /// 
-    /// **Danh Sách D? Án:**
-    /// - T?t c? d? án trong k?
-    /// - Nhóm, l?p liên quan
-    /// - Tr?ng thái d? án
+    /// **Project List:**
+    /// - All projects in the semester
+    /// - Related group and class
+    /// - Project status
     /// 
-    /// **?i?m Milestone:**
-    /// - Chi ti?t ?i?m ?ánh giá t?ng milestone
-    /// - Tr?ng s?, ?i?m s?, ?i?m có tr?ng s?
-    /// - Gi?ng viên ch?m và feedback
-    /// - Danh sách sinh viên trong nhóm
+    /// **Milestone Grades:**
+    /// - Detailed milestone evaluation scores
+    /// - Weight, score, weighted score
+    /// - Grading instructor and feedback
+    /// - List of students in the group
     /// 
-    /// **?i?m Final Submission:**
-    /// - ?i?m t? các graders
-    /// - ?i?m trung bình final
-    /// - Ngày n?p, URL submission
-    /// - Danh sách sinh viên trong nhóm
+    /// **Final Submissions:**
+    /// - Scores from graders
+    /// - Average final score
+    /// - Submission date, URL
+    /// - List of students in the group
     /// 
-    /// **Tr?ng Thái Pass/Not Pass:**
-    /// - T?ng ?i?m milestone (weighted sum)
-    /// - ?i?m final
-    /// - ?i?m t?ng k?t: 40% milestone + 60% final
-    /// - Tr?ng thái d? án
-    /// - K?t qu?: PASS/NOT PASS
+    /// **Pass/Not Pass Status:**
+    /// - Total milestone score (weighted sum)
+    /// - Final score
+    /// - Overall score: 40% milestone + 60% final
+    /// - Project status
+    /// - Result: PASS/NOT PASS
     /// 
-    /// **?i?u ki?n PASS:**
-    /// - ?i?m t?ng k?t >= 50
+    /// **Pass Criteria:**
+    /// - Overall score >= 50
     /// - Project status = "Completed"
-    /// - ?ã n?p final submission
+    /// - Final submission submitted
     /// </remarks>
     [HttpGet("reports/semester/{semesterId}/comprehensive")]
     [ApiExplorerSettings(GroupName = "admin-reports")]

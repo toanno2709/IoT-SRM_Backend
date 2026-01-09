@@ -571,14 +571,68 @@ public class AdminReportService : IAdminReportService
     {
         try
         {
-            // TODO: Implement comprehensive semester report export
-            // Currently under development - requires proper data structure alignment
-            
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            // Get comprehensive data
+            var dataResult = await GetComprehensiveSemesterReportAsync(semesterId);
+            if (!dataResult.IsSuccess || dataResult.Data == null)
+            {
+                return new ResultModel<ReportExportResponseDto>
+                {
+                    IsSuccess = false,
+                    StatusCode = dataResult.StatusCode,
+                    Message = dataResult.Message
+                };
+            }
+
+            var data = dataResult.Data;
+
+            using var package = new ExcelPackage();
+
+            // Sheet 1 - Semester Overview
+            var sheet1 = package.Workbook.Worksheets.Add("Semester Overview");
+            CreateSemesterOverviewSheet(sheet1, data.SemesterOverview);
+
+            // Sheet 2 - Class List
+            var sheet2 = package.Workbook.Worksheets.Add("Class List");
+            CreateClassesSheet(sheet2, data.Classes);
+
+            // Sheet 3 - Instructor List
+            var sheet3 = package.Workbook.Worksheets.Add("Instructor List");
+            CreateInstructorsSheet(sheet3, data.Instructors);
+
+            // Sheet 4 - Student List
+            var sheet4 = package.Workbook.Worksheets.Add("Student List");
+            CreateStudentsSheet(sheet4, data.Students);
+
+            // Sheet 5 - Milestone Grades
+            var sheet5 = package.Workbook.Worksheets.Add("Milestone Grades");
+            CreateMilestoneGradesSheet(sheet5, data.MilestoneGrades);
+
+            // Sheet 6 - Final Grades
+            var sheet6 = package.Workbook.Worksheets.Add("Final Grades");
+            CreateFinalSubmissionsSheet(sheet6, data.FinalSubmissions);
+
+            // Sheet 7 - Pass Not Pass Status
+            var sheet7 = package.Workbook.Worksheets.Add("Pass Not Pass Status");
+            CreatePassStatusSheet(sheet7, data.StudentPassStatus);
+
+            var fileBytes = package.GetAsByteArray();
+            var fileName = $"ComprehensiveReport_Semester{semesterId}_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+
             return new ResultModel<ReportExportResponseDto>
             {
-                IsSuccess = false,
-                StatusCode = 501,
-                Message = "Comprehensive semester report export feature is under development. Please check back later."
+                IsSuccess = true,
+                Data = new ReportExportResponseDto
+                {
+                    FileName = fileName,
+                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    FileSizeBytes = fileBytes.Length,
+                    GeneratedAt = DateTime.UtcNow,
+                    ExportFormat = "Excel",
+                    FileContent = fileBytes // Return byte array instead of base64
+                },
+                Message = "Report exported successfully"
             };
         }
         catch (Exception ex)
@@ -591,6 +645,383 @@ public class AdminReportService : IAdminReportService
             };
         }
     }
+
+    #region Excel Sheet Creation Methods
+
+    private void CreateSemesterOverviewSheet(ExcelWorksheet sheet, SemesterOverviewDto? overview)
+    {
+        if (overview == null) return;
+
+        // Header styling
+        sheet.Cells["A1:B1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:B1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(68, 114, 196));
+        sheet.Cells["A1:B1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:B1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Information";
+        sheet.Cells["B1"].Value = "Value";
+
+        // Data
+        int row = 2;
+        sheet.Cells[$"A{row}"].Value = "Semester Name";
+        sheet.Cells[$"B{row++}"].Value = overview.SemesterName;
+        
+        sheet.Cells[$"A{row}"].Value = "Semester Code";
+        sheet.Cells[$"B{row++}"].Value = overview.SemesterCode;
+        
+        sheet.Cells[$"A{row}"].Value = "Year";
+        sheet.Cells[$"B{row++}"].Value = overview.Year;
+        
+        sheet.Cells[$"A{row}"].Value = "Term";
+        sheet.Cells[$"B{row++}"].Value = overview.Term;
+        
+        sheet.Cells[$"A{row}"].Value = "Start Date";
+        sheet.Cells[$"B{row++}"].Value = overview.StartDate?.ToString("yyyy-MM-dd");
+        
+        sheet.Cells[$"A{row}"].Value = "End Date";
+        sheet.Cells[$"B{row++}"].Value = overview.EndDate?.ToString("yyyy-MM-dd");
+        
+        sheet.Cells[$"A{row}"].Value = "Is Active";
+        sheet.Cells[$"B{row++}"].Value = overview.IsActive ? "Yes" : "No";
+        
+        row++;
+        sheet.Cells[$"A{row}"].Value = "Total Classes";
+        sheet.Cells[$"B{row++}"].Value = overview.TotalClasses;
+        
+        sheet.Cells[$"A{row}"].Value = "Total Students";
+        sheet.Cells[$"B{row++}"].Value = overview.TotalStudents;
+        
+        sheet.Cells[$"A{row}"].Value = "Total Groups";
+        sheet.Cells[$"B{row++}"].Value = overview.TotalGroups;
+        
+        sheet.Cells[$"A{row}"].Value = "Total Projects";
+        sheet.Cells[$"B{row++}"].Value = overview.TotalProjects;
+
+        // Borders
+        var usedRange = sheet.Cells[1, 1, row - 1, 2];
+        usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+        usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+        usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+        usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreateClassesSheet(ExcelWorksheet sheet, List<SemesterClassDetailDto> classes)
+    {
+        // Header styling
+        sheet.Cells["A1:H1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:H1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(112, 173, 71));
+        sheet.Cells["A1:H1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:H1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Class ID";
+        sheet.Cells["B1"].Value = "Class Name";
+        sheet.Cells["C1"].Value = "Instructor ID";
+        sheet.Cells["D1"].Value = "Instructor Name";
+        sheet.Cells["E1"].Value = "Instructor Email";
+        sheet.Cells["F1"].Value = "Number of Students";
+        sheet.Cells["G1"].Value = "Number of Groups";
+        sheet.Cells["H1"].Value = "Number of Projects";
+
+        // Data
+        int row = 2;
+        foreach (var cls in classes)
+        {
+            sheet.Cells[$"A{row}"].Value = cls.ClassId;
+            sheet.Cells[$"B{row}"].Value = cls.ClassName;
+            sheet.Cells[$"C{row}"].Value = cls.InstructorId;
+            sheet.Cells[$"D{row}"].Value = cls.InstructorName;
+            sheet.Cells[$"E{row}"].Value = cls.InstructorEmail;
+            sheet.Cells[$"F{row}"].Value = cls.TotalStudents;
+            sheet.Cells[$"G{row}"].Value = cls.TotalGroups;
+            sheet.Cells[$"H{row}"].Value = cls.TotalProjects;
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 8];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreateInstructorsSheet(ExcelWorksheet sheet, List<SemesterInstructorDetailDto> instructors)
+    {
+        // Header styling
+        sheet.Cells["A1:E1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:E1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(237, 125, 49));
+        sheet.Cells["A1:E1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:E1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Instructor ID";
+        sheet.Cells["B1"].Value = "Full Name";
+        sheet.Cells["C1"].Value = "Email";
+        sheet.Cells["D1"].Value = "Number of Students";
+        sheet.Cells["E1"].Value = "Number of Projects";
+
+        // Data
+        int row = 2;
+        foreach (var instructor in instructors)
+        {
+            sheet.Cells[$"A{row}"].Value = instructor.InstructorId;
+            sheet.Cells[$"B{row}"].Value = instructor.FullName;
+            sheet.Cells[$"C{row}"].Value = instructor.Email;
+            sheet.Cells[$"D{row}"].Value = instructor.TotalStudents;
+            sheet.Cells[$"E{row}"].Value = instructor.TotalProjects;
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 5];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreateStudentsSheet(ExcelWorksheet sheet, List<SemesterStudentDetailDto> students)
+    {
+        // Header styling
+        sheet.Cells["A1:J1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:J1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(68, 114, 196));
+        sheet.Cells["A1:J1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:J1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Student ID";
+        sheet.Cells["B1"].Value = "Full Name";
+        sheet.Cells["C1"].Value = "Email";
+        sheet.Cells["D1"].Value = "Student Code";
+        sheet.Cells["E1"].Value = "Class ID";
+        sheet.Cells["F1"].Value = "Class Name";
+        sheet.Cells["G1"].Value = "Group ID";
+        sheet.Cells["H1"].Value = "Group Name";
+        sheet.Cells["I1"].Value = "Role";
+        sheet.Cells["J1"].Value = "Project Name";
+
+        // Data
+        int row = 2;
+        foreach (var student in students)
+        {
+            sheet.Cells[$"A{row}"].Value = student.StudentId;
+            sheet.Cells[$"B{row}"].Value = student.FullName;
+            sheet.Cells[$"C{row}"].Value = student.Email;
+            sheet.Cells[$"D{row}"].Value = student.StudentCode;
+            sheet.Cells[$"E{row}"].Value = student.ClassId;
+            sheet.Cells[$"F{row}"].Value = student.ClassName;
+            sheet.Cells[$"G{row}"].Value = student.GroupId;
+            sheet.Cells[$"H{row}"].Value = student.GroupName;
+            sheet.Cells[$"I{row}"].Value = student.RoleInGroup;
+            sheet.Cells[$"J{row}"].Value = student.ProjectName;
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 10];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreateMilestoneGradesSheet(ExcelWorksheet sheet, List<MilestoneGradeDetailDto> grades)
+    {
+        // Header styling
+        sheet.Cells["A1:L1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:L1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 192, 0));
+        sheet.Cells["A1:L1"].Style.Font.Color.SetColor(Color.Black);
+        sheet.Cells["A1:L1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Class ID";
+        sheet.Cells["B1"].Value = "Class Name";
+        sheet.Cells["C1"].Value = "Group ID";
+        sheet.Cells["D1"].Value = "Group Name";
+        sheet.Cells["E1"].Value = "Project ID";
+        sheet.Cells["F1"].Value = "Project Name";
+        sheet.Cells["G1"].Value = "Milestone Name";
+        sheet.Cells["H1"].Value = "Weight (%)";
+        sheet.Cells["I1"].Value = "Score";
+        sheet.Cells["J1"].Value = "Weighted Score";
+        sheet.Cells["K1"].Value = "Graded By";
+        sheet.Cells["L1"].Value = "Graded Date";
+
+        // Data
+        int row = 2;
+        foreach (var grade in grades)
+        {
+            sheet.Cells[$"A{row}"].Value = grade.ClassId;
+            sheet.Cells[$"B{row}"].Value = grade.ClassName;
+            sheet.Cells[$"C{row}"].Value = grade.GroupId;
+            sheet.Cells[$"D{row}"].Value = grade.GroupName;
+            sheet.Cells[$"E{row}"].Value = grade.ProjectId;
+            sheet.Cells[$"F{row}"].Value = grade.ProjectTitle;
+            sheet.Cells[$"G{row}"].Value = grade.MilestoneName;
+            sheet.Cells[$"H{row}"].Value = grade.MilestoneWeight;
+            sheet.Cells[$"I{row}"].Value = grade.Score;
+            sheet.Cells[$"J{row}"].Value = grade.WeightedScore;
+            sheet.Cells[$"K{row}"].Value = grade.GradedByInstructorName;
+            sheet.Cells[$"L{row}"].Value = grade.GradedAt?.ToString("yyyy-MM-dd HH:mm");
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 12];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreateFinalSubmissionsSheet(ExcelWorksheet sheet, List<FinalSubmissionDetailDto> submissions)
+    {
+        // Header styling
+        sheet.Cells["A1:I1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:I1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80));
+        sheet.Cells["A1:I1"].Style.Font.Color.SetColor(Color.Black);
+        sheet.Cells["A1:I1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Class ID";
+        sheet.Cells["B1"].Value = "Class Name";
+        sheet.Cells["C1"].Value = "Group ID";
+        sheet.Cells["D1"].Value = "Group Name";
+        sheet.Cells["E1"].Value = "Project ID";
+        sheet.Cells["F1"].Value = "Project Name";
+        sheet.Cells["G1"].Value = "Average Grade";
+        sheet.Cells["H1"].Value = "Grader Grades";
+        sheet.Cells["I1"].Value = "Submission Date";
+
+        // Data
+        int row = 2;
+        foreach (var submission in submissions)
+        {
+            sheet.Cells[$"A{row}"].Value = submission.ClassId;
+            sheet.Cells[$"B{row}"].Value = submission.ClassName;
+            sheet.Cells[$"C{row}"].Value = submission.GroupId;
+            sheet.Cells[$"D{row}"].Value = submission.GroupName;
+            sheet.Cells[$"E{row}"].Value = submission.ProjectId;
+            sheet.Cells[$"F{row}"].Value = submission.ProjectTitle;
+            sheet.Cells[$"G{row}"].Value = submission.AverageGrade;
+            
+            // Grader grades as comma-separated
+            var graderGrades = string.Join(", ", 
+                submission.GraderGrades.Select(g => $"{g.GraderName}: {g.Grade}"));
+            sheet.Cells[$"H{row}"].Value = graderGrades;
+            
+            sheet.Cells[$"I{row}"].Value = submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm");
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 9];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    private void CreatePassStatusSheet(ExcelWorksheet sheet, List<StudentPassStatusDto> statuses)
+    {
+        // Header styling
+        sheet.Cells["A1:L1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:L1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(68, 114, 196));
+        sheet.Cells["A1:L1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:L1"].Style.Font.Bold = true;
+
+        // Headers
+        sheet.Cells["A1"].Value = "Student ID";
+        sheet.Cells["B1"].Value = "Full Name";
+        sheet.Cells["C1"].Value = "Email";
+        sheet.Cells["D1"].Value = "Class";
+        sheet.Cells["E1"].Value = "Group";
+        sheet.Cells["F1"].Value = "Project";
+        sheet.Cells["G1"].Value = "Project Status";
+        sheet.Cells["H1"].Value = "Milestone Score";
+        sheet.Cells["I1"].Value = "Final Score";
+        sheet.Cells["J1"].Value = "Overall Score";
+        sheet.Cells["K1"].Value = "Final Submitted";
+        sheet.Cells["L1"].Value = "RESULT";
+
+        // Data
+        int row = 2;
+        foreach (var status in statuses)
+        {
+            sheet.Cells[$"A{row}"].Value = status.StudentId;
+            sheet.Cells[$"B{row}"].Value = status.StudentName;
+            sheet.Cells[$"C{row}"].Value = status.StudentEmail;
+            sheet.Cells[$"D{row}"].Value = status.ClassName;
+            sheet.Cells[$"E{row}"].Value = status.GroupName;
+            sheet.Cells[$"F{row}"].Value = status.ProjectTitle;
+            sheet.Cells[$"G{row}"].Value = status.ProjectStatus;
+            sheet.Cells[$"H{row}"].Value = status.TotalMilestoneScore;
+            sheet.Cells[$"I{row}"].Value = status.FinalScore;
+            sheet.Cells[$"J{row}"].Value = status.OverallScore;
+            sheet.Cells[$"K{row}"].Value = status.HasFinalSubmission ? "Yes" : "No";
+            sheet.Cells[$"L{row}"].Value = status.PassStatus;
+
+            // Highlight PASS/NOT PASS
+            if (status.IsPassed)
+            {
+                sheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80)); // Green
+                sheet.Cells[$"L{row}"].Style.Font.Bold = true;
+            }
+            else
+            {
+                sheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 0, 0)); // Red
+                sheet.Cells[$"L{row}"].Style.Font.Color.SetColor(Color.White);
+                sheet.Cells[$"L{row}"].Style.Font.Bold = true;
+            }
+
+            row++;
+        }
+
+        // Borders
+        if (row > 2)
+        {
+            var usedRange = sheet.Cells[1, 1, row - 1, 12];
+            usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            usedRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        }
+
+        sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+    }
+
+    #endregion
 
     public async Task<ResultModel<ComprehensiveSemesterReportDto>> GetComprehensiveSemesterReportAsync(int semesterId)
     {
