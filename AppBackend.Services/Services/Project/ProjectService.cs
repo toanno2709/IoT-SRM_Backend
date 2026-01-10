@@ -259,16 +259,10 @@ namespace AppBackend.Services.Services.Project
                 project.Status = dto.Status;
                 project.UpdatedAt = DateTime.UtcNow;
 
-                // Add to Project_Approval_History
-                var history = new ProjectApprovalHistory
-                {
-                    SubmissionId = 0,
-                    ReviewerId = dto.InstructorId,
-                    Action = dto.Status.ToUpper(),
-                    Comment = dto.Comment ?? "",
-                    ActedAt = DateTime.UtcNow
-                };
-                _db.ProjectApprovalHistories.Add(history);
+                // NOTE: We don't create ProjectApprovalHistory here because:
+                // - ProjectApprovalHistory is for milestone submission approvals (requires valid SubmissionId)
+                // - Project status changes are tracked via notifications sent to group members
+                // - Using SubmissionId = 0 causes foreign key constraint violations
 
                 // Send notification to leader + members
                 var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
@@ -571,18 +565,13 @@ namespace AppBackend.Services.Services.Project
                 project.Status = request.Status;
                 project.UpdatedAt = DateTime.UtcNow;
 
-                // 4. Create approval history record (students can view this)
-                var history = new ProjectApprovalHistory
-                {
-                    SubmissionId = 0, // 0 means general project status update
-                    ReviewerId = instructorId,
-                    Action = request.Status,
-                    Comment = request.Comment ?? "",
-                    ActedAt = DateTime.UtcNow
-                };
-                _db.ProjectApprovalHistories.Add(history);
+                // NOTE: We don't create ProjectApprovalHistory here because:
+                // - ProjectApprovalHistory requires a valid SubmissionId (foreign key to MilestoneSubmission)
+                // - Project status updates are for the entire project, not specific milestone submissions
+                // - Status changes are tracked via notifications and can be viewed in project history
+                // - Using SubmissionId = 0 causes database constraint violations
 
-                // 5. Send notifications to all group members
+                // 4. Send notifications to all group members
                 var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
                 foreach (var member in groupMembers)
                 {
@@ -599,10 +588,10 @@ namespace AppBackend.Services.Services.Project
                     _db.Notifications.Add(notification);
                 }
 
-                // 6. Save all changes
+                // 5. Save all changes
                 await _db.SaveChangesAsync();
 
-                // 7. Return response
+                // 6. Return response
                 return new ResultModel<UpdateProjectStatusResponseDto>
                 {
                     IsSuccess = true,
@@ -655,25 +644,50 @@ namespace AppBackend.Services.Services.Project
                     };
                 }
 
-                // Get approval history records for this project
-                var historyRecords = await _db.ProjectApprovalHistories
-                    .Include(h => h.Reviewer)
-                    .Include(h => h.Submission)
-                        .ThenInclude(s => s.MilestoneDef)
-                    .Where(h => h.Submission.ProjectId == projectId)
-                    .OrderByDescending(h => h.ActedAt)
+                // NOTE: ProjectApprovalHistory is for milestone submission approvals, not project status changes
+                // Project status changes are tracked via notifications
+                // To get status history, we query notifications of type "project_status" or "project_status_update"
+                
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                    .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+
+                if (project == null || project.Group?.GroupMembers == null || !project.Group.GroupMembers.Any())
+                {
+                    return new ResultModel<List<ProjectStatusHistoryDto>>
+                    {
+                        IsSuccess = true,
+                        ResponseCode = CommonMessageConstants.SUCCESS,
+                        Message = "No status history available",
+                        Data = new List<ProjectStatusHistoryDto>(),
+                        StatusCode = StatusCodes.Status200OK
+                    };
+                }
+
+                // Get notifications related to project status updates for group members
+                var memberIds = project.Group.GroupMembers.Select(gm => gm.UserId).ToList();
+                var statusNotifications = await _db.Notifications
+                    .Where(n => n.UserId.HasValue && 
+                               memberIds.Contains(n.UserId.Value) &&
+                               (n.Type == "project_status" || n.Type == "project_status_update") &&
+                               n.Title != null && n.Title.Contains(project.Title ?? ""))
+                    .OrderByDescending(n => n.CreatedAt)
                     .ToListAsync();
 
-                // Map to DTOs
-                var historyDtos = historyRecords.Select(h => new ProjectStatusHistoryDto
-                {
-                    HistoryId = h.HistoryId,
-                    Status = h.Action ?? "Unknown",
-                    Comment = h.Comment,
-                    ReviewerId = h.ReviewerId,
-                    ReviewerName = h.Reviewer?.FullName,
-                    ReviewedAt = h.ActedAt ?? DateTime.UtcNow
-                }).ToList();
+                // Extract status history from notifications
+                var historyDtos = statusNotifications
+                    .Select(n => new ProjectStatusHistoryDto
+                    {
+                        HistoryId = n.NotificationId,
+                        Status = ExtractStatusFromNotification(n.Message),
+                        Comment = ExtractCommentFromNotification(n.Message),
+                        ReviewerId = 0, // We don't have reviewer ID from notifications, use 0 as placeholder
+                        ReviewerName = "Instructor",
+                        ReviewedAt = n.CreatedAt ?? DateTime.UtcNow
+                    })
+                    .DistinctBy(h => new { h.Status, h.ReviewedAt })
+                    .ToList();
 
                 return new ResultModel<List<ProjectStatusHistoryDto>>
                 {
@@ -681,7 +695,7 @@ namespace AppBackend.Services.Services.Project
                     ResponseCode = CommonMessageConstants.SUCCESS,
                     Message = historyDtos.Count > 0 
                         ? $"Retrieved {historyDtos.Count} status history records for project {projectId}"
-                        : "No approval history found for this project",
+                        : "No status history found for this project",
                     Data = historyDtos,
                     StatusCode = StatusCodes.Status200OK
                 };
@@ -697,6 +711,46 @@ namespace AppBackend.Services.Services.Project
                     StatusCode = StatusCodes.Status500InternalServerError
                 };
             }
+        }
+
+        // Helper method to extract status from notification message
+        private string ExtractStatusFromNotification(string? message)
+        {
+            if (string.IsNullOrEmpty(message)) return "Unknown";
+
+            // Pattern: "marked project as {Status}" or "changed project status from 'X' to '{Status}'"
+            if (message.Contains("marked project as"))
+            {
+                var startIndex = message.IndexOf("marked project as") + "marked project as".Length;
+                var endIndex = message.IndexOf(".", startIndex);
+                if (endIndex == -1) endIndex = message.IndexOf("Comment:", startIndex);
+                if (endIndex == -1) endIndex = message.Length;
+                return message.Substring(startIndex, endIndex - startIndex).Trim();
+            }
+            else if (message.Contains("to '") && message.Contains("'. "))
+            {
+                var startIndex = message.IndexOf("to '") + 4;
+                var endIndex = message.IndexOf("'", startIndex);
+                if (endIndex > startIndex)
+                    return message.Substring(startIndex, endIndex - startIndex).Trim();
+            }
+
+            return "Unknown";
+        }
+
+        // Helper method to extract comment from notification message
+        private string? ExtractCommentFromNotification(string? message)
+        {
+            if (string.IsNullOrEmpty(message)) return null;
+
+            // Pattern: "Comment: {comment}"
+            var commentIndex = message.IndexOf("Comment:");
+            if (commentIndex >= 0)
+            {
+                return message.Substring(commentIndex + "Comment:".Length).Trim();
+            }
+
+            return null;
         }
     }
 }

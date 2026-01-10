@@ -618,7 +618,13 @@ public class AdminReportService : IAdminReportService
             CreatePassStatusSheet(sheet7, data.StudentPassStatus);
 
             var fileBytes = package.GetAsByteArray();
-            var fileName = $"ComprehensiveReport_Semester{semesterId}_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+            
+            // Generate file name using Semester Name
+            var semesterName = data.SemesterOverview?.SemesterName ?? $"Semester{semesterId}";
+            // Remove invalid file name characters
+            var invalidChars = System.IO.Path.GetInvalidFileNameChars();
+            var sanitizedSemesterName = string.Join("_", semesterName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries));
+            var fileName = $"{sanitizedSemesterName}_Reports.xlsx";
 
             return new ResultModel<ReportExportResponseDto>
             {
@@ -682,8 +688,7 @@ public class AdminReportService : IAdminReportService
         sheet.Cells[$"A{row}"].Value = "End Date";
         sheet.Cells[$"B{row++}"].Value = overview.EndDate?.ToString("yyyy-MM-dd");
         
-        sheet.Cells[$"A{row}"].Value = "Is Active";
-        sheet.Cells[$"B{row++}"].Value = overview.IsActive ? "Yes" : "No";
+        // Removed "Is Active" row
         
         row++;
         sheet.Cells[$"A{row}"].Value = "Total Classes";
