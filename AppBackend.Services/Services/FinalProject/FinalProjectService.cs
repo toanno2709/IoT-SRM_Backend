@@ -89,24 +89,71 @@ public class FinalProjectService : IFinalProjectService
             await _finalProjectRepository.AddAsync(submission);
             await _finalProjectRepository.SaveChangesAsync();
 
-            // 4. Send notification to instructor
+            // 4. Send notification to main instructor
             var instructorId = project.Group?.Class?.InstructorId;
             if (instructorId.HasValue)
             {
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = project.Group?.ClassId,
+                    groupId = project.GroupId,
+                    projectId = project.ProjectId,
+                    finalSubmissionId = submission.FinalSubmissionId
+                });
+
                 var notification = new BusinessObjects.Models.Notification
                 {
                     UserId = instructorId.Value,
                     Title = "New Final Project Submission",
                     Message = $"Project '{project.Title}' has submitted their final deliverables",
                     Type = "final_submission",
+                    Data = notificationData,
                     IsRead = false,
                     CreatedAt = DateTime.UtcNow
                 };
                 _context.Notifications.Add(notification);
-                await _context.SaveChangesAsync();
             }
 
-            // 5. Map to response DTO
+            // 5. Send notification to all assigned graders
+            var classId = project.Group?.ClassId;
+            if (classId.HasValue)
+            {
+                var graders = await _context.ClassGraders
+                    .Where(cg => cg.ClassId == classId.Value && cg.IsActive)
+                    .Include(cg => cg.Instructor)
+                    .ToListAsync();
+
+                var groupId = project.Group!.GroupId;
+                
+                // Create Data JSON for grader notifications
+                var graderNotificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = classId.Value,
+                    groupId = groupId,
+                    projectId = project.ProjectId,
+                    finalSubmissionId = submission.FinalSubmissionId
+                });
+                
+                foreach (var grader in graders)
+                {
+                    var graderNotification = new BusinessObjects.Models.Notification
+                    {
+                        UserId = grader.InstructorId,
+                        Title = "New Final Project Submission to Grade",
+                        Message = $"Project '{project.Title}' from {project.Group.GroupName} has submitted their final project and is ready for grading (Class ID: {classId}, Group ID: {groupId})",
+                        Type = "final_submission",
+                        Data = graderNotificationData,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.Notifications.Add(graderNotification);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // 6. Map to response DTO
             var response = await MapToResponseDto(submission, project);
 
             return new ResultModel<FinalProjectSubmissionResponseDto>
@@ -606,6 +653,15 @@ public class FinalProjectService : IFinalProjectService
             var groupMembers = submission.Project?.Group?.GroupMembers;
             if (groupMembers != null)
             {
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = submission.Project?.Group?.ClassId,
+                    groupId = submission.Project?.GroupId,
+                    projectId = submission.ProjectId,
+                    finalSubmissionId = submission.FinalSubmissionId
+                });
+
                 foreach (var member in groupMembers)
                 {
                     var notification = new BusinessObjects.Models.Notification
@@ -614,6 +670,7 @@ public class FinalProjectService : IFinalProjectService
                         Title = "Final Project Graded",
                         Message = $"Your final project '{submission.Project?.Title}' has been graded: {request.Grade}/100",
                         Type = "final_graded",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };

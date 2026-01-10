@@ -107,12 +107,21 @@ namespace AppBackend.Services.Services.Project
 
                 if (instructor != null)
                 {
+                    // Create Data JSON for notification
+                    var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        classId = group.ClassId,
+                        groupId = group.GroupId,
+                        projectId = project.ProjectId
+                    });
+
                     var note = new AppBackend.BusinessObjects.Models.Notification
                     {
                         UserId = instructor.UserId,
                         Title = $"New project submitted by group {group.GroupName}",
                         Message = $"Group '{group.GroupName}' has submitted a new project: '{dto.Title}'",
                         Type = "project_submitted",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };
@@ -266,6 +275,15 @@ namespace AppBackend.Services.Services.Project
 
                 // Send notification to leader + members
                 var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = project.Group?.ClassId,
+                    groupId = project.GroupId,
+                    projectId = project.ProjectId
+                });
+
                 foreach (var m in groupMembers)
                 {
                     _db.Notifications.Add(new AppBackend.BusinessObjects.Models.Notification
@@ -274,6 +292,7 @@ namespace AppBackend.Services.Services.Project
                         Title = $"Project '{project.Title}' status updated",
                         Message = $"Instructor marked project as {dto.Status}. {(string.IsNullOrEmpty(dto.Comment) ? "" : "Comment: " + dto.Comment)}",
                         Type = "project_status",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     });
@@ -573,6 +592,15 @@ namespace AppBackend.Services.Services.Project
 
                 // 4. Send notifications to all group members
                 var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = project.Group?.ClassId,
+                    groupId = project.GroupId,
+                    projectId = project.ProjectId
+                });
+
                 foreach (var member in groupMembers)
                 {
                     var notification = new AppBackend.BusinessObjects.Models.Notification
@@ -582,6 +610,7 @@ namespace AppBackend.Services.Services.Project
                         Message = $"Instructor {instructor.FullName} changed project status from '{oldStatus}' to '{request.Status}'. " +
                                   $"{(!string.IsNullOrEmpty(request.Comment) ? $"Comment: {request.Comment}" : "")}",
                         Type = "project_status_update",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };

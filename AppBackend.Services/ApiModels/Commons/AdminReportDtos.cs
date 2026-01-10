@@ -418,10 +418,10 @@ public class StudentPassStatusDto
     public string? GroupName { get; set; }
     public int? ProjectId { get; set; }
     public string? ProjectTitle { get; set; }
-    public string? ProjectStatus { get; set; }
     
     // Grades
     public decimal TotalMilestoneScore { get; set; } // Sum of weighted milestone scores
+    public decimal? AverageGraderScore { get; set; } // Average score from all graders
     public decimal? FinalScore { get; set; }
     public decimal? OverallScore { get; set; } // 40% milestone + 60% final
     

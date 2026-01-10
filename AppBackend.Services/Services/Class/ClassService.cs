@@ -1,44 +1,53 @@
 using AppBackend.BusinessObjects.Constants;
+using AppBackend.BusinessObjects.Exceptions;
+using AppBackend.BusinessObjects.Data;
 using AppBackend.BusinessObjects.Models;
+using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Repositories.Repositories.ClassRepo;
-using AppBackend.Repositories.Repositories.GroupRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
 using AppBackend.Repositories.Repositories.UserRepo;
-using AppBackend.Services.ApiModels.Commons;
-using AutoMapper;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using AppBackend.Services.Services.Notification;
 
 namespace AppBackend.Services.Services.Class;
 
 public class ClassService : IClassService
 {
+    private readonly IotShowroomContext _context;
+    private readonly ILogger<ClassService> _logger;
+    private readonly INotificationService _notificationService;
     private readonly IClassRepository _classRepo;
     private readonly ISemesterRepository _semesterRepo;
     private readonly IUserRepository _userRepo;
-    private readonly IGroupRepository _groupRepo;
-    private readonly IMapper _mapper;
-    private readonly AppBackend.BusinessObjects.Data.IotShowroomContext _context;
 
     public ClassService(
-        IClassRepository classRepo, 
+        IotShowroomContext context, 
+        ILogger<ClassService> logger,
+        INotificationService notificationService,
+        IClassRepository classRepo,
         ISemesterRepository semesterRepo,
-        IUserRepository userRepo,
-        IGroupRepository groupRepo,
-        IMapper mapper,
-        AppBackend.BusinessObjects.Data.IotShowroomContext context)
+        IUserRepository userRepo)
     {
+        _context = context;
+        _logger = logger;
+        _notificationService = notificationService;
         _classRepo = classRepo;
         _semesterRepo = semesterRepo;
         _userRepo = userRepo;
-        _groupRepo = groupRepo;
-        _mapper = mapper;
-        _context = context;
     }
 
     public async Task<ResultModel<List<ClassResponseDto>>> GetAssignedClassesAsync(int instructorId)
     {
-        var classes = await _classRepo.GetAssignedClassesAsync(instructorId);
+        var classes = await _context.Classes
+            .Include(c => c.Instructor)
+            .Include(c => c.Semester)
+            .Include(c => c.ClassEnrollments)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .Where(c => c.InstructorId == instructorId)
+            .ToListAsync();
         
         var dtos = classes.Select(c => new ClassResponseDto
         {
@@ -70,7 +79,19 @@ public class ClassService : IClassService
 
     public async Task<ResultModel<ClassDetailDto>> GetClassDetailAsync(int classId)
     {
-        var classEntity = await _classRepo.GetClassWithDetailsAsync(classId);
+        var classEntity = await _context.Classes
+            .Include(c => c.Semester)
+            .Include(c => c.Instructor)
+            .Include(c => c.ClassEnrollments)
+                .ThenInclude(ce => ce.Student)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.GroupMembers)
+                    .ThenInclude(gm => gm.User)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Leader)
+            .Include(c => c.Groups)
+                .ThenInclude(g => g.Projects)
+            .FirstOrDefaultAsync(c => c.ClassId == classId);
         
         if (classEntity == null)
         {
@@ -796,12 +817,80 @@ public class ClassService : IClassService
             }
 
             await _context.SaveChangesAsync();
+
+            // G?i notification cho sinh viên v? tình tr?ng Pass/Not Pass và ?i?m s?
+            foreach (var enrollment in classEntity.ClassEnrollments.Where(e => e.StudentId.HasValue))
+            {
+                var studentId = enrollment.StudentId.Value;
+                
+                // L?y thông tin StudentCourseHistory hi?n t?i c?a sinh viên
+                var history = await _context.StudentCourseHistories
+                    .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+
+                if (history != null)
+                {
+                    // T?o n?i dung thông báo
+                    string title = $"K?t qu? h?c t?p - L?p {classEntity.ClassName}";
+                    string message = $"L?p h?c '{classEntity.ClassName}' ?ã hoàn thành.\n\n";
+
+                    // Thêm thông tin v? ?i?m s? và tình tr?ng Pass/Not Pass
+                    if (history.FinalGrade.HasValue)
+                    {
+                        message += $"?? ?i?m s? cu?i k?: {history.FinalGrade.Value:F2}/10\n";
+                        
+                        if (history.Status == "Pass")
+                        {
+                            message += $"? K?t qu?: ??T\n";
+                        }
+                        else if (history.Status == "Not Pass")
+                        {
+                            message += $"? K?t qu?: KHÔNG ??T\n";
+                        }
+
+                        // Thêm thông tin ?i?m t? gi?ng viên khác n?u có
+                        if (history.AverageGradeFromOtherInstructors.HasValue)
+                        {
+                            message += $"?? ?i?m trung bình t? gi?ng viên khác: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
+                        }
+                    }
+                    else
+                    {
+                        message += $"? K?t qu?: KHÔNG ??T\n";
+                        message += "?? Lý do: Ch?a có ?i?m s? cu?i k? ho?c ch?a n?p bài\n";
+                    }
+
+                    // Thêm ghi chú n?u c?n h?c l?i
+                    if (history.IsRetake == true)
+                    {
+                        message += "\n?? B?n c?n ??ng ký h?c l?i môn h?c này.";
+                    }
+
+                    // G?i notification v?i data ch?a userId
+                    var notificationRequest = new NotificationCreateRequestDto
+                    {
+                        UserId = studentId,
+                        Title = title,
+                        Message = message,
+                        Type = "course_completion"
+                    };
+
+                    try
+                    {
+                        await _notificationService.SendNotificationAsync(notificationRequest);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Failed to send notification to student {studentId}");
+                        // Continue with other students even if notification fails
+                    }
+                }
+            }
         }
 
         // Prepare response
         var totalEnrolled = classEntity.ClassEnrollments?.Count ?? 0;
         var studentsInGroups = classEntity.Groups?
-            .SelectMany(g => g.GroupMembers ?? new List<GroupMember>())
+            .SelectMany(g => g.GroupMembers ?? Enumerable.Empty<GroupMember>())
             .Select(gm => gm.UserId)
             .Distinct()
             .Count() ?? 0;

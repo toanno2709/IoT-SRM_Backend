@@ -656,6 +656,9 @@ public class StudentGradeService : IStudentGradeService
                 }
             }
 
+            // Add Overall Grade column right after milestones
+            worksheet.Cells[headerRow, col++].Value = "Overall Grade";
+
             // Add columns for each grader's grade
             foreach (var grader in classGraders)
             {
@@ -664,8 +667,6 @@ public class StudentGradeService : IStudentGradeService
             
             // Add Final Submission Average column
             worksheet.Cells[headerRow, col++].Value = "Final Submission (Avg)";
-            worksheet.Cells[headerRow, col++].Value = "Overall Grade";
-            worksheet.Cells[headerRow, col++].Value = "Status";
 
             // Style header row
             using (var range = worksheet.Cells[headerRow, 1, headerRow, col - 1])
@@ -721,94 +722,25 @@ public class StudentGradeService : IStudentGradeService
                     }
                 }
 
-                // Add individual grader grades and calculate average
-                List<decimal> graderGradesForAverage = new List<decimal>();
-                
-                if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
-                {
-                    var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
-                    
-                    foreach (var classGrader in classGraders)
-                    {
-                        var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
-                        
-                        if (graderGrade != default)
-                        {
-                            worksheet.Cells[row, col].Value = graderGrade.Grade;
-                            worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
-                            
-                            // Color coding
-                            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                            if (graderGrade.Grade >= 80)
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                            }
-                            else if (graderGrade.Grade >= 50)
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-                            }
-                            else
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                            }
-                            
-                            // Add to average calculation
-                            graderGradesForAverage.Add(graderGrade.Grade);
-                        }
-                        else
-                        {
-                            worksheet.Cells[row, col].Value = "N/A";
-                        }
-                        col++;
-                    }
-                }
-                else
-                {
-                    // No grades from any grader
-                    for (int i = 0; i < classGraders.Count; i++)
-                    {
-                        worksheet.Cells[row, col++].Value = "N/A";
-                    }
-                }
-
-                // Calculate Final Submission Average from grader grades
-                decimal? calculatedAverage = null;
-                if (graderGradesForAverage.Any())
-                {
-                    calculatedAverage = graderGradesForAverage.Average();
-                }
-                
-                if (calculatedAverage.HasValue)
-                {
-                    worksheet.Cells[row, col].Value = calculatedAverage.Value;
-                    worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
-                    
-                    // Color coding for final submission
-                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    if (calculatedAverage.Value >= 80)
-                    {
-                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                    }
-                    else if (calculatedAverage.Value >= 50)
-                    {
-                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-                    }
-                    else
-                    {
-                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                    }
-                }
-                else
-                {
-                    worksheet.Cells[row, col].Value = "N/A";
-                }
-                col++;
-
-                // Overall Grade - recalculate with the correct final submission average
+                // Calculate Overall Grade first (needed for this position)
                 decimal? recalculatedOverallGrade = null;
+                decimal? calculatedAverage = null;
+                List<decimal> graderGradesForAverage = new List<decimal>();
                 
                 if (studentGrade.ProjectId.HasValue)
                 {
+                    // Get grader grades for calculating average
+                    if (allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
+                    {
+                        var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                        graderGradesForAverage = graderGrades.Select(gg => gg.Grade).ToList();
+                        
+                        if (graderGradesForAverage.Any())
+                        {
+                            calculatedAverage = graderGradesForAverage.Average();
+                        }
+                    }
+
                     // Get project milestones and their weights
                     var projectMilestones = await _context.ProjectMilestones
                         .Where(pm => pm.ProjectId == studentGrade.ProjectId.Value)
@@ -845,7 +777,8 @@ public class StudentGradeService : IStudentGradeService
 
                     recalculatedOverallGrade = totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : null;
                 }
-                
+
+                // Add Overall Grade column (right after milestones)
                 if (recalculatedOverallGrade.HasValue)
                 {
                     worksheet.Cells[row, col].Value = recalculatedOverallGrade.Value;
@@ -872,7 +805,78 @@ public class StudentGradeService : IStudentGradeService
                 }
                 col++;
 
-                worksheet.Cells[row, col++].Value = studentGrade.Status;
+                // Add individual grader grades
+                if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
+                {
+                    var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                    
+                    foreach (var classGrader in classGraders)
+                    {
+                        var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
+                        
+                        if (graderGrade != default)
+                        {
+                            worksheet.Cells[row, col].Value = graderGrade.Grade;
+                            worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                            
+                            // Color coding
+                            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            if (graderGrade.Grade >= 80)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                            }
+                            else if (graderGrade.Grade >= 50)
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                            }
+                            else
+                            {
+                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                            }
+                        }
+                        else
+                        {
+                            worksheet.Cells[row, col].Value = "N/A";
+                        }
+                        col++;
+                    }
+                }
+                else
+                {
+                    // No grades from any grader
+                    for (int i = 0; i < classGraders.Count; i++)
+                    {
+                        worksheet.Cells[row, col++].Value = "N/A";
+                    }
+                }
+
+                // Calculate Final Submission Average from grader grades
+                if (calculatedAverage.HasValue)
+                {
+                    worksheet.Cells[row, col].Value = calculatedAverage.Value;
+                    worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                    
+                    // Color coding for final submission
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    if (calculatedAverage.Value >= 80)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                    }
+                    else if (calculatedAverage.Value >= 50)
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                    }
+                    else
+                    {
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                    }
+                }
+                else
+                {
+                    worksheet.Cells[row, col].Value = "N/A";
+                }
+                col++;
+
                 row++;
             }
 

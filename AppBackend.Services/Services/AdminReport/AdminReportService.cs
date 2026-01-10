@@ -959,24 +959,22 @@ public class AdminReportService : IAdminReportService
     private void CreatePassStatusSheet(ExcelWorksheet sheet, List<StudentPassStatusDto> statuses)
     {
         // Header styling
-        sheet.Cells["A1:L1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        sheet.Cells["A1:L1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(68, 114, 196));
-        sheet.Cells["A1:L1"].Style.Font.Color.SetColor(Color.White);
-        sheet.Cells["A1:L1"].Style.Font.Bold = true;
+        sheet.Cells["A1:J1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        sheet.Cells["A1:J1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(68, 114, 196));
+        sheet.Cells["A1:J1"].Style.Font.Color.SetColor(Color.White);
+        sheet.Cells["A1:J1"].Style.Font.Bold = true;
 
-        // Headers
+        // Headers - removed "Final Submitted" and "Project Status", added "Average Grader Score"
         sheet.Cells["A1"].Value = "Student ID";
         sheet.Cells["B1"].Value = "Full Name";
         sheet.Cells["C1"].Value = "Email";
         sheet.Cells["D1"].Value = "Class";
         sheet.Cells["E1"].Value = "Group";
         sheet.Cells["F1"].Value = "Project";
-        sheet.Cells["G1"].Value = "Project Status";
-        sheet.Cells["H1"].Value = "Milestone Score";
-        sheet.Cells["I1"].Value = "Final Score";
-        sheet.Cells["J1"].Value = "Overall Score";
-        sheet.Cells["K1"].Value = "Final Submitted";
-        sheet.Cells["L1"].Value = "RESULT";
+        sheet.Cells["G1"].Value = "Milestone Score";
+        sheet.Cells["H1"].Value = "Average Grader Score";
+        sheet.Cells["I1"].Value = "Overall Score";
+        sheet.Cells["J1"].Value = "RESULT";
 
         // Data
         int row = 2;
@@ -988,26 +986,24 @@ public class AdminReportService : IAdminReportService
             sheet.Cells[$"D{row}"].Value = status.ClassName;
             sheet.Cells[$"E{row}"].Value = status.GroupName;
             sheet.Cells[$"F{row}"].Value = status.ProjectTitle;
-            sheet.Cells[$"G{row}"].Value = status.ProjectStatus;
-            sheet.Cells[$"H{row}"].Value = status.TotalMilestoneScore;
-            sheet.Cells[$"I{row}"].Value = status.FinalScore;
-            sheet.Cells[$"J{row}"].Value = status.OverallScore;
-            sheet.Cells[$"K{row}"].Value = status.HasFinalSubmission ? "Yes" : "No";
-            sheet.Cells[$"L{row}"].Value = status.PassStatus;
+            sheet.Cells[$"G{row}"].Value = status.TotalMilestoneScore;
+            sheet.Cells[$"H{row}"].Value = status.AverageGraderScore;
+            sheet.Cells[$"I{row}"].Value = status.OverallScore;
+            sheet.Cells[$"J{row}"].Value = status.PassStatus;
 
-            // Highlight PASS/NOT PASS
+            // Highlight PASS/NOT PASS based on correct logic
             if (status.IsPassed)
             {
-                sheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                sheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80)); // Green
-                sheet.Cells[$"L{row}"].Style.Font.Bold = true;
+                sheet.Cells[$"J{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[$"J{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80)); // Green
+                sheet.Cells[$"J{row}"].Style.Font.Bold = true;
             }
             else
             {
-                sheet.Cells[$"L{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                sheet.Cells[$"L{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 0, 0)); // Red
-                sheet.Cells[$"L{row}"].Style.Font.Color.SetColor(Color.White);
-                sheet.Cells[$"L{row}"].Style.Font.Bold = true;
+                sheet.Cells[$"J{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[$"J{row}"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 0, 0)); // Red
+                sheet.Cells[$"J{row}"].Style.Font.Color.SetColor(Color.White);
+                sheet.Cells[$"J{row}"].Style.Font.Bold = true;
             }
 
             row++;
@@ -1016,7 +1012,7 @@ public class AdminReportService : IAdminReportService
         // Borders
         if (row > 2)
         {
-            var usedRange = sheet.Cells[1, 1, row - 1, 12];
+            var usedRange = sheet.Cells[1, 1, row - 1, 10];
             usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
@@ -1327,6 +1323,13 @@ public class AdminReportService : IAdminReportService
                 ? finalSubmissions.FirstOrDefault(fs => fs.ProjectId == project.ProjectId)
                 : null;
 
+            // Get average grader score from graders
+            decimal? averageGraderScore = null;
+            if (finalSubmission?.FinalSubmissionGrades?.Any() == true)
+            {
+                averageGraderScore = finalSubmission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+            }
+
             decimal? finalScore = finalSubmission?.Grade;
             
             // Calculate overall: 40% milestone + 60% final
@@ -1338,6 +1341,8 @@ public class AdminReportService : IAdminReportService
 
             bool hasFinalSubmission = finalSubmission != null;
             bool isProjectCompleted = project?.Status == "Completed";
+            
+            // Fix PASS logic: check overallScore >= 50 AND project completed AND has final submission
             bool isPassed = overallScore.HasValue && 
                            overallScore.Value >= 50 && 
                            isProjectCompleted && 
@@ -1348,15 +1353,15 @@ public class AdminReportService : IAdminReportService
                 StudentId = s.UserId,
                 StudentName = s.FullName,
                 StudentEmail = s.Email,
-                StudentCode = null, // User model doesn't have StudentCode property
+                StudentCode = null,
                 ClassId = enrollment?.ClassId,
                 ClassName = enrollment?.Class?.ClassName,
                 GroupId = groupMember?.GroupId,
                 GroupName = groupMember?.Group?.GroupName,
                 ProjectId = project?.ProjectId,
                 ProjectTitle = project?.Title,
-                ProjectStatus = project?.Status,
                 TotalMilestoneScore = Math.Round(totalMilestoneScore, 2),
+                AverageGraderScore = averageGraderScore.HasValue ? Math.Round(averageGraderScore.Value, 2) : null,
                 FinalScore = finalScore.HasValue ? Math.Round(finalScore.Value, 2) : null,
                 OverallScore = overallScore.HasValue ? Math.Round(overallScore.Value, 2) : null,
                 HasFinalSubmission = hasFinalSubmission,

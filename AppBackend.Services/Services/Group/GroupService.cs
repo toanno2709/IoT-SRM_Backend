@@ -32,7 +32,7 @@ namespace AppBackend.Services.Services.Group
             _notificationHubService = notificationHubService;
         }
 
-        private async Task SendNotificationAsync(int userId, string title, string message, string type = "system")
+        private async Task SendNotificationAsync(int userId, string title, string message, string type = "system", string? data = null)
         {
             try
             {
@@ -42,6 +42,7 @@ namespace AppBackend.Services.Services.Group
                     Title = title,
                     Message = message,
                     Type = type,
+                    Data = data,
                     IsRead = false,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -60,6 +61,7 @@ namespace AppBackend.Services.Services.Group
                         Title = title,
                         Message = message,
                         Type = type,
+                        Data = data,
                         IsRead = false,
                         CreatedAt = note.CreatedAt
                     };
@@ -142,8 +144,17 @@ namespace AppBackend.Services.Services.Group
             };
             _db.GroupMembers.Add(gm);
             await _db.SaveChangesAsync();
+        
+            // Create Data JSON for notification
+            var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                classId = group.ClassId,
+                groupId = group.GroupId,
+                groupName = group.GroupName
+            });
+        
             // send notification to creator
-            await SendNotificationAsync(creatorUserId, "Group Created", $"You have successfully created group '{group.GroupName}'.", "group_create");
+            await SendNotificationAsync(creatorUserId, "Group Created", $"You have successfully created group '{group.GroupName}'.", "group_create", notificationData);
 
             return new GroupCreateResultDto(group.GroupId, group.GroupName, group.LeaderId, group.ClassId);
         }
@@ -624,12 +635,21 @@ namespace AppBackend.Services.Services.Group
                         };
                         _db.GroupMembers.Add(member);
 
+                        // Create Data JSON for notification
+                        var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            classId = classId,
+                            groupId = group.GroupId,
+                            groupName = groupName
+                        });
+
                         // Send notification to each student
                         await SendNotificationAsync(
                             student.UserId,
                             "Added to Group",
                             $"You have been automatically assigned to '{groupName}' in {classEntity.ClassName}",
-                            "group_create"
+                            "group_create",
+                            notificationData
                         );
                     }
 

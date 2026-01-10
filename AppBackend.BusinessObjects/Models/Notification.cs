@@ -33,6 +33,15 @@ public partial class Notification
     [Precision(0)]
     public DateTime? CreatedAt { get; set; }
 
+    /// <summary>
+    /// JSON string containing notification-specific data
+    /// - For group_create: {classId, groupId, groupName}
+    /// - For project_status: {classId, groupId, projectId}
+    /// - For final_submission/final_graded: {classId, groupId, projectId, finalSubmissionId}
+    /// </summary>
+    [Column("data")]
+    public string? Data { get; set; }
+
     [ForeignKey("UserId")]
     [InverseProperty("Notifications")]
     public virtual User? User { get; set; }
