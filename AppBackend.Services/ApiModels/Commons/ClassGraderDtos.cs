@@ -100,6 +100,7 @@ public class InstructorGradeDto
     public int InstructorId { get; set; }
     public string? InstructorName { get; set; }
     public decimal Grade { get; set; }
+    public string? Feedback { get; set; }
     public DateTime GradedAt { get; set; }
 }
 

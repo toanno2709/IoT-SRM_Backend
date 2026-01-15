@@ -85,14 +85,25 @@ public class MilestoneGradingService : IMilestoneGradingService
                 var classId = project.Group.ClassId;
                 var groupId = project.Group.GroupId;
                 
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = classId,
+                    groupId = groupId,
+                    projectId = request.ProjectId,
+                    milestoneDefId = request.MilestoneDefId,
+                    score = request.Score
+                });
+                
                 foreach (var member in project.Group.GroupMembers)
                 {
                     var notification = new AppBackend.BusinessObjects.Models.Notification
                     {
                         UserId = member.UserId,
                         Title = "Milestone Graded",
-                        Message = $"Your milestone '{milestone.Title}' has been graded by {instructor?.FullName}. Score: {request.Score}/100 (Class ID: {classId}, Group ID: {groupId})",
+                        Message = $"Your milestone '{milestone.Title}' has been graded by {instructor?.FullName}. Score: {request.Score}/100",
                         Type = "milestone_graded",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };

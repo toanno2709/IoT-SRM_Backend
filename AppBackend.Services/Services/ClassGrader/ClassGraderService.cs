@@ -155,6 +155,14 @@ public class ClassGraderService : IClassGraderService
                     .FirstOrDefault(fsg => fsg.InstructorId == instructorId);
 
                 var totalGrades = finalSubmission?.FinalSubmissionGrades.Count ?? 0;
+                
+                // Calculate average from grader grades dynamically
+                decimal? averageGraderGrade = null;
+                if (finalSubmission?.FinalSubmissionGrades?.Any() == true)
+                {
+                    averageGraderGrade = finalSubmission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+                }
+                
                 string gradingStatus;
                 
                 if (finalSubmission == null)
@@ -191,7 +199,7 @@ public class ClassGraderService : IClassGraderService
                     SubmittedAt = finalSubmission?.SubmittedAt,
                     HasMyGrade = myGrade != null,
                     MyGrade = myGrade?.Grade,
-                    AverageGrade = finalSubmission?.Grade,
+                    AverageGrade = averageGraderGrade,
                     TotalGradesCount = totalGrades,
                     GradingStatus = gradingStatus
                 };
@@ -271,6 +279,14 @@ public class ClassGraderService : IClassGraderService
             var myGrade = submission.FinalSubmissionGrades
                 .FirstOrDefault(fsg => fsg.InstructorId == instructorId);
 
+            // Calculate average from grader grades (NOT from submission.Grade)
+            // submission.Grade is reserved for main class instructor
+            decimal? averageGraderGrade = null;
+            if (submission.FinalSubmissionGrades.Any())
+            {
+                averageGraderGrade = submission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+            }
+
             var result = new GraderFinalSubmissionDetailDto
             {
                 FinalSubmissionId = submission.FinalSubmissionId,
@@ -291,13 +307,14 @@ public class ClassGraderService : IClassGraderService
                 SubmissionNotes = submission.SubmissionNotes,
                 SubmittedAt = submission.SubmittedAt,
                 LastUpdatedAt = submission.LastUpdatedAt,
-                AverageGrade = submission.Grade,
+                AverageGrade = averageGraderGrade,
                 AllGrades = submission.FinalSubmissionGrades
                     .Select(fsg => new InstructorGradeDto
                     {
                         InstructorId = fsg.InstructorId,
                         InstructorName = fsg.Instructor.FullName,
                         Grade = fsg.Grade,
+                        Feedback = fsg.Feedback,
                         GradedAt = fsg.GradedAt
                     })
                     .OrderByDescending(g => g.GradedAt)
@@ -407,8 +424,7 @@ public class ClassGraderService : IClassGraderService
 
             await _context.SaveChangesAsync();
 
-            // Reload to get updated average (trigger will have calculated it)
-            await _context.Entry(submission).ReloadAsync();
+            // Reload grades to get the latest data
             await _context.Entry(submission).Collection(s => s.FinalSubmissionGrades).LoadAsync();
 
             // Load instructor info for all grades
@@ -420,16 +436,38 @@ public class ClassGraderService : IClassGraderService
             var myGrade = submission.FinalSubmissionGrades
                 .First(fsg => fsg.InstructorId == instructorId);
 
+            // Calculate average from grader grades (NOT from submission.Grade)
+            // submission.Grade is reserved for main class instructor
+            decimal? averageGraderGrade = null;
+            if (submission.FinalSubmissionGrades.Any())
+            {
+                averageGraderGrade = submission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+            }
+
             // Send notification to group members
             var groupMembers = submission.Project.Group.GroupMembers.ToList();
             foreach (var member in groupMembers)
             {
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = submission.Project.Group.ClassId,
+                    groupId = submission.Project.GroupId,
+                    projectId = submission.ProjectId,
+                    finalSubmissionId = submission.FinalSubmissionId,
+                    gradeId = myGrade.GradeId,
+                    instructorId = instructorId
+                });
+
                 var notification = new BusinessObjects.Models.Notification
                 {
                     UserId = member.UserId,
-                    Title = "Final Project Graded",
-                    Message = $"Your final project '{submission.Project.Title}' has been graded by {myGrade.Instructor.FullName}. Current average: {submission.Grade:F2}/100",
-                    Type = "final_graded",
+                    Title = "Final Project Graded by Instructor",
+                    Message = averageGraderGrade.HasValue 
+                        ? $"Your final project '{submission.Project.Title}' has been graded by {myGrade.Instructor.FullName}. Current grader average: {averageGraderGrade.Value:F2}/100"
+                        : $"Your final project '{submission.Project.Title}' has been graded by {myGrade.Instructor.FullName}.",
+                    Type = "grader_grade_submitted",
+                    Data = notificationData,
                     IsRead = false,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -447,7 +485,7 @@ public class ClassGraderService : IClassGraderService
                 Grade = myGrade.Grade,
                 Feedback = myGrade.Feedback,
                 GradedAt = myGrade.GradedAt,
-                AverageGrade = submission.Grade,
+                AverageGrade = averageGraderGrade,
                 TotalGradesCount = submission.FinalSubmissionGrades.Count,
                 AllGrades = submission.FinalSubmissionGrades
                     .Select(fsg => new InstructorGradeDto
@@ -455,6 +493,7 @@ public class ClassGraderService : IClassGraderService
                         InstructorId = fsg.InstructorId,
                         InstructorName = fsg.Instructor.FullName,
                         Grade = fsg.Grade,
+                        Feedback = fsg.Feedback,
                         GradedAt = fsg.GradedAt
                     })
                     .OrderByDescending(g => g.GradedAt)

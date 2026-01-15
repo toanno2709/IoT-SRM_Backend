@@ -306,6 +306,19 @@ public class ClassService : IClassService
             };
         }
 
+        // Validate semester is active
+        if (semester.IsActive != true)
+        {
+            return new ResultModel<ClassResponseDto>
+            {
+                IsSuccess = false,
+                ResponseCode = "SEMESTER_NOT_ACTIVE",
+                Message = $"Cannot create class: Semester '{semester.Name}' ({semester.Code}) is not active",
+                Data = null,
+                StatusCode = StatusCodes.Status400BadRequest
+            };
+        }
+
         // Check if class name already exists in this semester
         var exists = await _classRepo.ClassNameExistsAsync(request.ClassName, request.SemesterId);
         if (exists)
@@ -661,6 +674,110 @@ public class ClassService : IClassService
             }
         }
 
+        // Validation when changing to "Completed"
+        if (request.Status == "Completed")
+        {
+            var validationErrors = new List<string>();
+
+            // Get all projects in this class with their milestones and final submissions
+            var projects = await _context.Projects
+                .Include(p => p.Group)
+                .Include(p => p.ProjectMilestones)
+                    .ThenInclude(pm => pm.MilestoneEvaluations)
+                .Include(p => p.FinalProjectSubmission)
+                    .ThenInclude(fps => fps!.FinalSubmissionGrades)
+                .Where(p => p.Group!.ClassId == classId && 
+                           p.Status != null && 
+                           p.Status.ToLower() == "approved")
+                .ToListAsync();
+
+            if (projects.Any())
+            {
+                // Check if all milestones are graded
+                foreach (var project in projects)
+                {
+                    var milestones = project.ProjectMilestones ?? new List<BusinessObjects.Models.ProjectMilestone>();
+                    
+                    foreach (var milestone in milestones)
+                    {
+                        var hasEvaluation = milestone.MilestoneEvaluations != null && 
+                                          milestone.MilestoneEvaluations.Any();
+                        
+                        if (!hasEvaluation)
+                        {
+                            validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - Milestone '{milestone.Title}' has not been graded yet");
+                        }
+                    }
+                }
+
+                // Check if instructor has graded all final submissions
+                foreach (var project in projects)
+                {
+                    if (project.FinalProjectSubmission == null)
+                    {
+                        validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - No final submission found");
+                    }
+                    else
+                    {
+                        // Check if instructor has graded
+                        if (project.FinalProjectSubmission.Grade == null)
+                        {
+                            validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - Final submission has not been graded by instructor yet");
+                        }
+                    }
+                }
+
+                // Check if all assigned graders have graded
+                var activeGraders = await _context.ClassGraders
+                    .Where(cg => cg.ClassId == classId && cg.IsActive)
+                    .ToListAsync();
+
+                if (activeGraders.Any())
+                {
+                    foreach (var project in projects)
+                    {
+                        if (project.FinalProjectSubmission != null)
+                        {
+                            var submissionGrades = project.FinalProjectSubmission.FinalSubmissionGrades ?? new List<FinalSubmissionGrade>();
+                            var gradedInstructorIds = submissionGrades.Select(g => g.InstructorId).ToList();
+
+                            foreach (var grader in activeGraders)
+                            {
+                                if (!gradedInstructorIds.Contains(grader.InstructorId))
+                                {
+                                    var graderInfo = await _context.Users
+                                        .FirstOrDefaultAsync(u => u.UserId == grader.InstructorId);
+                                    
+                                    validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - Grader '{graderInfo?.FullName ?? "Unknown"}' has not graded yet");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If there are validation errors, return error response
+            if (validationErrors.Any())
+            {
+                return new ResultModel<ChangeClassStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "GRADING_INCOMPLETE",
+                    Message = $"Cannot change status to 'Completed': Not all grading requirements are met. Found {validationErrors.Count} issue(s).",
+                    Data = new ChangeClassStatusResponseDto
+                    {
+                        ClassId = classId,
+                        ClassName = classEntity.ClassName,
+                        OldStatus = oldStatus,
+                        NewStatus = oldStatus, // Keep old status
+                        ChangedAt = DateTime.UtcNow,
+                        Warnings = validationErrors
+                    },
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+        }
+
         // Update class status
         classEntity.Status = request.Status;
         await _context.SaveChangesAsync();
@@ -708,7 +825,7 @@ public class ClassService : IClassService
             
             foreach (var enrollment in classEntity.ClassEnrollments.Where(e => e.StudentId.HasValue))
             {
-                var studentId = enrollment.StudentId!.Value;
+                var studentId = enrollment.StudentId.Value;
                 
                 // Get current StudentCourseHistory for this student
                 var history = await _context.StudentCourseHistories
@@ -836,33 +953,33 @@ public class ClassService : IClassService
                     // Thêm thông tin v? ?i?m s? và tình tr?ng Pass/Not Pass
                     if (history.FinalGrade.HasValue)
                     {
-                        message += $"?? ?i?m s? cu?i k?: {history.FinalGrade.Value:F2}/10\n";
+                        message += $"• ?i?m s? cu?i k?: {history.FinalGrade.Value:F2}/10\n";
                         
                         if (history.Status == "Pass")
                         {
-                            message += $"? K?t qu?: ??T\n";
+                            message += $"• K?t qu?: ??T\n";
                         }
                         else if (history.Status == "Not Pass")
                         {
-                            message += $"? K?t qu?: KHÔNG ??T\n";
+                            message += $"• K?t qu?: KHÔNG ??T\n";
                         }
 
                         // Thêm thông tin ?i?m t? gi?ng viên khác n?u có
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
-                            message += $"?? ?i?m trung bình t? gi?ng viên khác: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
+                            message += $"• ?i?m trung bình t? gi?ng viên khác: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
                         }
                     }
                     else
                     {
-                        message += $"? K?t qu?: KHÔNG ??T\n";
-                        message += "?? Lý do: Ch?a có ?i?m s? cu?i k? ho?c ch?a n?p bài\n";
+                        message += $"• K?t qu?: KHÔNG ??T\n";
+                        message += "• Lý do: Ch?a có ?i?m s? cu?i k? ho?c ch?a n?p bài\n";
                     }
 
                     // Thêm ghi chú n?u c?n h?c l?i
                     if (history.IsRetake == true)
                     {
-                        message += "\n?? B?n c?n ??ng ký h?c l?i môn h?c này.";
+                        message += "\n• B?n c?n ??ng ký h?c l?i môn h?c này.";
                     }
 
                     // G?i notification v?i data ch?a userId
