@@ -788,6 +788,7 @@ public class ClassService : IClassService
         
         if (request.Status == "In Progress" && classEntity.ClassEnrollments != null)
         {
+            var classSemesterId = classEntity.SemesterId;
             var studentIds = classEntity.ClassEnrollments
                 .Where(ce => ce.StudentId.HasValue)
                 .Select(ce => ce.StudentId!.Value)
@@ -795,22 +796,65 @@ public class ClassService : IClassService
 
             if (studentIds.Any())
             {
-                // Get all current StudentCourseHistory records for these students
-                var histories = await _context.StudentCourseHistories
-                    .Where(h => studentIds.Contains(h.StudentId) && h.IsCurrent == true)
-                    .ToListAsync();
-
-                // Update status to "In Progress" for histories that are not already completed
-                foreach (var history in histories)
+                foreach (var studentId in studentIds)
                 {
-                    // Only update if current status is "Not Started" or other non-final status
-                    // Don't change if already "Pass" or "Not Pass"
-                    if (history.Status != "Pass" && history.Status != "Not Pass")
+                    AppBackend.BusinessObjects.Models.StudentCourseHistory? history = null;
+                    
+                    if (classSemesterId.HasValue)
                     {
-                        history.Status = "In Progress";
-                        history.UpdatedAt = DateTime.UtcNow;
-                        _context.StudentCourseHistories.Update(history);
-                        updatedHistoryCount++;
+                        // Try to find existing history for this student and semester
+                        history = await _context.StudentCourseHistories
+                            .FirstOrDefaultAsync(h => h.StudentId == studentId && h.SemesterId == classSemesterId.Value);
+                        
+                        if (history == null)
+                        {
+                            // Create new StudentCourseHistory if not exists
+                            history = new AppBackend.BusinessObjects.Models.StudentCourseHistory
+                            {
+                                StudentId = studentId,
+                                SemesterId = classSemesterId.Value,
+                                Status = "In Progress",
+                                IsRetake = false,
+                                IsCurrent = false, // Will be updated by background service
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            _context.StudentCourseHistories.Add(history);
+                            updatedHistoryCount++;
+                        }
+                        else
+                        {
+                            // Update existing history only if not already completed
+                            if (history.Status != "Pass" && history.Status != "Not Pass")
+                            {
+                                history.Status = "In Progress";
+                                history.UpdatedAt = DateTime.UtcNow;
+                                _context.StudentCourseHistories.Update(history);
+                                updatedHistoryCount++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // If class doesn't have semester, try to find current history
+                        history = await _context.StudentCourseHistories
+                            .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+                        
+                        if (history != null)
+                        {
+                            // Update existing history only if not already completed
+                            if (history.Status != "Pass" && history.Status != "Not Pass")
+                            {
+                                history.Status = "In Progress";
+                                history.UpdatedAt = DateTime.UtcNow;
+                                _context.StudentCourseHistories.Update(history);
+                                updatedHistoryCount++;
+                            }
+                        }
+                        else
+                        {
+                            warnings.Add($"Cannot update course history for student ID {studentId}: Class has no semester and student has no current course history");
+                        }
                     }
                 }
 
@@ -822,135 +866,179 @@ public class ClassService : IClassService
         if (request.Status == "Completed" && classEntity.ClassEnrollments != null)
         {
             var classInstructorId = classEntity.InstructorId;
+            var classSemesterId = classEntity.SemesterId;
             
             foreach (var enrollment in classEntity.ClassEnrollments.Where(e => e.StudentId.HasValue))
             {
                 var studentId = enrollment.StudentId.Value;
                 
-                // Get current StudentCourseHistory for this student
-                var history = await _context.StudentCourseHistories
-                    .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
-
-                if (history != null)
+                // Find or create StudentCourseHistory for this student and semester
+                AppBackend.BusinessObjects.Models.StudentCourseHistory? history = null;
+                
+                if (classSemesterId.HasValue)
                 {
-                    // Find student's group and project
-                    var studentGroup = await _context.GroupMembers
-                        .Include(gm => gm.Group)
-                            .ThenInclude(g => g!.Projects)
-                                .ThenInclude(p => p.FinalProjectSubmission)
-                                    .ThenInclude(fs => fs!.FinalSubmissionGrades)
-                        .Where(gm => gm.UserId == studentId && gm.Group!.ClassId == classId)
-                        .Select(gm => gm.Group)
-                        .FirstOrDefaultAsync();
-
-                    decimal? finalGrade = null;
-                    decimal? avgGradeFromOthers = null;
-                    int? finalSubmissionId = null;
-
-                    if (studentGroup != null)
+                    // Try to find existing history for this student and semester
+                    history = await _context.StudentCourseHistories
+                        .FirstOrDefaultAsync(h => h.StudentId == studentId && h.SemesterId == classSemesterId.Value);
+                    
+                    if (history == null)
                     {
-                        var project = studentGroup.Projects?.FirstOrDefault();
-                        if (project?.FinalProjectSubmission != null)
+                        // Create new StudentCourseHistory if not exists
+                        history = new AppBackend.BusinessObjects.Models.StudentCourseHistory
                         {
-                            var finalSubmission = project.FinalProjectSubmission;
-                            finalSubmissionId = finalSubmission.FinalSubmissionId;
-                            
-                            // Get the average final grade (from Final_Project_Submissions.grade)
-                            finalGrade = finalSubmission.Grade;
+                            StudentId = studentId,
+                            SemesterId = classSemesterId.Value,
+                            Status = "Not Started",
+                            IsRetake = false,
+                            IsCurrent = false, // Will be updated by background service
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        _context.StudentCourseHistories.Add(history);
+                        await _context.SaveChangesAsync(); // Save to get the HistoryId
+                    }
+                }
+                else
+                {
+                    // If class doesn't have semester, try to find current history
+                    history = await _context.StudentCourseHistories
+                        .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+                    
+                    if (history == null)
+                    {
+                        // Cannot proceed without semester information
+                        warnings.Add($"Cannot update course history for student ID {studentId}: Class has no semester and student has no current course history");
+                        continue;
+                    }
+                }
 
-                            // Calculate average grade from other instructors (excluding primary class instructor)
-                            if (finalSubmission.FinalSubmissionGrades != null && finalSubmission.FinalSubmissionGrades.Any())
+                // Find student's group and project
+                var studentGroup = await _context.GroupMembers
+                    .Include(gm => gm.Group)
+                        .ThenInclude(g => g!.Projects)
+                            .ThenInclude(p => p.FinalProjectSubmission)
+                                .ThenInclude(fs => fs!.FinalSubmissionGrades)
+                    .Where(gm => gm.UserId == studentId && gm.Group!.ClassId == classId)
+                    .Select(gm => gm.Group)
+                    .FirstOrDefaultAsync();
+
+                decimal? finalGrade = null;
+                decimal? avgGradeFromOthers = null;
+                int? finalSubmissionId = null;
+
+                if (studentGroup != null)
+                {
+                    var project = studentGroup.Projects?.FirstOrDefault();
+                    if (project?.FinalProjectSubmission != null)
+                    {
+                        var finalSubmission = project.FinalProjectSubmission;
+                        finalSubmissionId = finalSubmission.FinalSubmissionId;
+                        
+                        // Get the average final grade (from Final_Project_Submissions.grade)
+                        finalGrade = finalSubmission.Grade;
+
+                        // Calculate average grade from other instructors (excluding primary class instructor)
+                        if (finalSubmission.FinalSubmissionGrades != null && finalSubmission.FinalSubmissionGrades.Any())
+                        {
+                            var otherInstructorGrades = finalSubmission.FinalSubmissionGrades
+                                .Where(g => classInstructorId.HasValue && g.InstructorId != classInstructorId.Value)
+                                .Select(g => g.Grade)
+                                .ToList();
+
+                            if (otherInstructorGrades.Any())
                             {
-                                var otherInstructorGrades = finalSubmission.FinalSubmissionGrades
-                                    .Where(g => classInstructorId.HasValue && g.InstructorId != classInstructorId.Value)
-                                    .Select(g => g.Grade)
-                                    .ToList();
-
-                                if (otherInstructorGrades.Any())
-                                {
-                                    avgGradeFromOthers = otherInstructorGrades.Average();
-                                }
+                                avgGradeFromOthers = otherInstructorGrades.Average();
                             }
                         }
                     }
+                }
 
-                    // Determine Pass/Not Pass based on final grade
-                    string newStatus;
-                    bool isRetake;
-                    string notes;
+                // Determine Pass/Not Pass based on final grade
+                string newStatus;
+                bool isRetake;
+                string notes;
 
-                    if (finalGrade.HasValue)
+                if (finalGrade.HasValue)
+                {
+                    if (finalGrade.Value >= 5)
                     {
-                        if (finalGrade.Value >= 5)
-                        {
-                            newStatus = "Pass";
-                            isRetake = false;
-                            notes = $"Passed with final grade: {finalGrade.Value:F2}/10";
-                        }
-                        else
-                        {
-                            newStatus = "Not Pass";
-                            isRetake = true;
-                            notes = $"Not passed with final grade: {finalGrade.Value:F2}/10 (Below passing threshold of 5.0)";
-                        }
-
-                        // Add information about other instructor grades if available
-                        if (avgGradeFromOthers.HasValue)
-                        {
-                            notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10";
-                            
-                            if (avgGradeFromOthers.Value >= 5)
-                            {
-                                notes += " (Pass)";
-                            }
-                            else
-                            {
-                                notes += " (Not Pass)";
-                            }
-                        }
+                        newStatus = "Pass";
+                        isRetake = false;
+                        notes = $"Passed with final grade: {finalGrade.Value:F2}/10";
                     }
                     else
                     {
-                        // No final grade available - student might not have submitted or not graded
                         newStatus = "Not Pass";
                         isRetake = true;
-                        notes = "No final submission or final grade not available";
+                        notes = $"Not passed with final grade: {finalGrade.Value:F2}/10 (Below passing threshold of 5.0)";
                     }
 
-                    // Update the history record
-                    history.Status = newStatus;
-                    history.FinalSubmissionId = finalSubmissionId;
-                    history.FinalGrade = finalGrade;
-                    history.AverageGradeFromOtherInstructors = avgGradeFromOthers;
-                    history.IsRetake = isRetake;
-                    history.Notes = notes;
-                    history.CompletedAt = DateTime.UtcNow;
-                    history.EvaluatedAt = DateTime.UtcNow;
-                    history.UpdatedAt = DateTime.UtcNow;
-                    
-                    _context.StudentCourseHistories.Update(history);
-                    updatedHistoryCount++;
+                    // Add information about other instructor grades if available
+                    if (avgGradeFromOthers.HasValue)
+                    {
+                        notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10";
+                        
+                        if (avgGradeFromOthers.Value >= 5)
+                        {
+                            notes += " (Pass)";
+                        }
+                        else
+                        {
+                            notes += " (Not Pass)";
+                        }
+                    }
                 }
+                else
+                {
+                    // No final grade available - student might not have submitted or not graded
+                    newStatus = "Not Pass";
+                    isRetake = true;
+                    notes = "No final submission or final grade not available";
+                }
+
+                // Update the history record
+                history.Status = newStatus;
+                history.FinalSubmissionId = finalSubmissionId;
+                history.FinalGrade = finalGrade;
+                history.AverageGradeFromOtherInstructors = avgGradeFromOthers;
+                history.IsRetake = isRetake;
+                history.Notes = notes;
+                history.CompletedAt = DateTime.UtcNow;
+                history.EvaluatedAt = DateTime.UtcNow;
+                history.UpdatedAt = DateTime.UtcNow;
+                
+                _context.StudentCourseHistories.Update(history);
+                updatedHistoryCount++;
             }
 
             await _context.SaveChangesAsync();
 
-            // G?i notification cho sinh viên v? tình tr?ng Pass/Not Pass và ?i?m s?
+            // Send notification to students about Pass/Not Pass status and grades
             foreach (var enrollment in classEntity.ClassEnrollments.Where(e => e.StudentId.HasValue))
             {
                 var studentId = enrollment.StudentId.Value;
                 
-                // L?y thông tin StudentCourseHistory hi?n t?i c?a sinh viên
-                var history = await _context.StudentCourseHistories
-                    .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+                // Get current StudentCourseHistory for this student and semester
+                AppBackend.BusinessObjects.Models.StudentCourseHistory? history = null;
+                
+                if (classSemesterId.HasValue)
+                {
+                    history = await _context.StudentCourseHistories
+                        .FirstOrDefaultAsync(h => h.StudentId == studentId && h.SemesterId == classSemesterId.Value);
+                }
+                else
+                {
+                    history = await _context.StudentCourseHistories
+                        .FirstOrDefaultAsync(h => h.StudentId == studentId && h.IsCurrent == true);
+                }
 
                 if (history != null)
                 {
-                    // T?o n?i dung thông báo
+                    // Create notification content
                     string title = $"K?t qu? h?c t?p - L?p {classEntity.ClassName}";
                     string message = $"L?p h?c '{classEntity.ClassName}' ?ã hoàn thành.\n\n";
 
-                    // Thêm thông tin v? ?i?m s? và tình tr?ng Pass/Not Pass
+                    // Add information about grades and Pass/Not Pass status
                     if (history.FinalGrade.HasValue)
                     {
                         message += $"• ?i?m s? cu?i k?: {history.FinalGrade.Value:F2}/10\n";
@@ -964,7 +1052,7 @@ public class ClassService : IClassService
                             message += $"• K?t qu?: KHÔNG ??T\n";
                         }
 
-                        // Thêm thông tin ?i?m t? gi?ng viên khác n?u có
+                        // Add information about grades from other instructors if available
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
                             message += $"• ?i?m trung bình t? gi?ng viên khác: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
@@ -976,13 +1064,13 @@ public class ClassService : IClassService
                         message += "• Lý do: Ch?a có ?i?m s? cu?i k? ho?c ch?a n?p bài\n";
                     }
 
-                    // Thêm ghi chú n?u c?n h?c l?i
+                    // Add note if need to retake
                     if (history.IsRetake == true)
                     {
                         message += "\n• B?n c?n ??ng ký h?c l?i môn h?c này.";
                     }
 
-                    // G?i notification v?i data ch?a userId
+                    // Send notification with data containing userId
                     var notificationRequest = new NotificationCreateRequestDto
                     {
                         UserId = studentId,
