@@ -82,6 +82,10 @@ public partial class IotShowroomContext : DbContext
 
     public virtual DbSet<FinalSubmissionGrade> FinalSubmissionGrades { get; set; }
 
+    public virtual DbSet<StudentCourseHistory> StudentCourseHistories { get; set; }
+
+    public virtual DbSet<Simulation> Simulations { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         // Connection string will be configured in Startup/Program.cs
@@ -438,6 +442,9 @@ public partial class IotShowroomContext : DbContext
             entity.Property(e => e.RegisteredAt).HasDefaultValueSql("(sysutcdatetime())");
             entity.Property(e => e.Status).HasDefaultValue("Active");
 
+            // Disable OUTPUT clause because this table has triggers
+            entity.ToTable(tb => tb.UseSqlOutputClause(false));
+
             entity.HasOne(d => d.ProjectTemplate).WithMany(p => p.ProjectTemplateRegistrations)
                 .HasForeignKey(d => d.TemplateId)
                 .OnDelete(DeleteBehavior.Cascade)
@@ -486,6 +493,9 @@ public partial class IotShowroomContext : DbContext
 
             entity.Property(e => e.GradedAt).HasDefaultValueSql("(sysutcdatetime())");
 
+            // Disable OUTPUT clause because this table has triggers that calculate average grades
+            entity.ToTable(tb => tb.UseSqlOutputClause(false));
+
             entity.HasOne(d => d.FinalSubmission).WithMany(p => p.FinalSubmissionGrades)
                 .HasForeignKey(d => d.FinalSubmissionId)
                 .OnDelete(DeleteBehavior.Cascade)
@@ -495,6 +505,40 @@ public partial class IotShowroomContext : DbContext
                 .HasForeignKey(d => d.InstructorId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_FinalSubmissionGrades_Instructor");
+        });
+
+        modelBuilder.Entity<StudentCourseHistory>(entity =>
+        {
+            entity.HasKey(e => e.HistoryId).HasName("PK__Student_Course_History__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Student).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.StudentId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_StudentCourseHistory_Student");
+
+            entity.HasOne(d => d.Semester).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.SemesterId)
+                .HasConstraintName("FK_StudentCourseHistory_Semester");
+
+            entity.HasOne(d => d.FinalSubmission).WithMany(p => p.StudentCourseHistories)
+                .HasForeignKey(d => d.FinalSubmissionId)
+                .HasConstraintName("FK_StudentCourseHistory_FinalSubmission");
+        });
+
+        modelBuilder.Entity<Simulation>(entity =>
+        {
+            entity.HasKey(e => e.SimulationId).HasName("PK__Simulations__");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Status).HasDefaultValue("draft");
+
+            entity.HasOne(d => d.Project).WithMany(p => p.Simulations)
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Simulations_Project");
         });
 
         OnModelCreatingPartial(modelBuilder);

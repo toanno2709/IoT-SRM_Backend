@@ -19,6 +19,11 @@ public class NotificationCreateRequestDto
 
     [StringLength(50, ErrorMessage = "Type cannot exceed 50 characters")]
     public string? Type { get; set; }  // "info", "success", "warning", "error", "announcement", "grade", "proposal_review"
+
+    /// <summary>
+    /// JSON string containing notification-specific data
+    /// </summary>
+    public string? Data { get; set; }
 }
 
 /// <summary>
@@ -39,6 +44,11 @@ public class BulkNotificationRequestDto
 
     [StringLength(50, ErrorMessage = "Type cannot exceed 50 characters")]
     public string? Type { get; set; }
+
+    /// <summary>
+    /// JSON string containing notification-specific data
+    /// </summary>
+    public string? Data { get; set; }
 }
 
 /// <summary>
@@ -60,6 +70,11 @@ public class ClassNotificationRequestDto
     public string? Type { get; set; }
 
     public bool IncludeInstructor { get; set; } = false;  // Gửi cho cả instructor không
+
+    /// <summary>
+    /// JSON string containing notification-specific data
+    /// </summary>
+    public string? Data { get; set; }
 }
 
 /// <summary>
@@ -75,6 +90,7 @@ public class NotificationResponseDto
     public string? Type { get; set; }
     public bool? IsRead { get; set; }
     public DateTime? CreatedAt { get; set; }
+    public string? Data { get; set; }
 }
 
 /// <summary>

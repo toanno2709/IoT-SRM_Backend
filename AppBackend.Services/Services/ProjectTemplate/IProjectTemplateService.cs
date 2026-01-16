@@ -17,4 +17,5 @@ public interface IProjectTemplateService
     Task<ResultModel<List<AvailableTemplateDto>>> GetAvailableTemplatesAsync(int classId, int studentId);
     Task<ResultModel<TemplateRegistrationResponseDto>> RegisterToTemplateAsync(RegisterTemplateDto dto, int studentId);
     Task<ResultModel<bool>> CancelRegistrationAsync(int registrationId, int studentId);
+    Task<ResultModel<List<MyGroupRegistrationDto>>> GetMyGroupRegistrationsAsync(int studentId);
 }

@@ -16,6 +16,9 @@ public interface IGroupService
     Task<IEnumerable<GroupListItemDto>> GetGroupListByClassAsync(int classId);
     Task<ResultModel<List<GroupResponseDto>>> GetGroupsByClassAsync(int classId);
     Task<GroupDetailDto> GetGroupDetailAsync(int groupId);
+    
+    // Random group creation for instructor
+    Task<ResultModel<RandomGroupCreationResultDto>> CreateRandomGroupsAsync(int classId, int instructorId);
 }
 
 

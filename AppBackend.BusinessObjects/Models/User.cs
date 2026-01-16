@@ -107,4 +107,7 @@ public partial class User
 
   [InverseProperty("Instructor")]
   public virtual ICollection<FinalSubmissionGrade> FinalSubmissionGrades { get; set; } = new List<FinalSubmissionGrade>();
+
+  [InverseProperty("Student")]
+  public virtual ICollection<StudentCourseHistory> StudentCourseHistories { get; set; } = new List<StudentCourseHistory>();
 }

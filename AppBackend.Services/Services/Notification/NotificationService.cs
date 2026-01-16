@@ -35,6 +35,7 @@ public class NotificationService : INotificationService
                 Title = request.Title,
                 Message = request.Message,
                 Type = request.Type ?? "info",
+                Data = request.Data, // Add Data field
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
             };
@@ -88,6 +89,7 @@ public class NotificationService : INotificationService
                         Title = request.Title,
                         Message = request.Message,
                         Type = request.Type ?? "info",
+                        Data = request.Data, // Add Data field
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };
@@ -120,6 +122,7 @@ public class NotificationService : INotificationService
                     Title = request.Title,
                     Message = request.Message,
                     Type = request.Type ?? "info",
+                    Data = request.Data, // Add Data field
                     CreatedAt = DateTime.UtcNow
                 };
                 await _notificationHubService.SendNotificationToUsersAsync(userEmails, notificationDto);
@@ -193,7 +196,8 @@ public class NotificationService : INotificationService
                 UserIds = userIds,
                 Title = request.Title,
                 Message = request.Message,
-                Type = request.Type
+                Type = request.Type,
+                Data = request.Data // Add Data field
             };
 
             return await SendBulkNotificationAsync(bulkRequest);
@@ -443,6 +447,7 @@ public class NotificationService : INotificationService
             Title = notification.Title,
             Message = notification.Message,
             Type = notification.Type,
+            Data = notification.Data, // Add Data field
             IsRead = notification.IsRead,
             CreatedAt = notification.CreatedAt
         };

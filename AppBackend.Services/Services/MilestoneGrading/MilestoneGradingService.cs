@@ -1,6 +1,8 @@
 using AppBackend.Repositories.Repositories.MilestoneEvaluationRepo;
 using AppBackend.Repositories.Repositories.ProjectMilestoneRepo;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.BusinessObjects.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace AppBackend.Services.Services.MilestoneGrading;
 
@@ -8,11 +10,16 @@ public class MilestoneGradingService : IMilestoneGradingService
 {
     private readonly IMilestoneEvaluationRepository _evaluationRepository;
     private readonly IProjectMilestoneRepository _milestoneRepository;
+    private readonly IotShowroomContext _context;
 
-    public MilestoneGradingService(IMilestoneEvaluationRepository evaluationRepository, IProjectMilestoneRepository milestoneRepository)
+    public MilestoneGradingService(
+        IMilestoneEvaluationRepository evaluationRepository, 
+        IProjectMilestoneRepository milestoneRepository,
+        IotShowroomContext context)
     {
         _evaluationRepository = evaluationRepository;
         _milestoneRepository = milestoneRepository;
+        _context = context;
     }
 
     public async Task<ResultModel<MilestoneGradeResponseDto>> GradeMilestoneAsync(MilestoneGradeRequestDto request)
@@ -62,6 +69,48 @@ public class MilestoneGradingService : IMilestoneGradingService
             }
 
             await _evaluationRepository.SaveChangesAsync();
+
+            // Get project details for notification
+            var project = await _context.Projects
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupMembers)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.Class)
+                .FirstOrDefaultAsync(p => p.ProjectId == request.ProjectId);
+
+            // Send notification to all group members
+            if (project?.Group?.GroupMembers != null)
+            {
+                var instructor = await _context.Users.FindAsync(request.InstructorId);
+                var classId = project.Group.ClassId;
+                var groupId = project.Group.GroupId;
+                
+                // Create Data JSON for notification
+                var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = classId,
+                    groupId = groupId,
+                    projectId = request.ProjectId,
+                    milestoneDefId = request.MilestoneDefId,
+                    score = request.Score
+                });
+                
+                foreach (var member in project.Group.GroupMembers)
+                {
+                    var notification = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = member.UserId,
+                        Title = "Milestone Graded",
+                        Message = $"Your milestone '{milestone.Title}' has been graded by {instructor?.FullName}. Score: {request.Score}/100",
+                        Type = "milestone_graded",
+                        Data = notificationData,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.Notifications.Add(notification);
+                }
+                await _context.SaveChangesAsync();
+            }
 
             return new ResultModel<MilestoneGradeResponseDto>
             {

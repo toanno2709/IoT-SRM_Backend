@@ -38,6 +38,35 @@ public class BulkAddStudentsResponseDto
 }
 
 /// <summary>
+/// Response DTO for getting list of students in a class with group status
+/// </summary>
+public class ClassStudentsWithGroupResponseDto
+{
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int TotalStudents { get; set; }
+    public int StudentsWithGroup { get; set; }
+    public int StudentsWithoutGroup { get; set; }
+    public List<StudentWithGroupDto> Students { get; set; } = new();
+}
+
+/// <summary>
+/// DTO for student with group information
+/// </summary>
+public class StudentWithGroupDto
+{
+    public int UserId { get; set; }
+    public string? FullName { get; set; }
+    public string? Email { get; set; }
+    public DateTime? EnrolledAt { get; set; }
+    public bool HasGroup { get; set; }
+    public int? GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public string? RoleInGroup { get; set; }
+    public DateTime? JoinedGroupAt { get; set; }
+}
+
+/// <summary>
 /// Response DTO for getting list of students in a class
 /// </summary>
 public class ClassStudentsResponseDto
@@ -69,4 +98,50 @@ public class AddStudentToClassResponseDto
     public string? Email { get; set; }
     public DateTime EnrolledAt { get; set; }
     public string? Message { get; set; }
+}
+
+/// <summary>
+/// DTO for student import from Excel row
+/// </summary>
+public class StudentImportRowDto
+{
+    public int RowNumber { get; set; }
+    public string Email { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// DTO for import students result
+/// </summary>
+public class ImportStudentsResultDto
+{
+    public int ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public int TotalRows { get; set; }
+    public int SuccessCount { get; set; }
+    public int FailedCount { get; set; }
+    public List<ImportStudentSuccessDto> SuccessfulStudents { get; set; } = new();
+    public List<ImportStudentFailureDto> FailedStudents { get; set; } = new();
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// DTO for successful import
+/// </summary>
+public class ImportStudentSuccessDto
+{
+    public int RowNumber { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string StudentName { get; set; } = string.Empty;
+    public int UserId { get; set; }
+}
+
+/// <summary>
+/// DTO for failed import with reason
+/// </summary>
+public class ImportStudentFailureDto
+{
+    public int RowNumber { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string ReasonCode { get; set; } = string.Empty; // EMAIL_NOT_FOUND, DUPLICATE, NOT_STUDENT, ALREADY_PASSED_COURSE
 }

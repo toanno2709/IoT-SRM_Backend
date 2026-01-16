@@ -141,6 +141,11 @@ namespace AppBackend.Api.Controllers
         /// - Column E: Role (Student/Instructor/Admin, defaults to Student)
         /// - Column F: Password (optional, defaults to "12345678")
         /// 
+        /// Role handling:
+        /// - Supports: Student (role_id=3), Instructor (role_id=2), Admin (role_id=1)
+        /// - Default: Student if role is not specified or unrecognized
+        /// - StudentCourseHistory is automatically created ONLY for Student role
+        /// 
         /// File constraints:
         /// - Max file size: 10MB
         /// - Supported formats: .xlsx, .xls

@@ -218,8 +218,9 @@ public class GroupManagementService : IGroupManagementService
                 };
             }
 
-            // Prevent removing the leader
-            if (group.LeaderId == userId)
+            // FIX: Check actual role in GroupMembers table, not just LeaderId
+            // Prevent removing if the member's actual role is "Leader"
+            if (member.RoleInGroup?.Equals("Leader", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return new ResultModel<GroupMemberOperationResponseDto>
                 {
@@ -227,6 +228,13 @@ public class GroupManagementService : IGroupManagementService
                     Message = "Cannot remove group leader. Please assign a new leader first.",
                     Data = null
                 };
+            }
+
+            // Also check if this user is set as leader in Groups table (data consistency check)
+            if (group.LeaderId == userId && member.RoleInGroup?.Equals("Leader", StringComparison.OrdinalIgnoreCase) != true)
+            {
+                _logger.LogWarning("Data inconsistency: User {UserId} is set as LeaderId in group {GroupId} but has role '{Role}' in GroupMembers. Allowing removal.",
+                    userId, groupId, member.RoleInGroup);
             }
 
             await _groupMemberRepository.DeleteAsync(member);

@@ -22,6 +22,22 @@ public class ProjectTemplateService : IProjectTemplateService
         _context = context;
     }
 
+    /// <summary>
+    /// Helper method to truncate DateTime to seconds precision (to match database Precision(0))
+    /// </summary>
+    private static DateTime TruncateToSeconds(DateTime dateTime)
+    {
+        return new DateTime(
+            dateTime.Year,
+            dateTime.Month,
+            dateTime.Day,
+            dateTime.Hour,
+            dateTime.Minute,
+            dateTime.Second,
+            dateTime.Kind
+        );
+    }
+
     #region Instructor APIs
 
     public async Task<ResultModel<ProjectTemplateResponseDto>> CreateTemplateAsync(CreateProjectTemplateDto dto, int instructorId)
@@ -42,6 +58,8 @@ public class ProjectTemplateService : IProjectTemplateService
                 };
             }
 
+            var createdAt = TruncateToSeconds(DateTime.UtcNow);
+
             // Create template
             var template = new BusinessObjects.Models.ProjectTemplate
             {
@@ -53,7 +71,7 @@ public class ProjectTemplateService : IProjectTemplateService
                 RegisteredCount = 0,
                 IsActive = true,
                 CreatedBy = instructorId,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = createdAt
             };
 
             await _templateRepo.CreateAsync(template);
@@ -71,7 +89,7 @@ public class ProjectTemplateService : IProjectTemplateService
                         OrderIndex = milestoneDto.OrderIndex,
                         Weight = milestoneDto.Weight,
                         DaysDuration = milestoneDto.DaysDuration,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = createdAt
                     };
                     _context.TemplateMilestones.Add(milestone);
                 }
@@ -317,7 +335,7 @@ public class ProjectTemplateService : IProjectTemplateService
                 ProjectId = r.ProjectId,
                 ProjectTitle = r.Project?.Title,
                 Status = r.Status,
-                RegisteredAt = r.RegisteredAt ?? DateTime.UtcNow,
+                RegisteredAt = r.RegisteredAt ?? TruncateToSeconds(DateTime.UtcNow),
                 RegisteredByName = r.RegisteredByUser?.FullName ?? "Unknown"
             }).ToList();
 
@@ -387,6 +405,71 @@ public class ProjectTemplateService : IProjectTemplateService
         }
     }
 
+    public async Task<ResultModel<bool>> CancelRegistrationAsync(int registrationId, int studentId)
+    {
+        try
+        {
+            var registration = await _templateRepo.GetRegistrationByIdAsync(registrationId);
+            if (registration == null)
+            {
+                return new ResultModel<bool>
+                {
+                    IsSuccess = false,
+                    Message = "Registration not found",
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+            }
+
+            // Check authorization
+            var group = await _context.Groups.FindAsync(registration.GroupId);
+            if (group?.LeaderId != studentId)
+            {
+                return new ResultModel<bool>
+                {
+                    IsSuccess = false,
+                    Message = "Only group leader can cancel registration",
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            // Check if project has submissions
+            if (registration.ProjectId.HasValue)
+            {
+                var hasSubmissions = await _context.MilestoneSubmissions
+                    .AnyAsync(s => s.ProjectId == registration.ProjectId.Value);
+
+                if (hasSubmissions)
+                {
+                    return new ResultModel<bool>
+                    {
+                        IsSuccess = false,
+                        Message = "Cannot cancel registration after project has submissions",
+                        StatusCode = StatusCodes.Status400BadRequest
+                    };
+                }
+            }
+
+            await _templateRepo.CancelRegistrationAsync(registrationId);
+
+            return new ResultModel<bool>
+            {
+                IsSuccess = true,
+                Message = "Registration cancelled successfully",
+                Data = true,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<bool>
+            {
+                IsSuccess = false,
+                Message = $"Error: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
     #endregion
 
     #region Student APIs
@@ -416,15 +499,29 @@ public class ProjectTemplateService : IProjectTemplateService
                 .Select(gm => gm.Group)
                 .FirstOrDefaultAsync();
 
-            var templates = await _templateRepo.GetAvailableByClassIdAsync(classId);
+            // Changed: Use GetByClassIdAsync to get ALL templates (not just active ones)
+            var templates = await _templateRepo.GetByClassIdAsync(classId);
 
             var result = new List<AvailableTemplateDto>();
             foreach (var template in templates)
             {
                 bool isMyGroupRegistered = false;
+                int? myRegistrationId = null;
+                
                 if (studentGroup != null)
                 {
-                    isMyGroupRegistered = await _templateRepo.IsGroupRegisteredAsync(studentGroup.GroupId, template.TemplateId);
+                    // Check if group is registered and get registration ID
+                    var registration = await _context.ProjectTemplateRegistrations
+                        .Where(r => r.GroupId == studentGroup.GroupId 
+                                 && r.TemplateId == template.TemplateId 
+                                 && r.Status == "Active")
+                        .FirstOrDefaultAsync();
+                    
+                    if (registration != null)
+                    {
+                        isMyGroupRegistered = true;
+                        myRegistrationId = registration.RegistrationId;
+                    }
                 }
 
                 var dto = new AvailableTemplateDto
@@ -436,10 +533,12 @@ public class ProjectTemplateService : IProjectTemplateService
                     MaxGroups = template.MaxGroups,
                     RegisteredCount = template.RegisteredCount,
                     AvailableSlots = template.MaxGroups.HasValue ? template.MaxGroups.Value - template.RegisteredCount : null,
+                    // Updated: CanRegister now considers IsActive, available slots, group exists, and not already registered
                     CanRegister = template.IsActive && 
                                   (template.MaxGroups == null || template.RegisteredCount < template.MaxGroups) &&
                                   studentGroup != null && !isMyGroupRegistered,
                     IsMyGroupRegistered = isMyGroupRegistered,
+                    MyRegistrationId = myRegistrationId,
                     MilestoneCount = template.TemplateMilestones.Count,
                     Milestones = template.TemplateMilestones.Select(m => new TemplateMilestoneDto
                     {
@@ -467,7 +566,7 @@ public class ProjectTemplateService : IProjectTemplateService
             return new ResultModel<List<AvailableTemplateDto>>
             {
                 IsSuccess = false,
-                Message = $"Error: {ex.Message}",
+                Message = $"Error: {ex.Message}. Inner: {ex.InnerException?.Message}",
                 StatusCode = StatusCodes.Status500InternalServerError
             };
         }
@@ -553,6 +652,8 @@ public class ProjectTemplateService : IProjectTemplateService
                 };
             }
 
+            var now = TruncateToSeconds(DateTime.UtcNow);
+
             // 6. AUTO CREATE PROJECT from template
             var project = new BusinessObjects.Models.Project
             {
@@ -561,7 +662,7 @@ public class ProjectTemplateService : IProjectTemplateService
                 Description = template.Description,
                 Component = template.Component,
                 Status = "In Progress",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now
             };
             _context.Projects.Add(project);
             await _context.SaveChangesAsync();
@@ -586,7 +687,7 @@ public class ProjectTemplateService : IProjectTemplateService
                     DueDate = DateOnly.FromDateTime(currentDueDate),
                     Weight = templateMilestone.Weight,
                     Status = "Pending",
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = now
                 };
                 _context.ProjectMilestones.Add(milestone);
             }
@@ -599,7 +700,7 @@ public class ProjectTemplateService : IProjectTemplateService
                 GroupId = dto.GroupId,
                 ProjectId = project.ProjectId,
                 Status = "Active",
-                RegisteredAt = DateTime.UtcNow,
+                RegisteredAt = now,
                 RegisteredBy = studentId
             };
             await _templateRepo.CreateRegistrationAsync(registration);
@@ -620,7 +721,7 @@ public class ProjectTemplateService : IProjectTemplateService
                     ProjectId = project.ProjectId,
                     ProjectTitle = project.Title ?? template.Title,
                     Status = "Active",
-                    RegisteredAt = registration.RegisteredAt ?? DateTime.UtcNow,
+                    RegisteredAt = now,
                     MilestonesCreated = milestones.Count,
                     Message = $"Project created with {milestones.Count} milestones"
                 },
@@ -633,72 +734,7 @@ public class ProjectTemplateService : IProjectTemplateService
             return new ResultModel<TemplateRegistrationResponseDto>
             {
                 IsSuccess = false,
-                Message = $"Error registering template: {ex.Message}",
-                StatusCode = StatusCodes.Status500InternalServerError
-            };
-        }
-    }
-
-    public async Task<ResultModel<bool>> CancelRegistrationAsync(int registrationId, int studentId)
-    {
-        try
-        {
-            var registration = await _templateRepo.GetRegistrationByIdAsync(registrationId);
-            if (registration == null)
-            {
-                return new ResultModel<bool>
-                {
-                    IsSuccess = false,
-                    Message = "Registration not found",
-                    StatusCode = StatusCodes.Status404NotFound
-                };
-            }
-
-            // Check authorization
-            var group = await _context.Groups.FindAsync(registration.GroupId);
-            if (group?.LeaderId != studentId)
-            {
-                return new ResultModel<bool>
-                {
-                    IsSuccess = false,
-                    Message = "Only group leader can cancel registration",
-                    StatusCode = StatusCodes.Status403Forbidden
-                };
-            }
-
-            // Check if project has submissions
-            if (registration.ProjectId.HasValue)
-            {
-                var hasSubmissions = await _context.MilestoneSubmissions
-                    .AnyAsync(s => s.ProjectId == registration.ProjectId.Value);
-
-                if (hasSubmissions)
-                {
-                    return new ResultModel<bool>
-                    {
-                        IsSuccess = false,
-                        Message = "Cannot cancel registration after project has submissions",
-                        StatusCode = StatusCodes.Status400BadRequest
-                    };
-                }
-            }
-
-            await _templateRepo.CancelRegistrationAsync(registrationId);
-
-            return new ResultModel<bool>
-            {
-                IsSuccess = true,
-                Message = "Registration cancelled successfully",
-                Data = true,
-                StatusCode = StatusCodes.Status200OK
-            };
-        }
-        catch (Exception ex)
-        {
-            return new ResultModel<bool>
-            {
-                IsSuccess = false,
-                Message = $"Error: {ex.Message}",
+                Message = $"Error registering template: {ex.Message}. Inner: {ex.InnerException?.Message}",
                 StatusCode = StatusCodes.Status500InternalServerError
             };
         }
@@ -724,7 +760,7 @@ public class ProjectTemplateService : IProjectTemplateService
             IsActive = template.IsActive,
             CanRegister = template.IsActive && (template.MaxGroups == null || template.RegisteredCount < template.MaxGroups),
             CreatedBy = template.Creator?.FullName ?? "Unknown",
-            CreatedAt = template.CreatedAt ?? DateTime.UtcNow,
+            CreatedAt = template.CreatedAt ?? TruncateToSeconds(DateTime.UtcNow),
             Milestones = template.TemplateMilestones.Select(m => new TemplateMilestoneDto
             {
                 TemplateMilestoneId = m.TemplateMilestoneId,
@@ -735,6 +771,86 @@ public class ProjectTemplateService : IProjectTemplateService
                 DaysDuration = m.DaysDuration
             }).OrderBy(m => m.OrderIndex).ToList()
         };
+    }
+
+    public async Task<ResultModel<List<MyGroupRegistrationDto>>> GetMyGroupRegistrationsAsync(int studentId)
+    {
+        try
+        {
+            // Get student's groups
+            var studentGroups = await _context.GroupMembers
+                .Include(gm => gm.Group)
+                .Where(gm => gm.UserId == studentId)
+                .Select(gm => gm.Group)
+                .ToListAsync();
+
+            if (!studentGroups.Any())
+            {
+                return new ResultModel<List<MyGroupRegistrationDto>>
+                {
+                    IsSuccess = true,
+                    Message = "You are not in any group",
+                    Data = new List<MyGroupRegistrationDto>(),
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+
+            var groupIds = studentGroups.Select(g => g.GroupId).ToList();
+
+            // Get all registrations for these groups
+            var registrations = await _context.ProjectTemplateRegistrations
+                .Include(r => r.ProjectTemplate)
+                .Include(r => r.Group)
+                .Include(r => r.Project)
+                .Where(r => groupIds.Contains(r.GroupId))
+                .OrderByDescending(r => r.RegisteredAt)
+                .ToListAsync();
+
+            var result = new List<MyGroupRegistrationDto>();
+            foreach (var reg in registrations)
+            {
+                // Check if can cancel (no submissions)
+                bool canCancel = false;
+                if (reg.Status == "Active" && reg.ProjectId.HasValue)
+                {
+                    var hasSubmissions = await _context.MilestoneSubmissions
+                        .AnyAsync(s => s.ProjectId == reg.ProjectId.Value);
+                    canCancel = !hasSubmissions;
+                }
+
+                result.Add(new MyGroupRegistrationDto
+                {
+                    RegistrationId = reg.RegistrationId,
+                    TemplateId = reg.TemplateId,
+                    TemplateTitle = reg.ProjectTemplate?.Title ?? "Unknown",
+                    TemplateDescription = reg.ProjectTemplate?.Description,
+                    GroupId = reg.GroupId,
+                    GroupName = reg.Group?.GroupName ?? "Unknown",
+                    ProjectId = reg.ProjectId,
+                    ProjectTitle = reg.Project?.Title,
+                    Status = reg.Status,
+                    RegisteredAt = reg.RegisteredAt ?? TruncateToSeconds(DateTime.UtcNow),
+                    CanCancel = canCancel
+                });
+            }
+
+            return new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = true,
+                Message = $"Found {result.Count} registration(s)",
+                Data = result,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = false,
+                Message = $"Error: {ex.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
     }
 
     #endregion

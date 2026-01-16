@@ -2,12 +2,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.Services.ProjectTemplate;
+using AppBackend.Services.Services.ClassConfig;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
+using AppBackend.Services.Services.ProjectGrade;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
 
 /// <summary>
-/// Student-specific endpoints for project template management
+/// Student-specific endpoints for project template management and class configuration
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -15,48 +18,202 @@ namespace AppBackend.ApiCore.Controllers;
 public class StudentController : ControllerBase
 {
     private readonly IProjectTemplateService _templateService;
+    private readonly IClassConfigService _classConfigService;
+    private readonly IMilestoneDeadlineReminderService _deadlineReminderService;
+    private readonly IProjectGradeService _projectGradeService;
     private readonly ILogger<StudentController> _logger;
 
     public StudentController(
         IProjectTemplateService templateService,
+        IClassConfigService classConfigService,
+        IMilestoneDeadlineReminderService deadlineReminderService,
+        IProjectGradeService projectGradeService,
         ILogger<StudentController> logger)
     {
         _templateService = templateService;
+        _classConfigService = classConfigService;
+        _deadlineReminderService = deadlineReminderService;
+        _projectGradeService = projectGradeService;
         _logger = logger;
     }
+
+    #region Milestone Deadlines
+
+    /// <summary>
+    /// Get upcoming milestone deadlines for current student
+    /// </summary>
+    /// <remarks>
+    /// Returns all milestones that are due in the near future (from 7 days ago to future).
+    /// 
+    /// Urgency levels:
+    /// - **critical**: Overdue or due within 1 day
+    /// - **high**: Due within 3 days
+    /// - **medium**: Due within 7 days
+    /// - **low**: Due after 7 days
+    /// 
+    /// Use this endpoint to show a dashboard of upcoming deadlines to students.
+    /// </remarks>
+    [HttpGet("deadlines/upcoming")]
+    [ProducesResponseType(typeof(ResultModel<List<StudentUpcomingMilestoneDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<StudentUpcomingMilestoneDto>>>> GetUpcomingDeadlines()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<StudentUpcomingMilestoneDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting upcoming deadlines", studentId);
+
+        var result = await _deadlineReminderService.GetStudentUpcomingDeadlinesAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get overdue milestones for current student
+    /// </summary>
+    /// <remarks>
+    /// Returns all milestones that are past their due date and haven't been submitted yet.
+    /// 
+    /// This is useful for showing a warning list of incomplete milestones.
+    /// Students should prioritize these submissions.
+    /// </remarks>
+    [HttpGet("deadlines/overdue")]
+    [ProducesResponseType(typeof(ResultModel<List<StudentOverdueMilestoneDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<StudentOverdueMilestoneDto>>>> GetOverdueMilestones()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<StudentOverdueMilestoneDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting overdue milestones", studentId);
+
+        var result = await _deadlineReminderService.GetStudentOverdueMilestonesAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Class Configuration
+
+    /// <summary>
+    /// Get class configuration (Student read-only access)
+    /// </summary>
+    [HttpGet("classes/{classId}/config")]
+    [ProducesResponseType(typeof(ResultModel<ClassConfigResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassConfigResponseDto>>> GetClassConfig([FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<ClassConfigResponseDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting configuration for class {ClassId}", 
+            studentId, classId);
+
+        var result = await _classConfigService.GetConfigAsync(classId);
+        
+        if (result.IsSuccess)
+            return Ok(result);
+        
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Validate submission deadline for a class (Student view)
+    /// </summary>
+    [HttpGet("classes/{classId}/validate-submission")]
+    [ProducesResponseType(typeof(ResultModel<SubmissionDeadlineValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<SubmissionDeadlineValidationDto>>> ValidateSubmissionDeadline(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<SubmissionDeadlineValidationDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} validating submission deadline for class {ClassId}", 
+            studentId, classId);
+
+        var result = await _classConfigService.ValidateSubmissionDeadlineAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Validate edit window for a class (Student view)
+    /// </summary>
+    [HttpGet("classes/{classId}/validate-edit-window")]
+    [ProducesResponseType(typeof(ResultModel<EditWindowValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<EditWindowValidationDto>>> ValidateEditWindow(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<EditWindowValidationDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} validating edit window for class {ClassId}", 
+            studentId, classId);
+
+        var result = await _classConfigService.ValidateEditWindowAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
 
     #region Project Templates
 
     /// <summary>
     /// Get all available project templates for a class
     /// </summary>
-    /// <param name="classId">Class ID</param>
-    /// <returns>List of available templates with registration status</returns>
-    /// <remarks>
-    /// Returns all active project templates in a class that students can view and register to.
-    /// 
-    /// Features:
-    /// - Shows which templates have available slots
-    /// - Indicates if your group is already registered
-    /// - Shows how many groups have registered
-    /// - Displays all milestone details for each template
-    /// - Shows whether you can register (requires being group leader)
-    /// 
-    /// CanRegister is true when:
-    /// - Template is active
-    /// - Has available slots (or unlimited)
-    /// - Student is in a group in this class
-    /// - Student's group hasn't registered yet
-    /// - Student is the group leader
-    /// 
-    /// Use this endpoint to browse available project templates before registration.
-    /// </remarks>
     [HttpGet("classes/{classId}/templates")]
     [ProducesResponseType(typeof(ResultModel<List<AvailableTemplateDto>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ResultModel<List<AvailableTemplateDto>>>> GetAvailableTemplates(
         [FromRoute] int classId)
     {
@@ -85,54 +242,8 @@ public class StudentController : ControllerBase
     /// <summary>
     /// Register group to a project template (Group Leader only)
     /// </summary>
-    /// <param name="request">Registration data with template and group IDs</param>
-    /// <returns>Registration confirmation with created project and milestones</returns>
-    /// <remarks>
-    /// Allows group leader to register their group to a project template.
-    /// 
-    /// **Important:** Only the group leader can register the group to a template.
-    /// 
-    /// What happens when you register:
-    /// 1. System validates:
-    ///    - You are the group leader
-    ///    - Template has available slots
-    ///    - Your group doesn't have an existing project
-    ///    - Your group hasn't registered this template before
-    /// 
-    /// 2. System automatically creates:
-    ///    - A new project from the template (title, description, component)
-    ///    - All milestones defined in the template
-    ///    - Due dates calculated based on milestone durations
-    ///    - Registration record linking group to template
-    /// 
-    /// 3. Template's registered_count is incremented
-    /// 
-    /// Example response:
-    /// ```json
-    /// {
-    ///   "isSuccess": true,
-    ///   "message": "Registration successful! Project and milestones created automatically.",
-    ///   "data": {
-    ///     "registrationId": 1,
-    ///     "templateTitle": "IoT Smart Home System",
-    ///     "groupName": "Team Alpha",
-    ///     "projectId": 15,
-    ///     "projectTitle": "IoT Smart Home System",
-    ///     "milestonesCreated": 5,
-    ///     "message": "Project created with 5 milestones"
-    ///   }
-    /// }
-    /// ```
-    /// 
-    /// After registration, your group can start working on the project and submit milestones.
-    /// </remarks>
     [HttpPost("templates/register")]
     [ProducesResponseType(typeof(ResultModel<TemplateRegistrationResponseDto>), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ResultModel<TemplateRegistrationResponseDto>>> RegisterToTemplate(
         [FromBody] RegisterTemplateDto request)
     {
@@ -185,36 +296,8 @@ public class StudentController : ControllerBase
     /// <summary>
     /// Cancel template registration (Group Leader only)
     /// </summary>
-    /// <param name="registrationId">Registration ID to cancel</param>
-    /// <returns>Cancellation status</returns>
-    /// <remarks>
-    /// Allows group leader to cancel their group's template registration.
-    /// 
-    /// **Important:** Only the group leader can cancel registration.
-    /// 
-    /// Cancellation rules:
-    /// - Can only cancel if no submissions have been made yet
-    /// - Can only cancel if you are the group leader
-    /// - Registration status will be marked as "Cancelled"
-    /// - Template's registered_count is decremented
-    /// - Slot becomes available for other groups
-    /// 
-    /// **Note:** The project and milestones are NOT deleted when cancelling.
-    /// This is to preserve any work that might have been done.
-    /// If you want to completely remove the project, ask your instructor.
-    /// 
-    /// Example scenario:
-    /// - Group leader accidentally registered wrong template
-    /// - No submissions made yet
-    /// - Leader can cancel and register to correct template
-    /// </remarks>
     [HttpDelete("templates/registrations/{registrationId}")]
     [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ResultModel<bool>>> CancelRegistration(
         [FromRoute] int registrationId)
     {
@@ -246,6 +329,87 @@ public class StudentController : ControllerBase
         _logger.LogWarning(
             "Registration cancellation failed for student {StudentId}, registration {RegistrationId}: {Message}", 
             studentId, registrationId, result.Message);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Get my group's template registrations
+    /// </summary>
+    [HttpGet("templates/registrations/my-group")]
+    [ProducesResponseType(typeof(ResultModel<List<MyGroupRegistrationDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<List<MyGroupRegistrationDto>>>> GetMyGroupRegistrations()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<List<MyGroupRegistrationDto>>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting their group registrations", studentId);
+
+        var result = await _templateService.GetMyGroupRegistrationsAsync(studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Project Grades
+
+    /// <summary>
+    /// Get all graders and their grades for a specific project
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <returns>List of all assigned graders with their grades and feedback</returns>
+    /// <remarks>
+    /// Returns all graders assigned to grade projects in the class, along with:
+    /// - Individual grades from each grader
+    /// - Feedback from each grader
+    /// - Average grade calculated from all grader scores
+    /// - Grading status (who has graded, who hasn't)
+    /// 
+    /// Only accessible to students who are members of the project's group.
+    /// 
+    /// Use this endpoint to:
+    /// - View all grades received from different graders
+    /// - See which graders have completed grading
+    /// - View individual feedback from each grader
+    /// - Check the average/final grade
+    /// </remarks>
+    [HttpGet("projects/{projectId}/graders")]
+    [ProducesResponseType(typeof(ResultModel<ProjectGradersResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ResultModel<ProjectGradersResponseDto>>> GetProjectGraders(
+        [FromRoute] int projectId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var studentId))
+        {
+            return Unauthorized(new ResultModel<ProjectGradersResponseDto>
+            {
+                IsSuccess = false,
+                Message = "User not authenticated",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        _logger.LogInformation("Student {StudentId} requesting graders for project {ProjectId}", 
+            studentId, projectId);
+
+        var result = await _projectGradeService.GetProjectGradersAsync(projectId, studentId);
+
+        if (result.IsSuccess)
+            return Ok(result);
 
         return StatusCode(result.StatusCode, result);
     }

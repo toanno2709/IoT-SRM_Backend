@@ -64,4 +64,7 @@ public partial class Project
 
     [InverseProperty("Project")]
     public virtual ICollection<ProjectTemplateRegistration> ProjectTemplateRegistrations { get; set; } = new List<ProjectTemplateRegistration>();
+
+    [InverseProperty("Project")]
+    public virtual ICollection<Simulation> Simulations { get; set; } = new List<Simulation>();
 }

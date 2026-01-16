@@ -42,4 +42,7 @@ public partial class Semester
 
     [InverseProperty("Semester")]
     public virtual ICollection<HallOfFame> HallOfFames { get; set; } = new List<HallOfFame>();
+
+    [InverseProperty("Semester")]
+    public virtual ICollection<StudentCourseHistory> StudentCourseHistories { get; set; } = new List<StudentCourseHistory>();
 }

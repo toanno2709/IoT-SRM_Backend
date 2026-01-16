@@ -237,5 +237,93 @@ namespace AppBackend.ApiCore.Controllers
             
             return StatusCode(result.StatusCode, result);
         }
+
+        /// <summary>
+        /// Change class status (Admin only)
+        /// </summary>
+        /// <param name="classId">Class ID</param>
+        /// <param name="request">Status change request with new status</param>
+        /// <returns>Status change result with validation details</returns>
+        /// <remarks>
+        /// Allows admin to change class status between: Not Started, In Progress, Completed
+        /// 
+        /// **Validation Rules:**
+        /// 
+        /// When changing to "In Progress":
+        /// - All enrolled students MUST be in a group
+        /// - If any student doesn't have a group, the request will be rejected
+        /// - Returns list of students without groups if validation fails
+        /// 
+        /// **Status Flow:**
+        /// - Not Started ? In Progress ? Completed
+        /// - Can change in any direction (e.g., In Progress ? Not Started is allowed)
+        /// 
+        /// **Response includes:**
+        /// - Old and new status
+        /// - Total students count
+        /// - Students with group count
+        /// - Students without group count
+        /// - List of warnings/student names if validation fails
+        /// 
+        /// **Example Scenarios:**
+        /// 
+        /// Success (all students have groups):
+        /// ```json
+        /// {
+        ///   "isSuccess": true,
+        ///   "data": {
+        ///     "classId": 1,
+        ///     "className": "SE1234",
+        ///     "oldStatus": "Not Started",
+        ///     "newStatus": "In Progress",
+        ///     "totalStudents": 30,
+        ///     "studentsWithGroup": 30,
+        ///     "studentsWithoutGroup": 0
+        ///   }
+        /// }
+        /// ```
+        /// 
+        /// Failure (students without groups):
+        /// ```json
+        /// {
+        ///   "isSuccess": false,
+        ///   "responseCode": "STUDENTS_WITHOUT_GROUP",
+        ///   "message": "Cannot change status: 3 students do not have a group yet",
+        ///   "data": {
+        ///     "studentsWithoutGroup": 3,
+        ///     "warnings": ["John Doe", "Jane Smith", "Bob Wilson"]
+        ///   }
+        /// }
+        /// ```
+        /// </remarks>
+        [HttpPut("{classId}/change-status")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ResultModel<ChangeClassStatusResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ResultModel<ChangeClassStatusResponseDto>>> ChangeClassStatus(
+            int classId, 
+            [FromBody] ChangeClassStatusRequestDto request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new ResultModel<ChangeClassStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Invalid input data. Status must be 'Not Started', 'In Progress', or 'Completed'",
+                    Data = null,
+                    StatusCode = StatusCodes.Status400BadRequest
+                });
+            }
+
+            var result = await _classService.ChangeClassStatusAsync(classId, request);
+            
+            if (result.IsSuccess)
+                return Ok(result);
+            
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }

@@ -11,4 +11,6 @@ public interface IAdminReportService
     Task<ResultModel<MilestoneProgressReportDto>> GetMilestoneProgressAsync(int? semesterId = null);
     Task<ResultModel<GradesDistributionReportDto>> GetGradesDistributionAsync(int? semesterId = null);
     Task<ResultModel<ReportExportResponseDto>> ExportReportAsync(ReportExportRequestDto request);
+    Task<ResultModel<ReportExportResponseDto>> ExportComprehensiveSemesterReportAsync(int semesterId);
+    Task<ResultModel<ComprehensiveSemesterReportDto>> GetComprehensiveSemesterReportAsync(int semesterId);
 }

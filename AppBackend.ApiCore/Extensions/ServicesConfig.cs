@@ -52,8 +52,11 @@ using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
 using AppBackend.Services.Services.MilestoneWarning;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using AppBackend.Services.BackgroundServices;
 using AppBackend.Services.Services.AdminClassGrader;
+using AppBackend.ApiCore.Services;
+using AppBackend.Services.Services.ProjectGrade;
 
 namespace AppBackend.Extensions;
 
@@ -88,18 +91,14 @@ public static class ServicesConfig
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISyllabusRepository, SyllabusRepository>();
         services.AddScoped<IProjectTemplateRepository, ProjectTemplateRepository>();
+        services.AddScoped<Repositories.Repositories.StudentCourseHistoryRepo.IStudentCourseHistoryRepository, Repositories.Repositories.StudentCourseHistoryRepo.StudentCourseHistoryRepository>();
+        services.AddScoped<Repositories.Repositories.SimulationRepo.ISimulationRepository, Repositories.Repositories.SimulationRepo.SimulationRepository>();
         #endregion
 
         #region Services
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IClassService>(sp => new ClassService(
-            sp.GetRequiredService<IClassRepository>(),
-            sp.GetRequiredService<ISemesterRepository>(),
-            sp.GetRequiredService<IUserRepository>(),
-            sp.GetRequiredService<IGroupRepository>(),
-            sp.GetRequiredService<IMapper>()
-        ));
+        services.AddScoped<IClassService, ClassService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
         services.AddScoped<IProjectMilestoneService, ProjectMilestoneService>();
@@ -129,6 +128,7 @@ public static class ServicesConfig
         // Student services
         services.AddScoped<IStudentDashboardService, StudentDashboardService>();
         services.AddScoped<IStudentGradeService, StudentGradeService>();
+        services.AddScoped<IProjectGradeService, ProjectGradeService>();
         
         // Instructor services
         services.AddScoped<IFinalProjectService, FinalProjectService>();
@@ -138,18 +138,25 @@ public static class ServicesConfig
         services.AddScoped<IProjectTemplateService, ProjectTemplateService>();
         services.AddScoped<IClassGraderService, ClassGraderService>();
         services.AddScoped<IMilestoneWarningService, MilestoneWarningService>();
+        services.AddScoped<IMilestoneDeadlineReminderService, MilestoneDeadlineReminderService>();
+        services.AddScoped<Services.Services.StudentCourseHistory.IStudentCourseHistoryService, Services.Services.StudentCourseHistory.StudentCourseHistoryService>();
+        services.AddScoped<Services.Services.Simulation.ISimulationService, Services.Services.Simulation.SimulationService>();
         
         // Submission services
         services.AddScoped<ISubmissionService, SubmissionService>();
         
         // Notification services
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<INotificationHubService, NotificationHubService>();
         services.AddScoped<IOTPService, OTPService>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddSingleton<RateLimiterStore>();
 
         // Background Services
         services.AddHostedService<MilestoneWeightCheckBackgroundService>();
+        services.AddHostedService<ClassStatusAutoTransitionService>();
+        services.AddHostedService<MilestoneDeadlineReminderBackgroundService>();
+        services.AddHostedService<StudentCourseHistoryUpdateService>();
 
         #endregion
 

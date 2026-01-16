@@ -606,6 +606,172 @@ public class AdminController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    /// <summary>
+    /// Export comprehensive semester report (Excel format)
+    /// </summary>
+    /// <param name="semesterId">Semester ID to export</param>
+    /// <returns>Excel file with comprehensive semester information</returns>
+    /// <remarks>
+    /// Exports a comprehensive report for a semester including:
+    /// 
+    /// **Sheet 1 - Semester Overview:**
+    /// - Semester information (code, name, year, term, start/end dates)
+    /// - Overall statistics (number of classes, students, groups, projects)
+    /// 
+    /// **Sheet 2 - Class List:**
+    /// - Class ID, name, assigned instructor
+    /// - Number of students, groups, projects in each class
+    /// - Class status
+    /// 
+    /// **Sheet 3 - Instructor List:**
+    /// - Instructor ID, full name, email
+    /// - Assigned classes
+    /// - Total students and projects managed
+    /// 
+    /// **Sheet 4 - Student List:**
+    /// - Student ID, full name, email
+    /// - Current class
+    /// - Group and project participation
+    /// - Role (Leader/Member)
+    /// 
+    /// **Sheet 5 - Milestone Grades:**
+    /// - Detailed milestone evaluation scores
+    /// - Class, group, project, student details
+    /// - Milestone name, weight, score
+    /// - Grading instructor and date
+    /// 
+    /// **Sheet 6 - Final Grades:**
+    /// - Final project scores from 2 graders
+    /// - Average final score
+    /// - Submission date and status
+    /// - Individual student details in each group
+    /// 
+    /// **Sheet 7 - Pass/Not Pass Status:**
+    /// - Total milestone and final scores
+    /// - Overall score (40% milestone + 60% final)
+    /// - Project status
+    /// - Final result: PASS/NOT PASS
+    /// - Highlighted in green (PASS) and red (NOT PASS)
+    /// 
+    /// **Pass Criteria:**
+    /// - Overall score >= 50
+    /// - Project status = "Completed"
+    /// - Final submission submitted
+    /// 
+    /// Excel file is beautifully formatted with:
+    /// - Color-coded headers for each sheet
+    /// - Auto-fit columns
+    /// - Bold headers
+    /// - Cell borders
+    /// </remarks>
+    [HttpGet("reports/semester/{semesterId}/comprehensive-export")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
+    [RateLimit(permitLimit: 5, windowSeconds: 60)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ExportComprehensiveSemesterReport(
+        [FromRoute] int semesterId)
+    {
+        var result = await _reportService.ExportComprehensiveSemesterReportAsync(semesterId);
+
+        if (result.IsSuccess && result.Data != null && result.Data.FileContent != null)
+        {
+            return File(
+                result.Data.FileContent,
+                result.Data.ContentType ?? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                result.Data.FileName ?? $"ComprehensiveReport_Semester{semesterId}.xlsx");
+        }
+
+        return StatusCode(result.StatusCode, new
+        {
+            isSuccess = false,
+            message = result.Message
+        });
+    }
+
+    /// <summary>
+    /// Get comprehensive semester report with all data
+    /// </summary>
+    /// <param name="semesterId">Semester ID</param>
+    /// <returns>Complete semester report with all details</returns>
+    /// <remarks>
+    /// Returns a comprehensive report for a semester including:
+    /// 
+    /// **Semester Overview:**
+    /// - Semester information (name, code, year, term, start/end dates)
+    /// - Overall statistics (number of classes, students, groups, projects)
+    /// 
+    /// **Class List:**
+    /// - All classes in the semester
+    /// - Assigned instructors
+    /// - Number of students, groups, projects
+    /// 
+    /// **Instructor List:**
+    /// - All instructors participating in the semester
+    /// - Classes they manage
+    /// - Total students and projects managed
+    /// 
+    /// **Student List:**
+    /// - All students in the semester
+    /// - Class, group, project of each student
+    /// - Role in group (Leader/Member)
+    /// 
+    /// **Group List:**
+    /// - All groups in the semester
+    /// - Members, group leader
+    /// - Group's project
+    /// 
+    /// **Project List:**
+    /// - All projects in the semester
+    /// - Related group and class
+    /// - Project status
+    /// 
+    /// **Milestone Grades:**
+    /// - Detailed milestone evaluation scores
+    /// - Weight, score, weighted score
+    /// - Grading instructor and feedback
+    /// - List of students in the group
+    /// 
+    /// **Final Submissions:**
+    /// - Scores from graders
+    /// - Average final score
+    /// - Submission date, URL
+    /// - List of students in the group
+    /// 
+    /// **Pass/Not Pass Status:**
+    /// - Total milestone score (weighted sum)
+    /// - Final score
+    /// - Overall score: 40% milestone + 60% final
+    /// - Project status
+    /// - Result: PASS/NOT PASS
+    /// 
+    /// **Pass Criteria:**
+    /// - Overall score >= 50
+    /// - Project status = "Completed"
+    /// - Final submission submitted
+    /// </remarks>
+    [HttpGet("reports/semester/{semesterId}/comprehensive")]
+    [ApiExplorerSettings(GroupName = "admin-reports")]
+    [RateLimit(permitLimit: 20, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ComprehensiveSemesterReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ComprehensiveSemesterReportDto>>> GetComprehensiveSemesterReport(
+        [FromRoute] int semesterId)
+    {
+        var result = await _reportService.GetComprehensiveSemesterReportAsync(semesterId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
     #endregion
 
     #region Class Enrollment Management APIs
@@ -653,6 +819,82 @@ public class AdminController : ControllerBase
         }
 
         var result = await _classEnrollmentService.BulkAddStudentsAsync(request);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Import students to a class from Excel file
+    /// </summary>
+    /// <param name="classId">Class ID to add students to</param>
+    /// <param name="excelFile">Excel file (.xlsx or .xls) containing student emails</param>
+    /// <returns>Import result with success and failure details</returns>
+    /// <remarks>
+    /// Imports students to a class from an Excel template file.
+    /// 
+    /// **Excel File Format:**
+    /// - The Excel file must have a header row (row 1)
+    /// - Data starts from row 2
+    /// - Required column:
+    ///   - Column A (1): **Email** - Student's email address (must exist in system as student role)
+    /// 
+    /// **Validation Rules:**
+    /// 1. Email must exist in the system
+    /// 2. User must be a student (role_id = 3)
+    /// 3. Student must not already be enrolled in this class
+    /// 4. Student must not have already completed the IoT course (Status: Passed)
+    /// 
+    /// **Reason Codes (for failed imports):**
+    /// - `EMAIL_NOT_FOUND`: Email không t?n t?i trong h? th?ng
+    /// - `NOT_STUDENT`: Ng??i dùng không ph?i là sinh viên
+    /// - `DUPLICATE`: Sinh viên ?ã có trong l?p
+    /// - `ALREADY_PASSED_COURSE`: Sinh viên ?ã hoàn thành môn IoT
+    /// 
+    /// **Example Usage:**
+    /// ```
+    /// POST /api/admin/classes/123/import-students
+    /// Content-Type: multipart/form-data
+    /// 
+    /// excelFile: [Excel file with Email column]
+    /// ```
+    /// 
+    /// **Sample Excel Data:**
+    /// | Email |
+    /// |-------|
+    /// | student1@fpt.edu.vn |
+    /// | student2@example.com |
+    /// | student3@fpt.edu.vn |
+    /// 
+    /// Only students who meet all validation criteria will be added to the class.
+    /// </remarks>
+    [HttpPost("classes/{classId}/import-students")]
+    [ApiExplorerSettings(GroupName = "admin-class-management")]
+    [Consumes("multipart/form-data")]
+    [RateLimit(permitLimit: 5, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<ImportStudentsResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<ImportStudentsResultDto>>> ImportStudentsFromExcel(
+        [FromRoute] int classId,
+        [FromForm] IFormFile excelFile)
+    {
+        if (excelFile == null || excelFile.Length == 0)
+        {
+            return BadRequest(new ResultModel<ImportStudentsResultDto>
+            {
+                IsSuccess = false,
+                StatusCode = 400,
+                Message = "Excel file is required"
+            });
+        }
+
+        var result = await _classEnrollmentService.ImportStudentsFromExcelAsync(classId, excelFile);
 
         if (result.IsSuccess)
             return Ok(result);

@@ -8,6 +8,7 @@ using AppBackend.Services.ServicesHelpers;
 using AutoMapper;
 using Microsoft.AspNetCore.Http;
 using OfficeOpenXml;
+using AppBackend.BusinessObjects.Data;
 
 namespace AppBackend.Services
 {
@@ -16,18 +17,51 @@ namespace AppBackend.Services
         private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
         private readonly UserHelper _userHelper;
+        private readonly IotShowroomContext _context;
 
         public UserService(
             IUserRepository userRepository,
             IMapper mapper,
-            UserHelper userHelper)
+            UserHelper userHelper,
+            IotShowroomContext context)
         {
             _userRepository = userRepository;
             _mapper = mapper;
             _userHelper = userHelper;
+            _context = context;
             
             // Set EPPlus License Context
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        }
+
+        /// <summary>
+        /// Helper method to create StudentCourseHistory record for a new student
+        /// </summary>
+        private async Task CreateStudentCourseHistoryAsync(int studentId)
+        {
+            try
+            {
+                // Create new StudentCourseHistory record with nullable semester and final submission
+                var history = new StudentCourseHistory
+                {
+                    StudentId = studentId,
+                    SemesterId = null, // Will be updated when student enrolls in a class
+                    FinalSubmissionId = null, // Will be updated when student submits final project
+                    Status = "Not Started",
+                    IsCurrent = true,
+                    IsRetake = false,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _context.StudentCourseHistories.AddAsync(history);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception)
+            {
+                // Log error but don't fail the user creation process
+                // This is a non-critical operation
+            }
         }
 
         public async Task<ResultModel> GetAllUsersAsync()
@@ -111,6 +145,12 @@ namespace AppBackend.Services
 
             await _userRepository.AddAsync(newUser);
             await _userRepository.SaveChangesAsync();
+
+            // Auto-create StudentCourseHistory if user is a Student (role_id = 3)
+            if (newUser.RoleId == 3)
+            {
+                await CreateStudentCourseHistoryAsync(newUser.UserId);
+            }
 
             // Get user with role information
             var createdUser = await _userRepository.GetByIdWithRoleAsync(newUser.UserId);
@@ -408,8 +448,7 @@ namespace AppBackend.Services
                             }
                         }
 
-                        // Determine RoleId - ONLY accept Student role
-                        // Skip rows with Instructor or Admin role
+                        // Determine RoleId - Accept Student, Instructor, and Admin roles
                         int roleId = 3; // Default to Student
                         if (!string.IsNullOrEmpty(role))
                         {
@@ -417,21 +456,13 @@ namespace AppBackend.Services
                             {
                                 roleId = 3; // Student
                             }
-                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase) || 
-                                     role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+                            else if (role.Equals("Instructor", StringComparison.OrdinalIgnoreCase))
                             {
-                                // Skip Instructor and Admin rows
-                                response.Errors.Add(new ImportErrorDto
-                                {
-                                    RowNumber = row,
-                                    FullName = fullName,
-                                    Email = email,
-                                    PhoneNumber = phone,
-                                    ErrorReason = $"Cannot import {role} role. Only Student role is allowed.",
-                                    ErrorType = "InvalidRole"
-                                });
-                                response.UsersSkipped++;
-                                continue;
+                                roleId = 2; // Instructor
+                            }
+                            else if (role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+                            {
+                                roleId = 1; // Admin
                             }
                             else
                             {
@@ -463,6 +494,12 @@ namespace AppBackend.Services
 
                         await _userRepository.AddAsync(newUser);
                         await _userRepository.SaveChangesAsync();
+
+                        // Auto-create StudentCourseHistory if user is a Student (role_id = 3)
+                        if (newUser.RoleId == 3)
+                        {
+                            await CreateStudentCourseHistoryAsync(newUser.UserId);
+                        }
 
                         // Add to batch tracking
                         batchEmails.Add(email);

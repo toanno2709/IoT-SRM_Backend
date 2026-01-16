@@ -18,6 +18,7 @@ using AppBackend.Services.Services.StudentGrade;
 using AppBackend.Services.Services.ProjectTemplate;
 using AppBackend.Services.Services.ClassGrader;
 using AppBackend.Services.Services.MilestoneWarning;
+using AppBackend.Services.Services.MilestoneDeadlineReminder;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +46,8 @@ public class InstructorController : ControllerBase
     private readonly IProjectTemplateService _templateService;
     private readonly IClassGraderService _classGraderService;
     private readonly IMilestoneWarningService _milestoneWarningService;
+    private readonly IMilestoneDeadlineReminderService _deadlineReminderService;
+    private readonly ILogger<InstructorController> _logger;
 
     public InstructorController(
         IClassService classService, 
@@ -63,7 +66,9 @@ public class InstructorController : ControllerBase
         IStudentGradeService studentGradeService,
         IProjectTemplateService templateService,
         IClassGraderService classGraderService,
-        IMilestoneWarningService milestoneWarningService)
+        IMilestoneWarningService milestoneWarningService,
+        IMilestoneDeadlineReminderService deadlineReminderService,
+        ILogger<InstructorController> logger)
     {
         _classService = classService;
         _projectService = projectService;
@@ -82,6 +87,8 @@ public class InstructorController : ControllerBase
         _templateService = templateService;
         _classGraderService = classGraderService;
         _milestoneWarningService = milestoneWarningService;
+        _deadlineReminderService = deadlineReminderService;
+        _logger = logger;
     }
 
     #region Dashboard APIs
@@ -235,6 +242,38 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Get all students in a class with their group status
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>List of students with group information (has group or not, group name, role)</returns>
+    /// <remarks>
+    /// Returns all students enrolled in the class along with their group membership status.
+    /// 
+    /// For each student, shows:
+    /// - Basic student information (name, email, enrollment date)
+    /// - Whether they have a group (HasGroup)
+    /// - Group details if they're in a group (GroupId, GroupName, RoleInGroup, JoinedGroupAt)
+    /// 
+    /// Summary statistics included:
+    /// - Total students in class
+    /// - Number of students with groups
+    /// - Number of students without groups
+    /// </remarks>
+    [HttpGet("classes/{classId}/students-with-groups")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<ClassStudentsWithGroupResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassStudentsWithGroupResponseDto>>> GetClassStudentsWithGroup(
+        [FromRoute] int classId)
+    {
+        var result = await _classEnrollmentService.GetClassStudentsWithGroupAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
     /// Get all student grades in a class
     /// </summary>
     [HttpGet("classes/{classId}/grades")]
@@ -304,6 +343,95 @@ public class InstructorController : ControllerBase
         [FromRoute] int classId)
     {
         var result = await _milestoneWarningService.GetProjectsWithIncompleteMilestonesAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
+
+    #region Class Configuration Validation APIs
+
+    /// <summary>
+    /// Validate submission deadline for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Submission deadline validation result</returns>
+    /// <remarks>
+    /// Checks if students can currently submit milestones based on class configuration.
+    /// 
+    /// Returns:
+    /// - Can submit status
+    /// - Late submission flag
+    /// - Applicable penalty percentage
+    /// - Submission period status (NotStarted, Open, Late, Closed)
+    /// </remarks>
+    [HttpGet("classes/{classId}/validate-submission")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<SubmissionDeadlineValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<SubmissionDeadlineValidationDto>>> ValidateSubmissionDeadline(
+        [FromRoute] int classId)
+    {
+        var result = await _classConfigService.ValidateSubmissionDeadlineAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Validate edit window for a class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Edit window validation result</returns>
+    /// <remarks>
+    /// Checks if students can currently edit their milestone submissions.
+    /// 
+    /// Returns:
+    /// - Can edit status
+    /// - Edit window status (NotConfigured, NotStarted, Open, Closed)
+    /// - Window start and end dates
+    /// </remarks>
+    [HttpGet("classes/{classId}/validate-edit-window")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<EditWindowValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<EditWindowValidationDto>>> ValidateEditWindow(
+        [FromRoute] int classId)
+    {
+        var result = await _classConfigService.ValidateEditWindowAsync(classId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Validate project creation for a group
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <param name="groupId">Group ID</param>
+    /// <returns>Project creation validation result</returns>
+    /// <remarks>
+    /// Checks if a group can currently create a project based on class configuration.
+    /// 
+    /// Returns:
+    /// - Can create status
+    /// - Deadline date
+    /// - Status (NoDeadline, Open, ExpiringWithinWeek, ExpiringWithin24Hours, Expired)
+    /// - User-friendly message
+    /// </remarks>
+    [HttpGet("classes/{classId}/groups/{groupId}/validate-project-creation")]
+    [ApiExplorerSettings(GroupName = "instructor-classes")]
+    [ProducesResponseType(typeof(ResultModel<ProjectCreationValidationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ProjectCreationValidationDto>>> ValidateProjectCreation(
+        [FromRoute] int classId,
+        [FromRoute] int groupId)
+    {
+        var result = await _classConfigService.ValidateProjectCreationAsync(classId, groupId);
 
         if (result.IsSuccess)
             return Ok(result);
@@ -415,6 +543,51 @@ public class InstructorController : ControllerBase
         var result = await _groupManagementService.UpdateMemberRoleAsync(groupId, userId, request);
         if (result.IsSuccess) return Ok(result);
         return BadRequest(result);
+    }
+
+    /// <summary>
+    /// Create random groups for students without groups (Instructor only)
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Summary of created groups</returns>
+    /// <remarks>
+    /// Automatically creates groups for students who are not in any group yet.
+    /// 
+    /// Features:
+    /// - Respects class configuration (MinMembersPerGroup, MaxMembersPerGroup)
+    /// - Randomly shuffles and assigns students to groups
+    /// - Automatically names groups (Group 1, Group 2, etc.)
+    /// - Randomly assigns group leaders from each group
+    /// - Sends notifications to all assigned students
+    /// 
+    /// Algorithm:
+    /// - Gets all enrolled students who don't have a group
+    /// - Creates groups with optimal size distribution
+    /// - Tries to maximize students assigned while respecting min/max constraints
+    /// - If remaining students less than MinMembersPerGroup, they won't be assigned
+    /// 
+    /// Example: If class has MinMembers=3, MaxMembers=5, and 12 unassigned students:
+    /// - Could create 2 groups of 5 and 1 group of 2 (2 remaining)
+    /// - Or better: 3 groups of 4 (all assigned)
+    /// </remarks>
+    [HttpPost("classes/{classId}/create-random-groups")]
+    [ApiExplorerSettings(GroupName = "instructor-groups")]
+    [ProducesResponseType(typeof(ResultModel<RandomGroupCreationResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<RandomGroupCreationResultDto>>> CreateRandomGroups(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        var result = await _groupService.CreateRandomGroupsAsync(classId, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
     }
 
     #endregion
@@ -744,6 +917,76 @@ public class InstructorController : ControllerBase
     public async Task<ActionResult<ResultModel<MilestoneWarningResultDto>>> TriggerMilestoneWeightCheck()
     {
         var result = await _milestoneWarningService.CheckAndSendMilestoneWarningsAsync();
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Manually trigger milestone deadline reminder check
+    /// </summary>
+    /// <remarks>
+    /// Triggers the deadline reminder check manually for all classes.
+    /// 
+    /// This endpoint is useful for:
+    /// - Testing the reminder system
+    /// - Running an ad-hoc check outside the scheduled time
+    /// - Debugging notification issues
+    /// 
+    /// The background service normally runs this at 9:00 AM UTC daily.
+    /// </remarks>
+    [HttpPost("milestone-reminders/check-all")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<MilestoneDeadlineReminderResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<MilestoneDeadlineReminderResultDto>>> TriggerMilestoneDeadlineCheck()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        _logger.LogInformation("Instructor {InstructorId} manually triggering milestone deadline check", instructorId);
+
+        var result = await _deadlineReminderService.CheckAndSendMilestoneRemindersAsync();
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Check milestone deadlines for a specific class
+    /// </summary>
+    /// <param name="classId">Class ID</param>
+    /// <returns>Summary of reminders that would be sent for this class</returns>
+    /// <remarks>
+    /// Checks milestone deadlines for a specific class and shows which reminders would be sent.
+    /// 
+    /// Use this to:
+    /// - Preview which students would receive reminders
+    /// - Verify milestone deadlines are set correctly
+    /// - Debug why certain students aren't receiving reminders
+    /// </remarks>
+    [HttpGet("classes/{classId}/milestone-deadlines/preview")]
+    [ApiExplorerSettings(GroupName = "instructor-grading")]
+    [ProducesResponseType(typeof(ResultModel<ClassDeadlineCheckResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ClassDeadlineCheckResultDto>>> PreviewClassMilestoneDeadlines(
+        [FromRoute] int classId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback for testing
+        }
+
+        _logger.LogInformation("Instructor {InstructorId} previewing deadline reminders for class {ClassId}", 
+            instructorId, classId);
+
+        var result = await _deadlineReminderService.CheckClassMilestoneDeadlinesAsync(classId);
 
         if (result.IsSuccess)
             return Ok(result);

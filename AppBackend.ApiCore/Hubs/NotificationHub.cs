@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Hubs;
@@ -6,7 +7,9 @@ namespace AppBackend.ApiCore.Hubs;
 /// <summary>
 /// SignalR Hub for real-time notifications
 /// Clients can connect using their email as the connection identifier
+/// Requires authentication with JWT token
 /// </summary>
+[Authorize]
 public class NotificationHub : Hub
 {
     private readonly ILogger<NotificationHub> _logger;
@@ -22,21 +25,29 @@ public class NotificationHub : Hub
     /// </summary>
     public override async Task OnConnectedAsync()
     {
-        var userEmail = Context.User?.FindFirst(ClaimTypes.Email)?.Value;
-        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        if (!string.IsNullOrEmpty(userEmail))
+        try
         {
-            // Add user to their email-based group for targeted notifications
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"notifications_email_{userEmail}");
-            _logger.LogInformation($"User {userEmail} (ID: {userId}) connected to NotificationHub with ConnectionId: {Context.ConnectionId}");
-        }
-        else
-        {
-            _logger.LogWarning($"User connected without email claim. ConnectionId: {Context.ConnectionId}");
-        }
+            var userEmail = Context.User?.FindFirst(ClaimTypes.Email)?.Value;
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-        await base.OnConnectedAsync();
+            if (!string.IsNullOrEmpty(userEmail))
+            {
+                // Add user to their email-based group for targeted notifications
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"notifications_email_{userEmail}");
+                _logger.LogInformation($"? User {userEmail} (ID: {userId}) connected to NotificationHub with ConnectionId: {Context.ConnectionId}");
+            }
+            else
+            {
+                _logger.LogWarning($"?? User connected without email claim. ConnectionId: {Context.ConnectionId}");
+            }
+
+            await base.OnConnectedAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"? Error in OnConnectedAsync for ConnectionId: {Context.ConnectionId}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -44,15 +55,27 @@ public class NotificationHub : Hub
     /// </summary>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var userEmail = Context.User?.FindFirst(ClaimTypes.Email)?.Value;
-        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        if (!string.IsNullOrEmpty(userEmail))
+        try
         {
-            _logger.LogInformation($"User {userEmail} (ID: {userId}) disconnected from NotificationHub. ConnectionId: {Context.ConnectionId}");
-        }
+            var userEmail = Context.User?.FindFirst(ClaimTypes.Email)?.Value;
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-        await base.OnDisconnectedAsync(exception);
+            if (!string.IsNullOrEmpty(userEmail))
+            {
+                _logger.LogInformation($"?? User {userEmail} (ID: {userId}) disconnected from NotificationHub. ConnectionId: {Context.ConnectionId}");
+            }
+
+            if (exception != null)
+            {
+                _logger.LogError(exception, $"? User disconnected with error. ConnectionId: {Context.ConnectionId}");
+            }
+
+            await base.OnDisconnectedAsync(exception);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"? Error in OnDisconnectedAsync for ConnectionId: {Context.ConnectionId}");
+        }
     }
 
     /// <summary>
@@ -61,14 +84,22 @@ public class NotificationHub : Hub
     /// <param name="email">User's email address</param>
     public async Task JoinEmailGroup(string email)
     {
-        if (string.IsNullOrEmpty(email))
+        try
         {
-            _logger.LogWarning("Attempted to join email group with null or empty email");
-            return;
-        }
+            if (string.IsNullOrEmpty(email))
+            {
+                _logger.LogWarning("?? Attempted to join email group with null or empty email");
+                return;
+            }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"notifications_email_{email}");
-        _logger.LogInformation($"User manually joined email group: notifications_email_{email}");
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"notifications_email_{email}");
+            _logger.LogInformation($"? User manually joined email group: notifications_email_{email}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"? Error joining email group: {email}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -77,14 +108,22 @@ public class NotificationHub : Hub
     /// <param name="email">User's email address</param>
     public async Task LeaveEmailGroup(string email)
     {
-        if (string.IsNullOrEmpty(email))
+        try
         {
-            _logger.LogWarning("Attempted to leave email group with null or empty email");
-            return;
-        }
+            if (string.IsNullOrEmpty(email))
+            {
+                _logger.LogWarning("?? Attempted to leave email group with null or empty email");
+                return;
+            }
 
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"notifications_email_{email}");
-        _logger.LogInformation($"User left email group: notifications_email_{email}");
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"notifications_email_{email}");
+            _logger.LogInformation($"? User left email group: notifications_email_{email}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"? Error leaving email group: {email}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -93,11 +132,19 @@ public class NotificationHub : Hub
     /// <param name="notificationId">Notification ID to mark as read</param>
     public async Task MarkNotificationAsRead(int notificationId)
     {
-        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        _logger.LogInformation($"User {userId} marked notification {notificationId} as read via SignalR");
-        
-        // The actual marking should be done via the API endpoint
-        // This is just a client-initiated trigger
-        await Clients.Caller.SendAsync("NotificationMarkedAsRead", notificationId);
+        try
+        {
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _logger.LogInformation($"?? User {userId} marked notification {notificationId} as read via SignalR");
+            
+            // The actual marking should be done via the API endpoint
+            // This is just a client-initiated trigger
+            await Clients.Caller.SendAsync("NotificationMarkedAsRead", notificationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"? Error marking notification as read: {notificationId}");
+            throw;
+        }
     }
 }

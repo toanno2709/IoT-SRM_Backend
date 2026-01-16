@@ -73,6 +73,7 @@ public class AvailableTemplateDto
     public int? AvailableSlots { get; set; } // null = unlimited
     public bool CanRegister { get; set; }
     public bool IsMyGroupRegistered { get; set; } // Check if current user's group already registered
+    public int? MyRegistrationId { get; set; } // Registration ID if group is registered (for cancellation)
     public int MilestoneCount { get; set; }
     public List<TemplateMilestoneDto> Milestones { get; set; } = new();
 }
@@ -144,4 +145,22 @@ public class TemplateStatisticsDto
     public int ActiveRegistrations { get; set; }
     public int CancelledRegistrations { get; set; }
     public bool IsFull { get; set; }
+}
+
+/// <summary>
+/// DTO for student's group registrations
+/// </summary>
+public class MyGroupRegistrationDto
+{
+    public int RegistrationId { get; set; }
+    public int TemplateId { get; set; }
+    public string TemplateTitle { get; set; } = string.Empty;
+    public string? TemplateDescription { get; set; }
+    public int GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public int? ProjectId { get; set; }
+    public string? ProjectTitle { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime RegisteredAt { get; set; }
+    public bool CanCancel { get; set; } // Can cancel if no submissions
 }
