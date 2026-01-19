@@ -587,8 +587,8 @@ public class StudentGradeService : IStudentGradeService
                 .OrderBy(cg => cg.Instructor!.FullName)
                 .ToListAsync();
 
-            // Get all final submission grades from all graders
-            var allFinalSubmissionGrades = new Dictionary<int, List<(string GraderName, decimal Grade)>>();
+            // Get all final submission grades from all graders with instructor info
+            var allFinalSubmissionGrades = new Dictionary<int, List<(int InstructorId, string GraderName, string GraderEmail, decimal Grade)>>();
             
             foreach (var studentGrade in gradesData.StudentGrades.Where(sg => sg.ProjectId.HasValue))
             {
@@ -604,13 +604,15 @@ public class StudentGradeService : IStudentGradeService
                         .Where(fsg => fsg.FinalSubmissionId == finalSubmission.FinalSubmissionId)
                         .Select(fsg => new
                         {
+                            fsg.InstructorId,
                             GraderName = fsg.Instructor!.FullName ?? "Unknown",
+                            GraderEmail = fsg.Instructor!.Email ?? "",
                             fsg.Grade
                         })
                         .ToListAsync();
 
                     allFinalSubmissionGrades[projectId] = graderGrades
-                        .Select(g => (g.GraderName, g.Grade))
+                        .Select(g => (g.InstructorId, g.GraderName, g.GraderEmail, g.Grade))
                         .ToList();
                 }
             }
@@ -667,17 +669,19 @@ public class StudentGradeService : IStudentGradeService
                 }
             }
 
-            // Add Milestone Average column (replacing Overall Grade)
+            // Add Milestone Average column
             worksheet.Cells[headerRow, col++].Value = "Milestone Average";
 
-            // Add columns for each grader's grade
+            // Add Final Submission column (from Final_Project_Submissions table)
+            worksheet.Cells[headerRow, col++].Value = "Final Submission";
+
+            // Add columns for each grader (3 columns per grader: Name, Email, Grade)
             foreach (var grader in classGraders)
             {
-                worksheet.Cells[headerRow, col++].Value = $"Final - {grader.Instructor?.FullName}";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Name";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Email";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Grade";
             }
-            
-            // Add Final Submission Average column
-            worksheet.Cells[headerRow, col++].Value = "Final Submission (Avg)";
 
             // Style header row
             using (var range = worksheet.Cells[headerRow, 1, headerRow, col - 1])
@@ -733,7 +737,7 @@ public class StudentGradeService : IStudentGradeService
                     }
                 }
 
-                // Add Milestone Average column (simple average of all milestone grades)
+                // Add Milestone Average
                 if (studentGrade.MilestoneAverageGrade.HasValue)
                 {
                     worksheet.Cells[row, col].Value = studentGrade.MilestoneAverageGrade.Value;
@@ -760,64 +764,19 @@ public class StudentGradeService : IStudentGradeService
                 }
                 col++;
 
-                // Get individual grader grades
-                List<(string GraderName, decimal Grade)> graderGrades = new List<(string, decimal)>();
-                if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
+                // Add Final Submission grade (from Final_Project_Submissions table)
+                if (studentGrade.FinalSubmissionGrade.HasValue)
                 {
-                    graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
-                }
-
-                // Add individual grader grades
-                foreach (var classGrader in classGraders)
-                {
-                    var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
-                    
-                    if (graderGrade != default)
-                    {
-                        worksheet.Cells[row, col].Value = graderGrade.Grade;
-                        worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
-                        
-                        // Color coding
-                        worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        if (graderGrade.Grade >= 80)
-                        {
-                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                        }
-                        else if (graderGrade.Grade >= 50)
-                        {
-                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-                        }
-                        else
-                        {
-                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                        }
-                    }
-                    else
-                    {
-                        worksheet.Cells[row, col].Value = "N/A";
-                    }
-                    col++;
-                }
-
-                // Calculate Final Submission Average from grader grades
-                decimal? calculatedAverage = null;
-                if (graderGrades.Any())
-                {
-                    calculatedAverage = graderGrades.Select(gg => gg.Grade).Average();
-                }
-
-                if (calculatedAverage.HasValue)
-                {
-                    worksheet.Cells[row, col].Value = calculatedAverage.Value;
+                    worksheet.Cells[row, col].Value = studentGrade.FinalSubmissionGrade.Value;
                     worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
                     
                     // Color coding for final submission
                     worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    if (calculatedAverage.Value >= 80)
+                    if (studentGrade.FinalSubmissionGrade.Value >= 80)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
                     }
-                    else if (calculatedAverage.Value >= 50)
+                    else if (studentGrade.FinalSubmissionGrade.Value >= 50)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
                     }
@@ -831,6 +790,55 @@ public class StudentGradeService : IStudentGradeService
                     worksheet.Cells[row, col].Value = "N/A";
                 }
                 col++;
+
+                // Get individual grader grades for this student's project
+                List<(int InstructorId, string GraderName, string GraderEmail, decimal Grade)> graderGrades = new List<(int, string, string, decimal)>();
+                if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
+                {
+                    graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                }
+
+                // Add individual grader columns (Name, Email, Grade for each grader)
+                foreach (var classGrader in classGraders)
+                {
+                    var graderInfo = graderGrades.FirstOrDefault(gg => gg.InstructorId == classGrader.InstructorId);
+                    
+                    if (graderInfo != default)
+                    {
+                        // Grader Name
+                        worksheet.Cells[row, col++].Value = graderInfo.GraderName;
+                        
+                        // Grader Email
+                        worksheet.Cells[row, col++].Value = graderInfo.GraderEmail;
+                        
+                        // Grader Grade
+                        worksheet.Cells[row, col].Value = graderInfo.Grade;
+                        worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
+                        
+                        // Color coding
+                        worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        if (graderInfo.Grade >= 80)
+                        {
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                        }
+                        else if (graderInfo.Grade >= 50)
+                        {
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
+                        }
+                        else
+                        {
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
+                        }
+                        col++;
+                    }
+                    else
+                    {
+                        // No grade from this grader
+                        worksheet.Cells[row, col++].Value = "N/A";
+                        worksheet.Cells[row, col++].Value = "N/A";
+                        worksheet.Cells[row, col++].Value = "N/A";
+                    }
+                }
 
                 row++;
             }

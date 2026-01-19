@@ -609,8 +609,8 @@ public class AdminReportService : IAdminReportService
             var sheet5 = package.Workbook.Worksheets.Add("Milestone Grades");
             CreateMilestoneGradesSheet(sheet5, data.MilestoneGrades);
 
-            // Sheet 6 - Final Grades
-            var sheet6 = package.Workbook.Worksheets.Add("Final Grades");
+            // Sheet 6 - Grader Grades (changed from "Final Grades")
+            var sheet6 = package.Workbook.Worksheets.Add("Grader Grades");
             CreateFinalSubmissionsSheet(sheet6, data.FinalSubmissions);
 
             // Sheet 7 - Pass Not Pass Status
@@ -940,9 +940,6 @@ public class AdminReportService : IAdminReportService
             currentColumn += 3;
         }
 
-        // Add Submission Date column
-        sheet.Cells[1, currentColumn].Value = "Submission Date";
-
         // Data
         int row = 2;
         foreach (var submission in submissions)
@@ -971,16 +968,13 @@ public class AdminReportService : IAdminReportService
                 }
             }
 
-            // Add Submission Date
-            sheet.Cells[row, currentColumn].Value = submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm");
-
             row++;
         }
 
         // Borders
         if (row > 2)
         {
-            var usedRange = sheet.Cells[1, 1, row - 1, totalColumns + 1]; // +1 for Submission Date
+            var usedRange = sheet.Cells[1, 1, row - 1, totalColumns];
             usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
