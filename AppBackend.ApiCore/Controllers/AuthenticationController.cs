@@ -194,7 +194,18 @@ namespace AppBackend.ApiCore.Controllers
                 });
 
             var result = await _passwordService.SendOTPAsync(request);
-            return StatusCode(result.StatusCode, result);
+            
+            // Convert ResultModel<SendOtpResponse> to non-generic ResultModel for response
+            var response = new ResultModel
+            {
+                IsSuccess = result.IsSuccess,
+                ResponseCode = result.ResponseCode,
+                Message = result.Message,
+                StatusCode = result.StatusCode,
+                Data = result.Data
+            };
+            
+            return StatusCode(response.StatusCode, response);
         }
 
         /// <summary>
@@ -219,7 +230,18 @@ namespace AppBackend.ApiCore.Controllers
                 });
 
             var result = await _passwordService.VerifyOTPAsync(request);
-            return StatusCode(result.StatusCode, result);
+            
+            // Convert ResultModel<VerifyOtpResponse> to non-generic ResultModel for response
+            var response = new ResultModel
+            {
+                IsSuccess = result.IsSuccess,
+                ResponseCode = result.ResponseCode,
+                Message = result.Message,
+                StatusCode = result.StatusCode,
+                Data = result.Data
+            };
+            
+            return StatusCode(response.StatusCode, response);
         }
 
         /// <summary>
