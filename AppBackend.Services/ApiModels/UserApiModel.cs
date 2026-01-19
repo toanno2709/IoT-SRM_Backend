@@ -100,6 +100,12 @@ namespace AppBackend.Services.ApiModels
         public string Password { get; set; } = null!;
     }
 
+    public class GoogleLoginRequest
+    {
+        [Required(ErrorMessage = "Firebase token is required")]
+        public string FirebaseToken { get; set; } = null!;
+    }
+
     #endregion
 
     #region Legacy DTOs (for backward compatibility)

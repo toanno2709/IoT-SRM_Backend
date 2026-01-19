@@ -78,6 +78,48 @@ namespace AppBackend.ApiCore.Controllers
         }
 
         /// <summary>
+        /// Login with Google (Firebase token)
+        /// </summary>
+        /// <param name="request">Firebase ID token from frontend</param>
+        /// <returns>JWT access token, refresh token, and user information with role details</returns>
+        /// <response code="200">Google login successful</response>
+        /// <response code="400">Invalid Firebase token format</response>
+        /// <response code="401">Firebase token verification failed</response>
+        /// <response code="404">User account not found in the system</response>
+        /// <remarks>
+        /// This endpoint accepts a Firebase ID token from the frontend (obtained via Firebase Authentication).
+        /// The token is verified and decoded to extract user information (email, name, picture).
+        /// 
+        /// Flow:
+        /// 1. Frontend authenticates user with Firebase (Google provider)
+        /// 2. Frontend obtains Firebase ID token
+        /// 3. Frontend sends token to this endpoint
+        /// 4. Backend verifies token with Firebase
+        /// 5. Backend checks if email exists in database
+        /// 6. If exists: Updates user profile (name, avatar) and returns JWT tokens
+        /// 7. If not exists: Returns 404 error indicating account not in system
+        /// 
+        /// Note: Only users already registered in the system can login via Google.
+        /// New Google users must be added by Admin first.
+        /// </remarks>
+        [HttpPost("login/google")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ResultModel
+                {
+                    IsSuccess = false,
+                    ResponseCode = "INVALID_INPUT",
+                    Message = "Invalid input data",
+                    StatusCode = 400
+                });
+
+            var result = await _authenticationService.GoogleLoginAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
         /// Logout current user
         /// </summary>
         /// <returns>Logout confirmation</returns>

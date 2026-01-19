@@ -162,6 +162,7 @@ public static class ServicesConfig
 
         #region Helpers
         services.AddScoped<UserHelper>();
+        services.AddScoped<FirebaseHelper>();
         #endregion
 
         return services;
