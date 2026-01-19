@@ -66,21 +66,21 @@ public class MilestoneDeadlineReminderService : IMilestoneDeadlineReminderServic
                 if (daysUntilDue == 7)
                 {
                     reminderType = "7days";
-                    notificationTitle = $"?? Reminder: Milestone due in 7 days";
+                    notificationTitle = "Reminder: Milestone due in 7 days";
                     notificationMessage = $"Milestone '{milestone.Title}' for project '{milestone.Project.Title}' is due in 7 days ({milestone.DueDate:MMM dd, yyyy}). Please start working on it!";
                     result.TotalReminders7Days++;
                 }
                 else if (daysUntilDue == 3)
                 {
                     reminderType = "3days";
-                    notificationTitle = $"?? Reminder: Milestone due in 3 days";
+                    notificationTitle = "Reminder: Milestone due in 3 days";
                     notificationMessage = $"Milestone '{milestone.Title}' for project '{milestone.Project.Title}' is due in 3 days ({milestone.DueDate:MMM dd, yyyy}). Don't forget to submit!";
                     result.TotalReminders3Days++;
                 }
                 else if (daysUntilDue == 1)
                 {
                     reminderType = "1day";
-                    notificationTitle = $"?? Urgent: Milestone due tomorrow!";
+                    notificationTitle = "Urgent: Milestone due tomorrow!";
                     notificationMessage = $"Milestone '{milestone.Title}' for project '{milestone.Project.Title}' is due tomorrow ({milestone.DueDate:MMM dd, yyyy}). Please submit as soon as possible!";
                     result.TotalReminders1Day++;
                 }
@@ -92,7 +92,7 @@ public class MilestoneDeadlineReminderService : IMilestoneDeadlineReminderServic
                     {
                         reminderType = "overdue";
                         var daysOverdue = Math.Abs(daysUntilDue);
-                        notificationTitle = $"? Overdue: Milestone not submitted";
+                        notificationTitle = "Overdue: Milestone not submitted";
                         notificationMessage = $"Milestone '{milestone.Title}' for project '{milestone.Project.Title}' was due {daysOverdue} day(s) ago ({milestone.DueDate:MMM dd, yyyy}). Please submit immediately!";
                         result.TotalOverdueReminders++;
                     }
