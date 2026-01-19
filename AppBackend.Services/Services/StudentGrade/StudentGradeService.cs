@@ -446,6 +446,7 @@ public class StudentGradeService : IStudentGradeService
                         .ToListAsync();
 
                     // Map milestone grades
+                    var milestoneGradesList = new List<decimal>();
                     foreach (var milestoneName in milestoneNames)
                     {
                         var milestone = projectMilestones.FirstOrDefault(pm => pm.Title == milestoneName);
@@ -453,12 +454,21 @@ public class StudentGradeService : IStudentGradeService
                         {
                             var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
                             studentGrade.MilestoneGrades[milestoneName] = evaluation?.Score;
+                            if (evaluation?.Score != null)
+                            {
+                                milestoneGradesList.Add(evaluation.Score);
+                            }
                         }
                         else
                         {
                             studentGrade.MilestoneGrades[milestoneName] = null;
                         }
                     }
+
+                    // Calculate milestone average grade (simple average, not weighted)
+                    studentGrade.MilestoneAverageGrade = milestoneGradesList.Any() 
+                        ? milestoneGradesList.Average() 
+                        : null;
 
                     // Get final submission grade (average from all graders)
                     var finalSubmission = await _context.FinalProjectSubmissions
@@ -501,6 +511,7 @@ public class StudentGradeService : IStudentGradeService
                     {
                         studentGrade.MilestoneGrades[milestoneName] = null;
                     }
+                    studentGrade.MilestoneAverageGrade = null;
                     studentGrade.FinalSubmissionGrade = null;
                 }
 
@@ -656,8 +667,8 @@ public class StudentGradeService : IStudentGradeService
                 }
             }
 
-            // Add Overall Grade column right after milestones
-            worksheet.Cells[headerRow, col++].Value = "Overall Grade";
+            // Add Milestone Average column (replacing Overall Grade)
+            worksheet.Cells[headerRow, col++].Value = "Milestone Average";
 
             // Add columns for each grader's grade
             foreach (var grader in classGraders)
@@ -722,75 +733,19 @@ public class StudentGradeService : IStudentGradeService
                     }
                 }
 
-                // Calculate Overall Grade first (needed for this position)
-                decimal? recalculatedOverallGrade = null;
-                decimal? calculatedAverage = null;
-                List<decimal> graderGradesForAverage = new List<decimal>();
-                
-                if (studentGrade.ProjectId.HasValue)
+                // Add Milestone Average column (simple average of all milestone grades)
+                if (studentGrade.MilestoneAverageGrade.HasValue)
                 {
-                    // Get grader grades for calculating average
-                    if (allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
-                    {
-                        var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
-                        graderGradesForAverage = graderGrades.Select(gg => gg.Grade).ToList();
-                        
-                        if (graderGradesForAverage.Any())
-                        {
-                            calculatedAverage = graderGradesForAverage.Average();
-                        }
-                    }
-
-                    // Get project milestones and their weights
-                    var projectMilestones = await _context.ProjectMilestones
-                        .Where(pm => pm.ProjectId == studentGrade.ProjectId.Value)
-                        .ToListAsync();
-                    
-                    var evaluations = await _context.MilestoneEvaluations
-                        .Where(e => e.ProjectId == studentGrade.ProjectId.Value)
-                        .ToListAsync();
-
-                    decimal totalWeightedScore = 0;
-                    decimal totalWeight = 0;
-
-                    // Add milestone scores
-                    foreach (var milestone in projectMilestones)
-                    {
-                        var evaluation = evaluations.FirstOrDefault(e => e.MilestoneDefId == milestone.MilestoneId);
-                        if (evaluation != null && milestone.Weight.HasValue)
-                        {
-                            totalWeightedScore += (evaluation.Score * milestone.Weight.Value) / 100;
-                            totalWeight += milestone.Weight.Value;
-                        }
-                    }
-
-                    // Add final submission score using the calculated average from graders
-                    if (calculatedAverage.HasValue)
-                    {
-                        decimal finalWeight = 100 - totalWeight;
-                        if (finalWeight > 0)
-                        {
-                            totalWeightedScore += (calculatedAverage.Value * finalWeight) / 100;
-                            totalWeight += finalWeight;
-                        }
-                    }
-
-                    recalculatedOverallGrade = totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : null;
-                }
-
-                // Add Overall Grade column (right after milestones)
-                if (recalculatedOverallGrade.HasValue)
-                {
-                    worksheet.Cells[row, col].Value = recalculatedOverallGrade.Value;
+                    worksheet.Cells[row, col].Value = studentGrade.MilestoneAverageGrade.Value;
                     worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
                     
-                    // Color coding for overall grade
+                    // Color coding for milestone average
                     worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    if (recalculatedOverallGrade.Value >= 80)
+                    if (studentGrade.MilestoneAverageGrade.Value >= 80)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
                     }
-                    else if (recalculatedOverallGrade.Value >= 50)
+                    else if (studentGrade.MilestoneAverageGrade.Value >= 50)
                     {
                         worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
                     }
@@ -805,52 +760,52 @@ public class StudentGradeService : IStudentGradeService
                 }
                 col++;
 
-                // Add individual grader grades
+                // Get individual grader grades
+                List<(string GraderName, decimal Grade)> graderGrades = new List<(string, decimal)>();
                 if (studentGrade.ProjectId.HasValue && allFinalSubmissionGrades.ContainsKey(studentGrade.ProjectId.Value))
                 {
-                    var graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                    graderGrades = allFinalSubmissionGrades[studentGrade.ProjectId.Value];
+                }
+
+                // Add individual grader grades
+                foreach (var classGrader in classGraders)
+                {
+                    var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
                     
-                    foreach (var classGrader in classGraders)
+                    if (graderGrade != default)
                     {
-                        var graderGrade = graderGrades.FirstOrDefault(gg => gg.GraderName == classGrader.Instructor?.FullName);
+                        worksheet.Cells[row, col].Value = graderGrade.Grade;
+                        worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
                         
-                        if (graderGrade != default)
+                        // Color coding
+                        worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        if (graderGrade.Grade >= 80)
                         {
-                            worksheet.Cells[row, col].Value = graderGrade.Grade;
-                            worksheet.Cells[row, col].Style.Numberformat.Format = "0.00";
-                            
-                            // Color coding
-                            worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                            if (graderGrade.Grade >= 80)
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
-                            }
-                            else if (graderGrade.Grade >= 50)
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-                            }
-                            else
-                            {
-                                worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
-                            }
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                        }
+                        else if (graderGrade.Grade >= 50)
+                        {
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
                         }
                         else
                         {
-                            worksheet.Cells[row, col].Value = "N/A";
+                            worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(Color.LightCoral);
                         }
-                        col++;
                     }
-                }
-                else
-                {
-                    // No grades from any grader
-                    for (int i = 0; i < classGraders.Count; i++)
+                    else
                     {
-                        worksheet.Cells[row, col++].Value = "N/A";
+                        worksheet.Cells[row, col].Value = "N/A";
                     }
+                    col++;
                 }
 
                 // Calculate Final Submission Average from grader grades
+                decimal? calculatedAverage = null;
+                if (graderGrades.Any())
+                {
+                    calculatedAverage = graderGrades.Select(gg => gg.Grade).Average();
+                }
+
                 if (calculatedAverage.HasValue)
                 {
                     worksheet.Cells[row, col].Value = calculatedAverage.Value;
