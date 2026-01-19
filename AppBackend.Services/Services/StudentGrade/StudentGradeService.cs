@@ -676,11 +676,13 @@ public class StudentGradeService : IStudentGradeService
             worksheet.Cells[headerRow, col++].Value = "Final Submission";
 
             // Add columns for each grader (3 columns per grader: Name, Email, Grade)
+            int graderIndex = 1;
             foreach (var grader in classGraders)
             {
-                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Name";
-                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Email";
-                worksheet.Cells[headerRow, col++].Value = $"Grader {grader.Instructor?.FullName} - Grade";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {graderIndex} Name";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {graderIndex} Email";
+                worksheet.Cells[headerRow, col++].Value = $"Grader {graderIndex} Grade";
+                graderIndex++;
             }
 
             // Style header row
