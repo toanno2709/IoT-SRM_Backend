@@ -120,12 +120,22 @@ public class MilestoneDeadlineReminderService : IMilestoneDeadlineReminderServic
                     if (member.User == null)
                         continue;
 
+                    // Create Data JSON for notification with classId
+                    var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        classId = milestone.Project.Group.ClassId,
+                        milestoneId = milestone.MilestoneId,
+                        projectId = milestone.Project.ProjectId,
+                        groupId = milestone.Project.Group.GroupId
+                    });
+
                     var notification = new BusinessObjects.Models.Notification
                     {
                         UserId = member.UserId,
                         Title = notificationTitle,
                         Message = notificationMessage,
                         Type = "milestone_deadline_reminder",
+                        Data = notificationData,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
                     };

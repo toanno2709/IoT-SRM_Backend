@@ -148,12 +148,20 @@ public class GroupManagementService : IGroupManagementService
             }
 
             // ? FIX: Create invitation notification instead of adding directly
+            // Create Data JSON for notification with classId and groupId
+            var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                classId = group.ClassId,
+                groupId = groupId
+            });
+
             var invitation = new BusinessObjects.Models.Notification
             {
                 UserId = request.UserId,
                 Title = "Group Invitation",
                 Message = $"You have been invited to join {group.GroupName} (groupId:{groupId})",
                 Type = "group_invitation",
+                Data = notificationData,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
             };
