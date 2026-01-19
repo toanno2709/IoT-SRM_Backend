@@ -905,13 +905,23 @@ public class AdminReportService : IAdminReportService
 
     private void CreateFinalSubmissionsSheet(ExcelWorksheet sheet, List<FinalSubmissionDetailDto> submissions)
     {
-        // Header styling
-        sheet.Cells["A1:I1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        sheet.Cells["A1:I1"].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80));
-        sheet.Cells["A1:I1"].Style.Font.Color.SetColor(Color.Black);
-        sheet.Cells["A1:I1"].Style.Font.Bold = true;
+        // Determine maximum number of graders across all submissions
+        int maxGraders = submissions.Any() 
+            ? submissions.Max(s => s.GraderGrades?.Count ?? 0) 
+            : 0;
 
-        // Headers
+        // Calculate total columns: 7 base columns + (3 columns per grader)
+        int baseColumns = 7; // A through G
+        int totalColumns = baseColumns + (maxGraders * 3);
+
+        // Header styling
+        var headerRange = sheet.Cells[1, 1, 1, totalColumns];
+        headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        headerRange.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(146, 208, 80));
+        headerRange.Style.Font.Color.SetColor(Color.Black);
+        headerRange.Style.Font.Bold = true;
+
+        // Base Headers (columns A-G)
         sheet.Cells["A1"].Value = "Class ID";
         sheet.Cells["B1"].Value = "Class Name";
         sheet.Cells["C1"].Value = "Group ID";
@@ -919,8 +929,19 @@ public class AdminReportService : IAdminReportService
         sheet.Cells["E1"].Value = "Project ID";
         sheet.Cells["F1"].Value = "Project Name";
         sheet.Cells["G1"].Value = "Average Grade";
-        sheet.Cells["H1"].Value = "Grader Grades";
-        sheet.Cells["I1"].Value = "Submission Date";
+
+        // Dynamic grader columns (H onwards)
+        int currentColumn = 8; // Column H
+        for (int i = 1; i <= maxGraders; i++)
+        {
+            sheet.Cells[1, currentColumn].Value = $"Grader {i} Name";
+            sheet.Cells[1, currentColumn + 1].Value = $"Grader {i} Email";
+            sheet.Cells[1, currentColumn + 2].Value = $"Grader {i} Grade";
+            currentColumn += 3;
+        }
+
+        // Add Submission Date column
+        sheet.Cells[1, currentColumn].Value = "Submission Date";
 
         // Data
         int row = 2;
@@ -933,20 +954,33 @@ public class AdminReportService : IAdminReportService
             sheet.Cells[$"E{row}"].Value = submission.ProjectId;
             sheet.Cells[$"F{row}"].Value = submission.ProjectTitle;
             sheet.Cells[$"G{row}"].Value = submission.AverageGrade;
-            
-            // Grader grades as comma-separated
-            var graderGrades = string.Join(", ", 
-                submission.GraderGrades.Select(g => $"{g.GraderName}: {g.Grade}"));
-            sheet.Cells[$"H{row}"].Value = graderGrades;
-            
-            sheet.Cells[$"I{row}"].Value = submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm");
+
+            // Fill grader information
+            currentColumn = 8; // Start from column H
+            if (submission.GraderGrades != null && submission.GraderGrades.Any())
+            {
+                // Sort graders by GradedAt to maintain consistent order
+                var sortedGraders = submission.GraderGrades.OrderBy(g => g.GradedAt).ToList();
+                
+                foreach (var grader in sortedGraders)
+                {
+                    sheet.Cells[row, currentColumn].Value = grader.GraderName;
+                    sheet.Cells[row, currentColumn + 1].Value = grader.GraderEmail;
+                    sheet.Cells[row, currentColumn + 2].Value = grader.Grade;
+                    currentColumn += 3;
+                }
+            }
+
+            // Add Submission Date
+            sheet.Cells[row, currentColumn].Value = submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm");
+
             row++;
         }
 
         // Borders
         if (row > 2)
         {
-            var usedRange = sheet.Cells[1, 1, row - 1, 9];
+            var usedRange = sheet.Cells[1, 1, row - 1, totalColumns + 1]; // +1 for Submission Date
             usedRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
             usedRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
@@ -1274,6 +1308,7 @@ public class AdminReportService : IAdminReportService
                 {
                     GraderId = fsg.InstructorId,
                     GraderName = fsg.Instructor?.FullName,
+                    GraderEmail = fsg.Instructor?.Email,
                     Grade = fsg.Grade,
                     Feedback = fsg.Feedback,
                     GradedAt = fsg.GradedAt
@@ -1304,9 +1339,9 @@ public class AdminReportService : IAdminReportService
             var enrollment = _context.ClassEnrollments
                 .Include(ce => ce.Class)
                 .FirstOrDefaultAsync(ce => ce.StudentId.HasValue && 
-                                     ce.StudentId.Value == s.UserId && 
-                                     ce.ClassId.HasValue && 
-                                     classIds.Contains(ce.ClassId.Value)).Result;
+                                             ce.StudentId.Value == s.UserId && 
+                                             ce.ClassId.HasValue && 
+                                             classIds.Contains(ce.ClassId.Value)).Result;
 
             decimal totalMilestoneScore = 0;
             if (project != null)

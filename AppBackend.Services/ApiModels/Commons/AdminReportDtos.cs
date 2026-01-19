@@ -392,6 +392,7 @@ public class FinalSubmissionGraderDto
 {
     public int GraderId { get; set; }
     public string? GraderName { get; set; }
+    public string? GraderEmail { get; set; }
     public decimal Grade { get; set; }
     public string? Feedback { get; set; }
     public DateTime? GradedAt { get; set; }
