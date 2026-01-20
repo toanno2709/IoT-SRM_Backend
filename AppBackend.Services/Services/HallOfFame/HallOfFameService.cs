@@ -146,10 +146,12 @@ public class HallOfFameService : IHallOfFameService
                 };
             }
 
-            // Get all projects in this semester with their final scores (no filtering)
+            // Get all projects in this semester with their final scores
             var projects = await _projectRepository.GetProjectsBySemesterAsync(semesterId);
             var eligibleProjects = projects
-                .Where(p => p.FinalProjectSubmission != null && p.FinalProjectSubmission.Grade.HasValue)
+                .Where(p => p.FinalProjectSubmission != null && 
+                           p.FinalProjectSubmission.Grade.HasValue &&
+                           p.FinalProjectSubmission.Grade.Value >= 80)
                 .OrderByDescending(p => p.FinalProjectSubmission!.Grade)
                 .Take(10)
                 .ToList();
