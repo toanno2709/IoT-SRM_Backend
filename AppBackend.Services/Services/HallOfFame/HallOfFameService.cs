@@ -142,10 +142,10 @@ public class HallOfFameService : IHallOfFameService
                 };
             }
 
-            // Get all projects in this semester with their final scores
+            // Get all projects in this semester with their final scores (removed status check)
             var projects = await _projectRepository.GetProjectsBySemesterAsync(semesterId);
-            var completedProjects = projects
-                .Where(p => p.Status == "Completed" && p.FinalProjectSubmission != null && p.FinalProjectSubmission.Grade.HasValue)
+            var eligibleProjects = projects
+                .Where(p => p.FinalProjectSubmission != null && p.FinalProjectSubmission.Grade.HasValue)
                 .OrderByDescending(p => p.FinalProjectSubmission!.Grade)
                 .Take(10)
                 .ToList();
@@ -154,7 +154,7 @@ public class HallOfFameService : IHallOfFameService
             var hallOfFameEntries = await _hallOfFameRepository.GetBySemesterAsync(semesterId);
             var hallOfFameProjectIds = hallOfFameEntries.Select(h => h.ProjectId).ToHashSet();
 
-            var leaderboardEntries = completedProjects.Select((project, index) => new LeaderboardEntryDto
+            var leaderboardEntries = eligibleProjects.Select((project, index) => new LeaderboardEntryDto
             {
                 Rank = index + 1,
                 ProjectId = project.ProjectId,
@@ -235,17 +235,7 @@ public class HallOfFameService : IHallOfFameService
                 };
             }
 
-            // Validate project status and score
-            if (project.Status != "Completed")
-            {
-                return new ResultModel<HallOfFameResponseDto>
-                {
-                    IsSuccess = false,
-                    StatusCode = 400,
-                    Message = "Only completed projects can be nominated to Hall of Fame"
-                };
-            }
-
+            // Validate project score only (removed status check)
             if (project.FinalProjectSubmission == null || 
                 !project.FinalProjectSubmission.Grade.HasValue || 
                 project.FinalProjectSubmission.Grade.Value < 80)

@@ -127,6 +127,65 @@ public class FinalProjectController : ControllerBase
     }
 
     /// <summary>
+    /// Update files for final project submission
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="files">Files to upload</param>
+    /// <returns>Upload status for each file</returns>
+    /// <remarks>
+    /// Update final project files to Cloudinary.
+    /// All files are optional - you can upload them separately.
+    /// Can be called multiple times to update files before deadline.
+    /// Maximum file size: 500MB per file.
+    /// 
+    /// Sample request using form-data:
+    /// - finalReport: [file]
+    /// - presentation: [file]
+    /// - sourceCode: [file]
+    /// - videoDemo: [file]
+    /// </remarks>
+    [HttpPut("{projectId}/final-submission/upload")]
+    [Authorize(Roles = "Student")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ResultModel<FinalProjectFileUploadResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [RequestSizeLimit(524288000)] // 500 MB
+    [RequestFormLimits(MultipartBodyLengthLimit = 524288000)] // 500 MB
+    public async Task<ActionResult<ResultModel<FinalProjectFileUploadResponseDto>>> UpdateFinalProjectFiles(
+        [FromRoute] int projectId,
+        [FromForm] FinalProjectFileUploadRequest files)
+    {
+        if (files.FinalReport == null && files.Presentation == null && files.SourceCode == null && files.VideoDemo == null)
+        {
+            return BadRequest(new
+            {
+                isSuccess = false,
+                message = "At least one file must be provided"
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new
+            {
+                isSuccess = false,
+                message = "User not authenticated"
+            });
+        }
+
+        var result = await _finalProjectService.UploadFilesAsync(
+            projectId, files.FinalReport, files.Presentation, files.SourceCode, files.VideoDemo, userId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
     /// Get final project submission
     /// </summary>
     /// <param name="projectId">Project ID</param>
