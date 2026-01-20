@@ -258,5 +258,58 @@ namespace AppBackend.ApiCore.Controllers
             
             return StatusCode(result.StatusCode, result);
         }
+
+        /// <summary>
+        /// Student resubmit project after rejection or revision request
+        /// </summary>
+        /// <param name="projectId">Project ID</param>
+        /// <param name="dto">Resubmission data with optional comment</param>
+        /// <returns>Success status with new project status</returns>
+        /// <remarks>
+        /// Business Rules:
+        /// - Student: Must be a member of the project's group
+        /// - Project status must be "Rejected" or "Revision"
+        /// - Changes status to "Resubmitted" for instructor to review again
+        /// - Sends notification to instructor
+        /// - Creates entry in status history
+        /// 
+        /// Use Case:
+        /// When student submits a project and instructor rejects it or requests revisions,
+        /// student can update the project details and then call this API to notify instructor
+        /// that the project is ready for review again.
+        /// </remarks>
+        [HttpPut("{projectId}/student-resubmit")]
+        [Authorize(Roles = "Student")]
+        public async Task<ActionResult<ResultModel<UpdateProjectStatusResponseDto>>> StudentResubmitProject(
+            int projectId, 
+            [FromBody] StudentResubmitProjectDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new 
+                { 
+                    status = "error", 
+                    message = "Invalid input data"
+                });
+            }
+
+            // Get current student ID from JWT
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var studentId))
+            {
+                return Unauthorized(new 
+                { 
+                    status = "error", 
+                    message = "User not authenticated"
+                });
+            }
+
+            var result = await _projectService.StudentResubmitProjectAsync(projectId, dto, studentId);
+            
+            if (result.IsSuccess)
+                return Ok(result);
+            
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }

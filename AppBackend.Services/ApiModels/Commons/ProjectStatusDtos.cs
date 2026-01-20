@@ -92,3 +92,16 @@ public class UnassignedStudentsResponseDto
     public int TotalUnassignedStudents { get; set; }
     public List<UnassignedStudentDto> Students { get; set; } = new();
 }
+
+/// <summary>
+/// Request DTO for student to resubmit project after rejection
+/// </summary>
+public class StudentResubmitProjectDto
+{
+    /// <summary>
+    /// Optional comment from student explaining the changes made
+    /// </summary>
+    /// <example>We have updated the project description and components as requested.</example>
+    [StringLength(1000)]
+    public string? Comment { get; set; }
+}
