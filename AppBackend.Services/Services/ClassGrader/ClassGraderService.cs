@@ -407,6 +407,9 @@ public class ClassGraderService : IClassGraderService
                 existingGrade.Grade = request.Grade;
                 existingGrade.Feedback = request.Feedback;
                 existingGrade.UpdatedAt = DateTime.UtcNow;
+                
+                _logger.LogInformation("Updated existing grade for instructor {InstructorId} on submission {SubmissionId}", 
+                    instructorId, finalSubmissionId);
             }
             else
             {
@@ -420,8 +423,15 @@ public class ClassGraderService : IClassGraderService
                     GradedAt = DateTime.UtcNow
                 };
                 _context.FinalSubmissionGrades.Add(newGrade);
+                
+                _logger.LogInformation("Created new grade for instructor {InstructorId} on submission {SubmissionId}", 
+                    instructorId, finalSubmissionId);
             }
 
+            // FIXED: Do NOT update submission.Grade field
+            // The Grade field in Final_Project_Submissions should only be set by the main class instructor
+            // Grader grades are stored separately in Final_Submission_Grades table
+            
             await _context.SaveChangesAsync();
 
             // Reload grades to get the latest data
@@ -436,12 +446,14 @@ public class ClassGraderService : IClassGraderService
             var myGrade = submission.FinalSubmissionGrades
                 .First(fsg => fsg.InstructorId == instructorId);
 
-            // Calculate average from grader grades (NOT from submission.Grade)
-            // submission.Grade is reserved for main class instructor
+            // Calculate average from grader grades (for display purposes only)
+            // This average is NOT stored in submission.Grade
             decimal? averageGraderGrade = null;
             if (submission.FinalSubmissionGrades.Any())
             {
                 averageGraderGrade = submission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+                _logger.LogInformation("Calculated average grader grade: {AverageGrade} from {GraderCount} grader(s)", 
+                    averageGraderGrade, submission.FinalSubmissionGrades.Count);
             }
 
             // Send notification to group members
