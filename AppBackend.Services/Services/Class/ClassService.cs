@@ -1041,33 +1041,33 @@ public class ClassService : IClassService
                     // Add information about grades and Pass/Not Pass status
                     if (history.FinalGrade.HasValue)
                     {
-                        message += $"• Final grade: {history.FinalGrade.Value:F2}/10\n";
+                        message += $"? Final grade: {history.FinalGrade.Value:F2}/\n";
                         
                         if (history.Status == "Pass")
                         {
-                            message += $"• Result: PASS\n";
+                            message += $"? Result: PASS\n";
                         }
                         else if (history.Status == "Not Pass")
                         {
-                            message += $"• Result: NOT PASS\n";
+                            message += $"? Result: NOT PASS\n";
                         }
 
                         // Add information about grades from other instructors if available
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
-                            message += $"• Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
+                            message += $"? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/\n";
                         }
                     }
                     else
                     {
-                        message += $"• Result: NOT PASS\n";
-                        message += "• Reason: No final grade available or no submission\n";
+                        message += $"? Result: NOT PASS\n";
+                        message += "? Reason: No final grade available or no submission\n";
                     }
 
                     // Add note if need to retake
                     if (history.IsRetake == true)
                     {
-                        message += "\n• You need to re-register for this course.";
+                        message += "\n? You need to re-register for this course.";
                     }
 
                     // Send notification with data containing userId
