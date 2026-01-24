@@ -284,6 +284,7 @@ public class AdminReportService : IAdminReportService
             var approvedProjects = projects.Count(p => p.Status == "Approved");
             var completedProjects = projects.Count(p => p.Status == "Completed");
             var rejectedProjects = projects.Count(p => p.Status == "Rejected");
+            var revisionProjects = projects.Count(p => p.Status == "Revision"); // FIXED: Added Revision status
 
             var completionRate = totalProjects > 0 
                 ? (decimal)completedProjects / totalProjects * 100 
@@ -294,7 +295,8 @@ public class AdminReportService : IAdminReportService
                 new() { Status = "Pending", Count = pendingProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)pendingProjects / totalProjects * 100, 2) : 0 },
                 new() { Status = "Approved", Count = approvedProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)approvedProjects / totalProjects * 100, 2) : 0 },
                 new() { Status = "Completed", Count = completedProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)completedProjects / totalProjects * 100, 2) : 0 },
-                new() { Status = "Rejected", Count = rejectedProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)rejectedProjects / totalProjects * 100, 2) : 0 }
+                new() { Status = "Rejected", Count = rejectedProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)rejectedProjects / totalProjects * 100, 2) : 0 },
+                new() { Status = "Revision", Count = revisionProjects, Percentage = totalProjects > 0 ? Math.Round((decimal)revisionProjects / totalProjects * 100, 2) : 0 } // FIXED: Added Revision status
             };
 
             var classes = await _classRepository.GetAllAsync();

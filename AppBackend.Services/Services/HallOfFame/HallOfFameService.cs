@@ -148,10 +148,32 @@ public class HallOfFameService : IHallOfFameService
 
             // Get all projects in this semester with their final scores
             var projects = await _projectRepository.GetProjectsBySemesterAsync(semesterId);
-            var eligibleProjects = projects
-                .Where(p => p.FinalProjectSubmission != null && 
-                           p.FinalProjectSubmission.Grade.HasValue &&
-                           p.FinalProjectSubmission.Grade.Value >= 80)
+            
+            // FIXED: Filter projects where final submission grade >= 80 AND all grader grades >= 80
+            var eligibleProjects = new List<BusinessObjects.Models.Project>();
+            
+            foreach (var p in projects)
+            {
+                if (p.FinalProjectSubmission == null || 
+                    !p.FinalProjectSubmission.Grade.HasValue ||
+                    p.FinalProjectSubmission.Grade.Value < 80)
+                {
+                    continue; // Skip if no final submission or grade < 80
+                }
+                
+                // Check all grader grades >= 80
+                var graderGrades = await _context.FinalSubmissionGrades
+                    .Where(fsg => fsg.FinalSubmissionId == p.FinalProjectSubmission.FinalSubmissionId)
+                    .ToListAsync();
+                
+                if (graderGrades.Any() && graderGrades.All(g => g.Grade >= 80))
+                {
+                    eligibleProjects.Add(p);
+                }
+            }
+            
+            // Sort by grade and take top 10
+            eligibleProjects = eligibleProjects
                 .OrderByDescending(p => p.FinalProjectSubmission!.Grade)
                 .Take(10)
                 .ToList();
@@ -165,10 +187,10 @@ public class HallOfFameService : IHallOfFameService
             
             foreach (var (project, index) in eligibleProjects.Select((p, i) => (p, i)))
             {
-                // Get milestone evaluations for this project
+                // Get milestone evaluations for this project (FIXED: filter score >= 80)
                 var milestoneEvals = await _context.MilestoneEvaluations
                     .Include(me => me.MilestoneDef)
-                    .Where(me => me.ProjectId == project.ProjectId)
+                    .Where(me => me.ProjectId == project.ProjectId && me.Score >= 80)
                     .ToListAsync();
 
                 var milestones = milestoneEvals.Select(me => new LeaderboardMilestoneDto

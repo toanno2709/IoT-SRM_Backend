@@ -461,6 +461,14 @@ namespace AppBackend.Services.Services.Group
 
             if (group == null) throw new KeyNotFoundException("Group not found.");
 
+            // FIXED: Find actual leader from members with "Leader" role
+            var actualLeader = group.GroupMembers.FirstOrDefault(m => m.RoleInGroup == "Leader");
+            if (actualLeader != null && group.LeaderId != actualLeader.UserId)
+            {
+                // Update leaderId to match the actual leader in members
+                group.LeaderId = actualLeader.UserId;
+            }
+
             var dto = new GroupDetailDto
             {
                 GroupId = group.GroupId,
