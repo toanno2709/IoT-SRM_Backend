@@ -5,6 +5,7 @@ using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace AppBackend.Services.Services.MilestoneWarning;
 
@@ -93,6 +94,13 @@ public class MilestoneWarningService : IMilestoneWarningService
                 {
                     var instructorId = classEntity.InstructorId.Value;
                     
+                    // Prepare data payload: include class id and affected projects with projectId and groupId
+                    var dataPayload = new
+                    {
+                        classId = classEntity.ClassId,
+                        projects = projectsWithIncompleteWeights.Select(p => new { projectId = p.ProjectId, groupId = p.GroupId }).ToList()
+                    };
+
                     // Create notification
                     var notification = new BusinessObjects.Models.Notification
                     {
@@ -102,7 +110,8 @@ public class MilestoneWarningService : IMilestoneWarningService
                                  $"Projects: {string.Join(", ", projectsWithIncompleteWeights.Take(5).Select(p => p.ProjectTitle))}",
                         Type = "milestone_weight_warning",
                         IsRead = false,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        Data = JsonSerializer.Serialize(dataPayload)
                     };
                     _context.Notifications.Add(notification);
 

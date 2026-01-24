@@ -1035,39 +1035,39 @@ public class ClassService : IClassService
                 if (history != null)
                 {
                     // Create notification content
-                    string title = $"K?t qu? h?c t?p - L?p {classEntity.ClassName}";
-                    string message = $"L?p h?c '{classEntity.ClassName}' ?ã hoàn thành.\n\n";
+                    string title = $"Course Results - Class {classEntity.ClassName}";
+                    string message = $"Class '{classEntity.ClassName}' has been completed.\n\n";
 
                     // Add information about grades and Pass/Not Pass status
                     if (history.FinalGrade.HasValue)
                     {
-                        message += $"• ?i?m s? cu?i k?: {history.FinalGrade.Value:F2}/10\n";
+                        message += $"? Final grade: {history.FinalGrade.Value:F2}/\n";
                         
                         if (history.Status == "Pass")
                         {
-                            message += $"• K?t qu?: ??T\n";
+                            message += $"? Result: PASS\n";
                         }
                         else if (history.Status == "Not Pass")
                         {
-                            message += $"• K?t qu?: KHÔNG ??T\n";
+                            message += $"? Result: NOT PASS\n";
                         }
 
                         // Add information about grades from other instructors if available
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
-                            message += $"• ?i?m trung bình t? gi?ng viên khác: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
+                            message += $"? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/\n";
                         }
                     }
                     else
                     {
-                        message += $"• K?t qu?: KHÔNG ??T\n";
-                        message += "• Lý do: Ch?a có ?i?m s? cu?i k? ho?c ch?a n?p bài\n";
+                        message += $"? Result: NOT PASS\n";
+                        message += "? Reason: No final grade available or no submission\n";
                     }
 
                     // Add note if need to retake
                     if (history.IsRetake == true)
                     {
-                        message += "\n• B?n c?n ??ng ký h?c l?i môn h?c này.";
+                        message += "\n? You need to re-register for this course.";
                     }
 
                     // Send notification with data containing userId

@@ -55,7 +55,9 @@ public partial class FinalProjectSubmission
     public DateTime? LastUpdatedAt { get; set; }
 
     /// <summary>
-    /// Average grade calculated from all instructor grades in FinalSubmissionGrades table
+    /// Grade from the main class instructor only.
+    /// Grader grades are stored separately in FinalSubmissionGrades table.
+    /// This field should NOT be automatically updated when graders submit their grades.
     /// </summary>
     [Column("grade")]
     [Precision(5, 2)]
@@ -65,8 +67,7 @@ public partial class FinalProjectSubmission
     public string? Feedback { get; set; }
 
     /// <summary>
-    /// Deprecated: Use FinalSubmissionGrades for individual instructor grades
-    /// Kept for backward compatibility
+    /// Main class instructor who graded this submission
     /// </summary>
     [Column("graded_by")]
     public int? GradedBy { get; set; }

@@ -96,11 +96,19 @@ public class CloudinaryService : ICloudinaryService
             _logger.LogInformation("File uploaded successfully. PublicId: {PublicId}, Url: {Url}",
                 uploadResult.PublicId, uploadResult.SecureUrl);
 
+            // For raw files (PDF, ZIP, etc.), create a download URL with fl_attachment flag
+            var secureUrl = uploadResult.SecureUrl?.ToString();
+            if (!isImage && !string.IsNullOrEmpty(secureUrl))
+            {
+                secureUrl = ConvertToDownloadUrl(secureUrl, request.File.FileName);
+                _logger.LogInformation("Created download URL: {DownloadUrl}", secureUrl);
+            }
+
             var response = new CloudinaryUploadResponseDto
             {
                 PublicId = uploadResult.PublicId,
                 Url = uploadResult.Url?.ToString(),
-                SecureUrl = uploadResult.SecureUrl?.ToString(),
+                SecureUrl = secureUrl,
                 Format = uploadResult.Format,
                 Bytes = uploadResult.Bytes
             };
@@ -237,6 +245,53 @@ public class CloudinaryService : ICloudinaryService
         {
             _logger.LogError(ex, "Error deleting file from URL: {FileUrl}", fileUrl);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Convert Cloudinary URL to download URL with fl_attachment flag
+    /// This forces the browser to download the file instead of displaying it
+    /// </summary>
+    /// <param name="cloudinaryUrl">Original Cloudinary URL</param>
+    /// <param name="originalFileName">Original filename to use for download</param>
+    /// <returns>Download URL with fl_attachment flag</returns>
+    private string ConvertToDownloadUrl(string cloudinaryUrl, string originalFileName)
+    {
+        try
+        {
+            // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/raw/upload/v{version}/{path}
+            // We need to insert "fl_attachment:{filename}" after "upload/"
+            
+            var uri = new Uri(cloudinaryUrl);
+            var path = uri.AbsolutePath;
+            
+            // Find the "upload/" part
+            var uploadIndex = path.IndexOf("/upload/");
+            if (uploadIndex == -1)
+            {
+                _logger.LogWarning("Could not find '/upload/' in URL: {Url}", cloudinaryUrl);
+                return cloudinaryUrl;
+            }
+
+            // Encode the filename for URL
+            var encodedFileName = Uri.EscapeDataString(originalFileName);
+            
+            // Insert the fl_attachment transformation
+            var beforeUpload = path.Substring(0, uploadIndex + 8); // Include "/upload/"
+            var afterUpload = path.Substring(uploadIndex + 8);
+            
+            // Build the new path with fl_attachment
+            var newPath = $"{beforeUpload}fl_attachment:{encodedFileName}/{afterUpload}";
+            
+            // Reconstruct the full URL
+            var downloadUrl = $"{uri.Scheme}://{uri.Host}{newPath}";
+            
+            return downloadUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error converting URL to download URL: {Url}", cloudinaryUrl);
+            return cloudinaryUrl; // Return original URL if conversion fails
         }
     }
 

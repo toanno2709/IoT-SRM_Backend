@@ -33,6 +33,12 @@ public interface IProjectService
     /// Get project status history with comments (for students to view)
     /// </summary>
     Task<ResultModel<List<ProjectStatusHistoryDto>>> GetProjectStatusHistoryAsync(int projectId);
+    
+    /// <summary>
+    /// Student resubmit project after rejection (Student only - Group Leader or Member)
+    /// Changes status to "Resubmitted" for instructor to review again
+    /// </summary>
+    Task<ResultModel<UpdateProjectStatusResponseDto>> StudentResubmitProjectAsync(int projectId, StudentResubmitProjectDto request, int studentId);
 }
 
 

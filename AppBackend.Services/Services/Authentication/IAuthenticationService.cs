@@ -7,6 +7,7 @@ namespace AppBackend.Services.Services.Authentication
     {
         Task<ResultModel> RegisterAsync(RegisterRequest request);
         Task<ResultModel> LoginAsync(LoginRequest request);
+        Task<ResultModel> GoogleLoginAsync(GoogleLoginRequest request);
         Task<ResultModel> LogoutAsync(int userId);
         Task<ResultModel> RefreshTokenAsync(string refreshToken);
     }

@@ -1,5 +1,6 @@
 using AppBackend.BusinessObjects.Constants;
 using AppBackend.BusinessObjects.Models;
+using AppBackend.BusinessObjects.Data;
 using AppBackend.Repositories.Repositories.HallOfFameRepo;
 using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Repositories.Repositories.SemesterRepo;
@@ -15,17 +16,20 @@ public class HallOfFameService : IHallOfFameService
     private readonly IProjectRepository _projectRepository;
     private readonly ISemesterRepository _semesterRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IotShowroomContext _context;
 
     public HallOfFameService(
         IHallOfFameRepository hallOfFameRepository,
         IProjectRepository projectRepository,
         ISemesterRepository semesterRepository,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        IotShowroomContext context)
     {
         _hallOfFameRepository = hallOfFameRepository;
         _projectRepository = projectRepository;
         _semesterRepository = semesterRepository;
         _userRepository = userRepository;
+        _context = context;
     }
 
     public async Task<ResultModel<List<HallOfFameResponseDto>>> GetAllHallOfFameAsync()
@@ -144,8 +148,44 @@ public class HallOfFameService : IHallOfFameService
 
             // Get all projects in this semester with their final scores
             var projects = await _projectRepository.GetProjectsBySemesterAsync(semesterId);
-            var completedProjects = projects
-                .Where(p => p.Status == "Completed" && p.FinalProjectSubmission != null && p.FinalProjectSubmission.Grade.HasValue)
+            
+            // FIXED: Filter projects where ALL milestone scores >= 80 AND all grader grades >= 80
+            var eligibleProjects = new List<BusinessObjects.Models.Project>();
+            
+            foreach (var p in projects)
+            {
+                if (p.FinalProjectSubmission == null || 
+                    !p.FinalProjectSubmission.Grade.HasValue ||
+                    p.FinalProjectSubmission.Grade.Value < 80)
+                {
+                    continue; // Skip if no final submission or grade < 80
+                }
+                
+                // Check ALL milestone scores >= 80
+                var milestoneEvals = await _context.MilestoneEvaluations
+                    .Where(me => me.ProjectId == p.ProjectId)
+                    .ToListAsync();
+                
+                if (!milestoneEvals.Any() || !milestoneEvals.All(me => me.Score >= 80))
+                {
+                    continue; // Skip if no milestones or any milestone score < 80
+                }
+                
+                // Check ALL grader grades >= 80
+                var graderGrades = await _context.FinalSubmissionGrades
+                    .Where(fsg => fsg.FinalSubmissionId == p.FinalProjectSubmission.FinalSubmissionId)
+                    .ToListAsync();
+                
+                if (!graderGrades.Any() || !graderGrades.All(g => g.Grade >= 80))
+                {
+                    continue; // Skip if no grader grades or any grader grade < 80
+                }
+                
+                eligibleProjects.Add(p);
+            }
+            
+            // Sort by grade and take top 10
+            eligibleProjects = eligibleProjects
                 .OrderByDescending(p => p.FinalProjectSubmission!.Grade)
                 .Take(10)
                 .ToList();
@@ -154,19 +194,80 @@ public class HallOfFameService : IHallOfFameService
             var hallOfFameEntries = await _hallOfFameRepository.GetBySemesterAsync(semesterId);
             var hallOfFameProjectIds = hallOfFameEntries.Select(h => h.ProjectId).ToHashSet();
 
-            var leaderboardEntries = completedProjects.Select((project, index) => new LeaderboardEntryDto
+            // Build leaderboard entries with comprehensive information
+            var leaderboardEntries = new List<LeaderboardEntryDto>();
+            
+            foreach (var (project, index) in eligibleProjects.Select((p, i) => (p, i)))
             {
-                Rank = index + 1,
-                ProjectId = project.ProjectId,
-                ProjectName = project.Title,
-                ProjectDescription = project.Description,
-                GroupName = project.Group?.GroupName,
-                FinalScore = project.FinalProjectSubmission?.Grade,
-                SemesterName = semester.Name,
-                CompletedDate = project.FinalProjectSubmission?.SubmittedAt,
-                Note = hallOfFameEntries.FirstOrDefault(h => h.ProjectId == project.ProjectId)?.Note,
-                IsInHallOfFame = hallOfFameProjectIds.Contains(project.ProjectId)
-            }).ToList();
+                // Get milestone evaluations for this project (all already >= 80 from filtering)
+                var milestoneEvals = await _context.MilestoneEvaluations
+                    .Include(me => me.MilestoneDef)
+                    .Where(me => me.ProjectId == project.ProjectId)
+                    .ToListAsync();
+
+                var milestones = milestoneEvals.Select(me => new LeaderboardMilestoneDto
+                {
+                    MilestoneId = me.MilestoneDefId,
+                    MilestoneName = me.MilestoneDef?.Title,
+                    Weight = me.MilestoneDef?.Weight,
+                    Score = me.Score,
+                    WeightedScore = me.Score * (me.MilestoneDef?.Weight ?? 0) / 100
+                }).ToList();
+
+                // Get final submission with grader grades
+                LeaderboardFinalSubmissionDto? finalSubmission = null;
+                if (project.FinalProjectSubmission != null)
+                {
+                    var graderGrades = await _context.FinalSubmissionGrades
+                        .Include(fsg => fsg.Instructor)
+                        .Where(fsg => fsg.FinalSubmissionId == project.FinalProjectSubmission.FinalSubmissionId)
+                        .Select(fsg => new LeaderboardGraderDto
+                        {
+                            GraderId = fsg.InstructorId,
+                            GraderName = fsg.Instructor != null ? fsg.Instructor.FullName : null,
+                            GraderEmail = fsg.Instructor != null ? fsg.Instructor.Email : null,
+                            Grade = fsg.Grade,
+                            Feedback = fsg.Feedback,
+                            GradedAt = fsg.GradedAt
+                        })
+                        .ToListAsync();
+
+                    finalSubmission = new LeaderboardFinalSubmissionDto
+                    {
+                        FinalSubmissionId = project.FinalProjectSubmission.FinalSubmissionId,
+                        AverageGrade = project.FinalProjectSubmission.Grade,
+                        FinalReportUrl = project.FinalProjectSubmission.FinalReportUrl,
+                        PresentationUrl = project.FinalProjectSubmission.PresentationUrl,
+                        DemoVideoUrl = project.FinalProjectSubmission.VideoDemoUrl,
+                        SubmissionNotes = project.FinalProjectSubmission.SubmissionNotes,
+                        SubmittedAt = project.FinalProjectSubmission.SubmittedAt,
+                        GraderGrades = graderGrades
+                    };
+                }
+
+                // Get simulator link
+                var simulator = await _context.Simulations
+                    .Where(s => s.ProjectId == project.ProjectId)
+                    .FirstOrDefaultAsync();
+
+                leaderboardEntries.Add(new LeaderboardEntryDto
+                {
+                    Rank = index + 1,
+                    ProjectId = project.ProjectId,
+                    ProjectName = project.Title,
+                    ProjectDescription = project.Description,
+                    ProjectComponent = project.Component,
+                    GroupName = project.Group?.GroupName,
+                    FinalScore = project.FinalProjectSubmission?.Grade,
+                    SemesterName = semester.Name,
+                    CompletedDate = project.FinalProjectSubmission?.SubmittedAt,
+                    Note = hallOfFameEntries.FirstOrDefault(h => h.ProjectId == project.ProjectId)?.Note,
+                    IsInHallOfFame = hallOfFameProjectIds.Contains(project.ProjectId),
+                    Milestones = milestones,
+                    FinalSubmission = finalSubmission,
+                    SimulatorLink = simulator?.WokwiProjectUrl
+                });
+            }
 
             var response = new LeaderboardResponseDto
             {
@@ -235,17 +336,7 @@ public class HallOfFameService : IHallOfFameService
                 };
             }
 
-            // Validate project status and score
-            if (project.Status != "Completed")
-            {
-                return new ResultModel<HallOfFameResponseDto>
-                {
-                    IsSuccess = false,
-                    StatusCode = 400,
-                    Message = "Only completed projects can be nominated to Hall of Fame"
-                };
-            }
-
+            // Validate project score only (removed status check)
             if (project.FinalProjectSubmission == null || 
                 !project.FinalProjectSubmission.Grade.HasValue || 
                 project.FinalProjectSubmission.Grade.Value < 80)

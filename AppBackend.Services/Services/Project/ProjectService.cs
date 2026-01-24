@@ -675,7 +675,7 @@ namespace AppBackend.Services.Services.Project
 
                 // NOTE: ProjectApprovalHistory is for milestone submission approvals, not project status changes
                 // Project status changes are tracked via notifications
-                // To get status history, we query notifications of type "project_status" or "project_status_update"
+                // To get status history, we query notifications of type "project_status", "project_status_update", or "project_resubmitted"
                 
                 var project = await _db.Projects
                     .Include(p => p.Group)
@@ -699,7 +699,7 @@ namespace AppBackend.Services.Services.Project
                 var statusNotifications = await _db.Notifications
                     .Where(n => n.UserId.HasValue && 
                                memberIds.Contains(n.UserId.Value) &&
-                               (n.Type == "project_status" || n.Type == "project_status_update") &&
+                               (n.Type == "project_status" || n.Type == "project_status_update" || n.Type == "project_resubmitted") &&
                                n.Title != null && n.Title.Contains(project.Title ?? ""))
                     .OrderByDescending(n => n.CreatedAt)
                     .ToListAsync();
@@ -712,7 +712,7 @@ namespace AppBackend.Services.Services.Project
                         Status = ExtractStatusFromNotification(n.Message),
                         Comment = ExtractCommentFromNotification(n.Message),
                         ReviewerId = 0, // We don't have reviewer ID from notifications, use 0 as placeholder
-                        ReviewerName = "Instructor",
+                        ReviewerName = ExtractReviewerNameFromNotification(n.Message, n.Type),
                         ReviewedAt = n.CreatedAt ?? DateTime.UtcNow
                     })
                     .DistinctBy(h => new { h.Status, h.ReviewedAt })
@@ -747,6 +747,12 @@ namespace AppBackend.Services.Services.Project
         {
             if (string.IsNullOrEmpty(message)) return "Unknown";
 
+            // Pattern for resubmitted: "Status changed from 'X' to 'Resubmitted'"
+            if (message.Contains("'Resubmitted'") || message.Contains("has resubmitted"))
+            {
+                return "Resubmitted";
+            }
+
             // Pattern: "marked project as {Status}" or "changed project status from 'X' to '{Status}'"
             if (message.Contains("marked project as"))
             {
@@ -767,10 +773,59 @@ namespace AppBackend.Services.Services.Project
             return "Unknown";
         }
 
+        // Helper method to extract reviewer name from notification message
+        private string ExtractReviewerNameFromNotification(string? message, string? notificationType)
+        {
+            if (string.IsNullOrEmpty(message)) return "Unknown";
+
+            // For resubmitted notifications, extract student name
+            if (notificationType == "project_resubmitted" || message.Contains("has resubmitted"))
+            {
+                // Pattern: "Student {name} from group"
+                if (message.Contains("Student ") && message.Contains(" from group"))
+                {
+                    var startIndex = message.IndexOf("Student ") + "Student ".Length;
+                    var endIndex = message.IndexOf(" from group", startIndex);
+                    if (endIndex > startIndex)
+                        return message.Substring(startIndex, endIndex - startIndex).Trim();
+                }
+                
+                // Pattern: "{name} has resubmitted"
+                if (message.Contains(" has resubmitted"))
+                {
+                    var endIndex = message.IndexOf(" has resubmitted");
+                    var words = message.Substring(0, endIndex).Split(' ');
+                    if (words.Length >= 2)
+                        return string.Join(" ", words.TakeLast(2)); // Get last 2 words as name
+                }
+                
+                return "Student";
+            }
+
+            // For instructor updates
+            if (message.Contains("Instructor "))
+            {
+                var startIndex = message.IndexOf("Instructor ") + "Instructor ".Length;
+                var endIndex = message.IndexOf(" changed", startIndex);
+                if (endIndex == -1) endIndex = message.IndexOf(" marked", startIndex);
+                if (endIndex > startIndex)
+                    return message.Substring(startIndex, endIndex - startIndex).Trim();
+            }
+
+            return "Instructor";
+        }
+
         // Helper method to extract comment from notification message
         private string? ExtractCommentFromNotification(string? message)
         {
             if (string.IsNullOrEmpty(message)) return null;
+
+            // Pattern for student comment: "Student comment: {comment}"
+            var studentCommentIndex = message.IndexOf("Student comment:");
+            if (studentCommentIndex >= 0)
+            {
+                return message.Substring(studentCommentIndex + "Student comment:".Length).Trim();
+            }
 
             // Pattern: "Comment: {comment}"
             var commentIndex = message.IndexOf("Comment:");
@@ -780,6 +835,170 @@ namespace AppBackend.Services.Services.Project
             }
 
             return null;
+        }
+
+        // 10. Student resubmit project after rejection - NEW
+        public async Task<ResultModel<UpdateProjectStatusResponseDto>> StudentResubmitProjectAsync(
+            int projectId, 
+            StudentResubmitProjectDto request, 
+            int studentId)
+        {
+            try
+            {
+                // 1. Validate project exists
+                var project = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                        .ThenInclude(c => c.Instructor)
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                    .FirstOrDefaultAsync(p => p.ProjectId == projectId);
+
+                if (project == null)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Project not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // 2. Validate student
+                var student = await _db.Users.FindAsync(studentId);
+                if (student == null || student.RoleId != 3)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.FORBIDDEN,
+                        Message = "Only students can resubmit projects",
+                        Data = null,
+                        StatusCode = StatusCodes.Status403Forbidden
+                    };
+                }
+
+                // 3. Validate student is in the group
+                var isInGroup = project.Group?.GroupMembers?.Any(gm => gm.UserId == studentId) ?? false;
+                if (!isInGroup)
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.FORBIDDEN,
+                        Message = "You are not a member of this project's group",
+                        Data = null,
+                        StatusCode = StatusCodes.Status403Forbidden
+                    };
+                }
+
+                // 4. Validate current status - only allow resubmit if Rejected or Revision
+                var currentStatus = project.Status?.Trim() ?? "";
+                if (currentStatus != "Rejected" && currentStatus != "Revision")
+                {
+                    return new ResultModel<UpdateProjectStatusResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.FORBIDDEN,
+                        Message = "Project can only be resubmitted when status is 'Rejected' or 'Revision'",
+                        Data = null,
+                        StatusCode = StatusCodes.Status403Forbidden
+                    };
+                }
+
+                // 5. Update project status to "Resubmitted"
+                var oldStatus = project.Status;
+                project.Status = "Resubmitted";
+                project.UpdatedAt = DateTime.UtcNow;
+
+                // 6. Send notification to instructor
+                if (project.Group?.Class?.InstructorId != null)
+                {
+                    var notificationData = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        classId = project.Group?.ClassId,
+                        groupId = project.GroupId,
+                        projectId = project.ProjectId
+                    });
+
+                    var notification = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = project.Group.Class.InstructorId,
+                        Title = $"Project Resubmitted: {project.Title}",
+                        Message = $"Student {student.FullName} from group '{project.Group?.GroupName}' has resubmitted the project '{project.Title}' for review. " +
+                                  $"Previous status: {oldStatus}. " +
+                                  $"{(!string.IsNullOrEmpty(request.Comment) ? $"Student comment: {request.Comment}" : "")}",
+                        Type = "project_resubmitted",
+                        Data = notificationData,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(notification);
+                }
+
+                // 7. Send notification to all group members
+                var groupMembers = project.Group?.GroupMembers?.ToList() ?? new List<GroupMember>();
+                var notificationDataForMembers = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    classId = project.Group?.ClassId,
+                    groupId = project.GroupId,
+                    projectId = project.ProjectId
+                });
+
+                foreach (var member in groupMembers)
+                {
+                    var notification = new AppBackend.BusinessObjects.Models.Notification
+                    {
+                        UserId = member.UserId,
+                        Title = $"Project Resubmitted: {project.Title}",
+                        Message = $"{student.FullName} has resubmitted the project for instructor review. " +
+                                  $"Status changed from '{oldStatus}' to 'Resubmitted'. " +
+                                  $"{(!string.IsNullOrEmpty(request.Comment) ? $"Comment: {request.Comment}" : "")}",
+                        Type = "project_status_update",
+                        Data = notificationDataForMembers,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.Notifications.Add(notification);
+                }
+
+                // 8. Save all changes
+                await _db.SaveChangesAsync();
+
+                // 9. Return response
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Project resubmitted successfully for instructor review",
+                    Data = new UpdateProjectStatusResponseDto
+                    {
+                        ProjectId = project.ProjectId,
+                        ProjectTitle = project.Title,
+                        GroupId = project.GroupId,
+                        GroupName = project.Group?.GroupName,
+                        Status = "Resubmitted",
+                        Comment = request.Comment,
+                        ReviewerId = studentId,
+                        ReviewerName = student.FullName,
+                        ReviewedAt = DateTime.UtcNow
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResultModel<UpdateProjectStatusResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error resubmitting project: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
         }
     }
 }

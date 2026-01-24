@@ -15,17 +15,20 @@ namespace AppBackend.Services.Services.Authentication
         private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
         private readonly UserHelper _userHelper;
+        private readonly FirebaseHelper _firebaseHelper;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public AuthenticationService(
             IUserRepository userRepository,
             IMapper mapper,
             UserHelper userHelper,
+            FirebaseHelper firebaseHelper,
             IHttpContextAccessor httpContextAccessor)
         {
             _userRepository = userRepository;
             _mapper = mapper;
             _userHelper = userHelper;
+            _firebaseHelper = firebaseHelper;
             _httpContextAccessor = httpContextAccessor;
         }
 
@@ -138,6 +141,110 @@ namespace AppBackend.Services.Services.Authentication
                 },
                 StatusCode = StatusCodes.Status200OK
             };
+        }
+
+        public async Task<ResultModel> GoogleLoginAsync(GoogleLoginRequest request)
+        {
+            try
+            {
+                // Step 1: Decode Firebase JWT token (no verification, just decode)
+                var claims = _firebaseHelper.DecodeFirebaseToken(request.FirebaseToken);
+                
+                if (claims == null || !claims.Any())
+                {
+                    throw new AppException(
+                        CommonMessageConstants.UNAUTHORIZED,
+                        "Invalid Firebase token",
+                        StatusCodes.Status401Unauthorized
+                    );
+                }
+
+                // Step 2: Extract user information from token claims
+                var (email, name, picture) = _firebaseHelper.ExtractUserInfo(claims);
+
+                if (string.IsNullOrEmpty(email))
+                {
+                    throw new AppException(
+                        CommonMessageConstants.INVALID,
+                        "Email not found in Firebase token",
+                        StatusCodes.Status400BadRequest
+                    );
+                }
+
+                // Step 3: Check if user exists in database
+                var user = await _userRepository.GetByEmailAsync(email);
+                
+                if (user == null)
+                {
+                    throw new AppException(
+                        CommonMessageConstants.NOT_FOUND,
+                        "The account you logged in with does not exist in the system. Please contact the administrator.",
+                        StatusCodes.Status404NotFound
+                    );
+                }
+
+                // Step 4: Update user information from Google (name and avatar)
+                bool needsUpdate = false;
+                
+                if (!string.IsNullOrEmpty(name) && user.FullName != name)
+                {
+                    user.FullName = name;
+                    needsUpdate = true;
+                }
+                
+                if (!string.IsNullOrEmpty(picture) && user.AvatarUrl != picture)
+                {
+                    user.AvatarUrl = picture;
+                    needsUpdate = true;
+                }
+
+                if (needsUpdate)
+                {
+                    user.UpdatedAt = DateTime.UtcNow;
+                    await _userRepository.UpdateAsync(user);
+                    await _userRepository.SaveChangesAsync();
+                }
+
+                // Step 5: Generate JWT tokens for the system
+                var accessToken = _userHelper.CreateToken(user);
+                var refreshToken = _userHelper.GenerateRefreshToken();
+                var refreshExpiry = _userHelper.GetRefreshTokenExpiry();
+
+                SaveRefreshTokenToSession(user.UserId, refreshToken, refreshExpiry);
+
+                // Step 6: Return response similar to regular login
+                return new ResultModel
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = "Google login successful",
+                    Data = new
+                    {
+                        UserId = user.UserId,
+                        Email = user.Email,
+                        FullName = user.FullName,
+                        AvatarUrl = user.AvatarUrl,
+                        RoleId = user.RoleId,
+                        RoleName = user.Role?.RoleName,
+                        AccessToken = accessToken,
+                        RefreshToken = refreshToken,
+                        RefreshTokenExpiry = refreshExpiry
+                    },
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (AppException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    $"Google login failed: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
         }
 
         public async Task<ResultModel> LogoutAsync(int userId)

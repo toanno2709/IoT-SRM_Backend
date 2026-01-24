@@ -461,13 +461,30 @@ namespace AppBackend.Services.Services.Group
 
             if (group == null) throw new KeyNotFoundException("Group not found.");
 
+            // FIXED: Find actual leader from members with "Leader" role
+            // The leaderId in Groups table may be outdated, so we use the actual role in GroupMembers
+            var actualLeader = group.GroupMembers.FirstOrDefault(m => 
+                m.RoleInGroup != null && 
+                m.RoleInGroup.Equals("Leader", StringComparison.OrdinalIgnoreCase));
+            
+            // Use the actual leader's ID from GroupMembers, not from Groups.LeaderId
+            int? correctLeaderId = actualLeader?.UserId;
+            
+            // Log if there's a mismatch for debugging
+            if (actualLeader != null && group.LeaderId != actualLeader.UserId)
+            {
+                _logger.LogWarning(
+                    "Group {GroupId} has leaderId mismatch. Groups.LeaderId={OldLeaderId}, but actual Leader in GroupMembers is UserId={ActualLeaderId}",
+                    groupId, group.LeaderId, actualLeader.UserId);
+            }
+
             var dto = new GroupDetailDto
             {
                 GroupId = group.GroupId,
                 ClassId = group.ClassId,
                 GroupName = group.GroupName,
                 Description = group.Description,
-                LeaderId = group.LeaderId,
+                LeaderId = correctLeaderId, // Use correct leader ID from GroupMembers
                 CreatedAt = group.CreatedAt,
                 UpdatedAt = group.UpdatedAt,
                 Members = group.GroupMembers.Select(m => new AppBackend.BusinessObjects.Dtos.Group.GroupMemberDto
