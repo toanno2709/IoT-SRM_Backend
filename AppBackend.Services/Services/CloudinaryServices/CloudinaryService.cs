@@ -80,7 +80,8 @@ public class CloudinaryService : ICloudinaryService
                     Folder = request.Folder,
                     UseFilename = true,
                     UniqueFilename = false, // Don't add random string
-                    Overwrite = true // Allow overwriting existing file
+                    Overwrite = true, // Allow overwriting existing file
+                    AccessMode = "public" // ? FIX: Ensure public access for raw files
                 };
                 uploadResult = await _cloudinary.UploadAsync(uploadParams);
             }
@@ -288,23 +289,67 @@ public class CloudinaryService : ICloudinaryService
 
             _logger.LogInformation("Downloading file from Cloudinary: {Url}", cloudinaryUrl);
 
-            // ? FIX: Use the URL directly without modification
-            // Cloudinary public URLs are accessible without authentication
-            _logger.LogInformation("Downloading from URL: {Url}", cloudinaryUrl);
+            // ? FIX: Extract public_id and determine resource type to generate proper download URL
+            var (publicId, resourceType) = ExtractPublicIdAndResourceType(cloudinaryUrl);
+            
+            if (string.IsNullOrEmpty(publicId))
+            {
+                _logger.LogError("Could not extract public_id from URL: {Url}", cloudinaryUrl);
+                return null;
+            }
 
-            // Download from Cloudinary
-            var response = await _httpClient.GetAsync(cloudinaryUrl);
+            _logger.LogInformation("Extracted PublicId: {PublicId}, ResourceType: {ResourceType}", publicId, resourceType);
+
+            string downloadUrl;
+            
+            // ? FIX: For raw files (ZIP, PDF, etc.), generate a new public URL with proper access
+            // Cloudinary raw files need special handling to avoid 401 errors
+            if (resourceType == "raw")
+            {
+                // Generate a fresh public URL using Cloudinary API
+                // This ensures the URL has proper authentication and won't return 401
+                var urlBuilder = _cloudinary.Api.UrlImgUp.ResourceType("raw");
+                downloadUrl = urlBuilder.BuildUrl(publicId);
+                
+                _logger.LogInformation("Generated fresh raw file URL: {Url}", downloadUrl);
+            }
+            else
+            {
+                // For images, use the original URL
+                downloadUrl = cloudinaryUrl;
+                _logger.LogInformation("Using original URL for image: {Url}", downloadUrl);
+            }
+
+            // ? FIX: Download using HttpClient without authentication headers
+            // The generated URL from Cloudinary API is already publicly accessible
+            var response = await _httpClient.GetAsync(downloadUrl);
             
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Failed to download from Cloudinary. Status: {StatusCode}, URL: {Url}", 
-                    response.StatusCode, cloudinaryUrl);
-                return null;
+                _logger.LogError("Failed to download from Cloudinary. Status: {StatusCode}, Reason: {Reason}, URL: {Url}", 
+                    response.StatusCode, response.ReasonPhrase, downloadUrl);
+                
+                // ? FIX: Try with the original URL if the generated one fails
+                if (resourceType == "raw" && downloadUrl != cloudinaryUrl)
+                {
+                    _logger.LogInformation("Retrying with original URL: {Url}", cloudinaryUrl);
+                    response = await _httpClient.GetAsync(cloudinaryUrl);
+                    
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogError("Original URL also failed. Status: {StatusCode}", response.StatusCode);
+                        return null;
+                    }
+                }
+                else
+                {
+                    return null;
+                }
             }
 
             var fileData = await response.Content.ReadAsByteArrayAsync();
             
-            // Extract filename from URL
+            // Extract filename from original URL
             var uri = new Uri(cloudinaryUrl);
             var fileName = Path.GetFileName(uri.LocalPath);
             
@@ -318,7 +363,28 @@ public class CloudinaryService : ICloudinaryService
             }
 
             // Get content type from response or infer from extension
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            
+            // ? FIX: Infer content type from file extension if not provided
+            if (string.IsNullOrEmpty(contentType))
+            {
+                var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+                contentType = extension switch
+                {
+                    ".pdf" => "application/pdf",
+                    ".zip" => "application/zip",
+                    ".txt" => "text/plain",
+                    ".doc" => "application/msword",
+                    ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".xls" => "application/vnd.ms-excel",
+                    ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ".ppt" => "application/vnd.ms-powerpoint",
+                    ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    ".rar" => "application/x-rar-compressed",
+                    ".7z" => "application/x-7z-compressed",
+                    _ => "application/octet-stream"
+                };
+            }
             
             _logger.LogInformation("Downloaded {Size} bytes, filename: {FileName}, contentType: {ContentType}", 
                 fileData.Length, fileName, contentType);
@@ -329,6 +395,66 @@ public class CloudinaryService : ICloudinaryService
         {
             _logger.LogError(ex, "Error downloading file from Cloudinary: {Url}", cloudinaryUrl);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Extract public_id and resource type from Cloudinary URL
+    /// </summary>
+    private (string publicId, string resourceType) ExtractPublicIdAndResourceType(string cloudinaryUrl)
+    {
+        try
+        {
+            var uri = new Uri(cloudinaryUrl);
+            var pathSegments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            
+            // Cloudinary URL format: 
+            // Images: .../image/upload/v{version}/{folder}/{publicId}.{format}
+            // Raw files: .../raw/upload/v{version}/{folder}/{publicId}.{format}
+            
+            // Find resource type (image or raw)
+            string resourceType = "image"; // default
+            int uploadIndex = -1;
+            
+            for (int i = 0; i < pathSegments.Length; i++)
+            {
+                if (pathSegments[i] == "raw")
+                {
+                    resourceType = "raw";
+                }
+                
+                if (pathSegments[i] == "upload")
+                {
+                    uploadIndex = i;
+                    break;
+                }
+            }
+            
+            if (uploadIndex < 0 || uploadIndex + 2 >= pathSegments.Length)
+            {
+                _logger.LogWarning("Could not find upload index in URL: {Url}", cloudinaryUrl);
+                return (string.Empty, resourceType);
+            }
+            
+            // Get segments after version number (skip "v{version}")
+            var publicIdParts = pathSegments.Skip(uploadIndex + 2).ToArray();
+            var publicIdWithExtension = string.Join("/", publicIdParts);
+            
+            // Remove file extension for public_id
+            var lastDotIndex = publicIdWithExtension.LastIndexOf('.');
+            var publicId = lastDotIndex > 0 
+                ? publicIdWithExtension.Substring(0, lastDotIndex) 
+                : publicIdWithExtension;
+            
+            _logger.LogInformation("Extracted from URL - PublicId: {PublicId}, ResourceType: {ResourceType}", 
+                publicId, resourceType);
+            
+            return (publicId, resourceType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting public_id from URL: {Url}", cloudinaryUrl);
+            return (string.Empty, "image");
         }
     }
 }
