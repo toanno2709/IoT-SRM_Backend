@@ -12,11 +12,14 @@ public class CloudinaryService : ICloudinaryService
 {
     private readonly Cloudinary _cloudinary;
     private readonly ILogger<CloudinaryService> _logger;
+    private readonly HttpClient _httpClient;
 
-    public CloudinaryService(Cloudinary cloudinary, ILogger<CloudinaryService> logger)
+    public CloudinaryService(Cloudinary cloudinary, ILogger<CloudinaryService> logger, IHttpClientFactory httpClientFactory)
     {
         _cloudinary = cloudinary;
         _logger = logger;
+        _httpClient = httpClientFactory.CreateClient();
+        _httpClient.Timeout = TimeSpan.FromMinutes(10); // Large files may take time
     }
 
     public async Task<ResultModel<CloudinaryUploadResponseDto>> UploadAsync(CloudinaryUploadRequestDto request)
@@ -319,5 +322,71 @@ public class CloudinaryService : ICloudinaryService
             fileName = fileName.Substring(0, 200);
         
         return fileName;
+    }
+
+    /// <summary>
+    /// Download file from Cloudinary URL
+    /// </summary>
+    public async Task<(byte[] fileData, string fileName, string contentType)?> DownloadFileAsync(string cloudinaryUrl)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(cloudinaryUrl))
+            {
+                _logger.LogWarning("Download requested with empty URL");
+                return null;
+            }
+
+            _logger.LogInformation("Downloading file from Cloudinary: {Url}", cloudinaryUrl);
+
+            // Remove any fl_attachment transformation to get the raw file
+            var rawUrl = cloudinaryUrl
+                .Replace("/fl_attachment:", "/")
+                .Replace("/fl_attachment/", "/");
+            
+            // Remove filename from transformation if exists
+            var regex = new System.Text.RegularExpressions.Regex(@"/fl_attachment:[^/]+/");
+            rawUrl = regex.Replace(rawUrl, "/");
+
+            _logger.LogInformation("Cleaned URL for download: {RawUrl}", rawUrl);
+
+            // Download from Cloudinary
+            var response = await _httpClient.GetAsync(rawUrl);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Failed to download from Cloudinary. Status: {StatusCode}, URL: {Url}", 
+                    response.StatusCode, rawUrl);
+                return null;
+            }
+
+            var fileData = await response.Content.ReadAsByteArrayAsync();
+            
+            // Extract filename from URL
+            var uri = new Uri(cloudinaryUrl);
+            var fileName = Path.GetFileName(uri.LocalPath);
+            
+            // Decode URL-encoded filename
+            fileName = Uri.UnescapeDataString(fileName);
+            
+            // If filename is empty, use a default
+            if (string.IsNullOrEmpty(fileName))
+            {
+                fileName = "download";
+            }
+
+            // Get content type from response or infer from extension
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            
+            _logger.LogInformation("Downloaded {Size} bytes, filename: {FileName}, contentType: {ContentType}", 
+                fileData.Length, fileName, contentType);
+
+            return (fileData, fileName, contentType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading file from Cloudinary: {Url}", cloudinaryUrl);
+            return null;
+        }
     }
 }

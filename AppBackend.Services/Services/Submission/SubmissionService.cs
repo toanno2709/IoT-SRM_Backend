@@ -751,6 +751,84 @@ public class SubmissionService : ISubmissionService
         }
     }
 
+    public async Task<ResultModel<MilestoneFileDto>> GetFileInfoAsync(int fileId, int userId)
+    {
+        try
+        {
+            var file = await _context.SubmissionFiles
+                .Include(f => f.Submission)
+                    .ThenInclude(s => s.Project)
+                        .ThenInclude(p => p!.Group)
+                            .ThenInclude(g => g!.GroupMembers)
+                .Include(f => f.Submission)
+                    .ThenInclude(s => s.Project)
+                        .ThenInclude(p => p!.Group)
+                            .ThenInclude(g => g!.Class)
+                .Include(f => f.UploadedByNavigation)
+                .FirstOrDefaultAsync(f => f.FileId == fileId);
+
+            if (file == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "File not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Check if user is a member of the project's group
+            var isMember = file.Submission?.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
+            // Check if user is the instructor of the class
+            var instructorId = file.Submission?.Project?.Group?.Class?.InstructorId;
+            var isInstructor = instructorId == userId;
+
+            // Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You are not authorized to access this file",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            var fileDto = new MilestoneFileDto
+            {
+                FileId = file.FileId,
+                SubmissionId = file.SubmissionId,
+                FileName = Path.GetFileName(file.FileUrl),
+                FileUrl = file.FileUrl,
+                FileSize = file.SizeBytes ?? 0,
+                FileType = file.MimeType,
+                UploadedBy = file.UploadedBy ?? 0,
+                UploadedByName = file.UploadedByNavigation?.FullName,
+                UploadedAt = file.UploadedAt
+            };
+
+            return new ResultModel<MilestoneFileDto>
+            {
+                IsSuccess = true,
+                Message = "File info retrieved successfully",
+                Data = fileDto,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file info");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting file info: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
     // Helper method to map entity to DTO
     private async Task<MilestoneSubmissionResponseDto> MapToResponseDto(MilestoneSubmission submission)
     {

@@ -609,6 +609,162 @@ public class FinalProjectService : IFinalProjectService
         }
     }
 
+    public async Task<ResultModel<string>> GetFileUrlAsync(int projectId, string fileType, int userId)
+    {
+        try
+        {
+            var submission = await _finalProjectRepository.GetByProjectIdWithDetailsAsync(projectId);
+            if (submission == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Final submission not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Check if user is a member of the project group
+            var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
+            // Check if user is the instructor of the class
+            var instructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isInstructor = instructorId == userId;
+
+            // Allow access if user is either a group member OR the instructor
+            if (!isMember && !isInstructor)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You are not authorized to access this file",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            // Get file URL
+            string? fileUrl = fileType.ToLower() switch
+            {
+                "report" => submission.FinalReportUrl,
+                "presentation" => submission.PresentationUrl,
+                "sourcecode" => submission.SourceCodeUrl,
+                "video" => submission.VideoDemoUrl,
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(fileUrl))
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "File not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            return new ResultModel<string>
+            {
+                IsSuccess = true,
+                Message = "File URL retrieved successfully",
+                Data = fileUrl,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file URL");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting file URL: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
+    public async Task<ResultModel<string>> GetFileUrlBySubmissionIdAsync(int finalSubmissionId, string fileType, int userId)
+    {
+        try
+        {
+            var submission = await _context.FinalProjectSubmissions
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                            .ThenInclude(c => c!.ClassGraders)
+                .FirstOrDefaultAsync(s => s.FinalSubmissionId == finalSubmissionId);
+
+            if (submission == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Final submission not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
+
+            // Check if user is an assigned grader
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+
+            // Allow access if user is main instructor OR assigned grader
+            if (!isMainInstructor && !isAssignedGrader)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You are not authorized to access this file",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            // Get file URL
+            string? fileUrl = fileType.ToLower() switch
+            {
+                "report" => submission.FinalReportUrl,
+                "presentation" => submission.PresentationUrl,
+                "sourcecode" => submission.SourceCodeUrl,
+                "video" => submission.VideoDemoUrl,
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(fileUrl))
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "File not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            return new ResultModel<string>
+            {
+                IsSuccess = true,
+                Message = "File URL retrieved successfully",
+                Data = fileUrl,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file URL by submission ID");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting file URL: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
     public async Task<ResultModel<FinalProjectSubmissionResponseDto>> GradeFinalProjectAsync(
         int projectId,
         FinalProjectGradeRequestDto request,

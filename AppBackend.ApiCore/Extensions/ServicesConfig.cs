@@ -117,6 +117,10 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
+        
+        // Register HttpClient for CloudinaryService
+        services.AddHttpClient();
+        
         services.AddScoped<IClassEnrollmentService, ClassEnrollmentService>();
         
         // Admin services
