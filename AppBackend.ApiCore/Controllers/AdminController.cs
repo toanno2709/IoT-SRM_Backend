@@ -789,13 +789,17 @@ public class AdminController : ControllerBase
     /// 1. Checks current enrollment count in the class
     /// 2. Calculates how many more students needed (maxMembers - currentCount)
     /// 3. Finds available students with role_id = 3 who are not in this class
-    /// 4. Adds them to Class_Enrollments table
-    /// 5. Returns detailed report of additions
+    /// 4. Validates each student is eligible (not passed course, not in another class same semester)
+    /// 5. Adds them to Class_Enrollments table
+    /// 6. Returns detailed report of additions
+    /// 
+    /// **NEW Validation:** Students cannot be enrolled in multiple classes within the same semester.
+    /// Only students who are not enrolled in any other class in the same semester will be added.
     /// 
     /// Example:
     /// - Class currently has 20 students
     /// - Request maxMembers = 50
-    /// - System will try to add 30 students automatically
+    /// - System will try to add 30 students automatically (if eligible)
     /// </remarks>
     [HttpPost("classes/bulk-add-students")]
     [ApiExplorerSettings(GroupName = "admin-class-management")]
@@ -846,12 +850,16 @@ public class AdminController : ControllerBase
     /// 2. User must be a student (role_id = 3)
     /// 3. Student must not already be enrolled in this class
     /// 4. Student must not have already completed the IoT course (Status: Passed)
+    /// 5. **NEW:** Student must not be enrolled in another class in the same semester
+    /// 
+    /// **A student can only be enrolled in ONE class per semester.**
     /// 
     /// **Reason Codes (for failed imports):**
-    /// - `EMAIL_NOT_FOUND`: Email không t?n t?i trong h? th?ng
-    /// - `NOT_STUDENT`: Ng??i dùng không ph?i là sinh viên
-    /// - `DUPLICATE`: Sinh viên ?ã có trong l?p
-    /// - `ALREADY_PASSED_COURSE`: Sinh viên ?ã hoàn thành môn IoT
+    /// - `EMAIL_NOT_FOUND`: Email kh?ng t?n t?i trong h? th?ng
+    /// - `NOT_STUDENT`: Ng??i d?ng kh?ng ph?i l? sinh vi?n
+    /// - `DUPLICATE`: Sinh vi?n ?? c? trong l?p
+    /// - `ALREADY_PASSED_COURSE`: Sinh vi?n ?? ho?n th?nh m?n IoT
+    /// - `ALREADY_ENROLLED_IN_SEMESTER`: Sinh vi?n ?? c? trong l?p kh?c trong c?ng k? h?c
     /// 
     /// **Example Usage:**
     /// ```
@@ -908,6 +916,17 @@ public class AdminController : ControllerBase
     /// <param name="classId">Class ID</param>
     /// <param name="request">Student ID to add</param>
     /// <returns>Enrollment result</returns>
+    /// <remarks>
+    /// Adds a specific student to a class with validations.
+    /// 
+    /// **Validation Rules:**
+    /// 1. Student must exist and have role_id = 3
+    /// 2. Student must not already be enrolled in this class
+    /// 3. Student must not have already passed the IoT course
+    /// 4. **NEW:** Student must not be enrolled in another class in the same semester
+    /// 
+    /// A student can only be enrolled in ONE class per semester.
+    /// </remarks>
     [HttpPost("classes/{classId}/students")]
     [ApiExplorerSettings(GroupName = "admin-class-management")]
     [RateLimit(permitLimit: 20, windowSeconds: 60)]

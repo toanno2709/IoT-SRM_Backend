@@ -143,5 +143,5 @@ public class ImportStudentFailureDto
     public int RowNumber { get; set; }
     public string Email { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
-    public string ReasonCode { get; set; } = string.Empty; // EMAIL_NOT_FOUND, DUPLICATE, NOT_STUDENT, ALREADY_PASSED_COURSE
+    public string ReasonCode { get; set; } = string.Empty; // EMAIL_NOT_FOUND, DUPLICATE, NOT_STUDENT, ALREADY_PASSED_COURSE, ALREADY_ENROLLED_IN_SEMESTER
 }
