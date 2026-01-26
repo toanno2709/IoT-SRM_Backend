@@ -1181,6 +1181,81 @@ public class InstructorController : ControllerBase
     }
 
     /// <summary>
+    /// Import project templates from Excel file
+    /// </summary>
+    /// <param name="excelFile">Excel file (.xlsx or .xls)</param>
+    /// <param name="classId">Class ID to create templates for</param>
+    /// <returns>Import summary with successes and errors</returns>
+    /// <remarks>
+    /// Allows instructor to bulk import project templates from an Excel file.
+    /// 
+    /// **Excel File Format:**
+    /// - Column A: No (row number, ignored)
+    /// - Column B: Title (required, text)
+    /// - Column C: Description (optional, text)
+    /// - Column D: Component (optional, text)
+    /// - Column E: Max Groups (optional, number - empty means unlimited)
+    /// 
+    /// **Validation:**
+    /// - Title is required
+    /// - Max Groups must be a positive number or empty
+    /// - Duplicate titles within the same class are not allowed
+    /// - Duplicate titles in the Excel file are skipped
+    /// 
+    /// **Response includes:**
+    /// - Total rows processed
+    /// - Successfully created templates
+    /// - Skipped templates (duplicates)
+    /// - Failed templates with error details
+    /// 
+    /// **Example Excel:**
+    /// ```
+    /// | No | Title              | Description                    | Component | Max Groups |
+    /// |----|-------------------|--------------------------------|-----------|------------|
+    /// | 1  | IoT Smart Home    | Smart home automation system   | Hardware  | 5          |
+    /// | 2  | Weather Station   | Real-time weather monitoring   | Sensors   | 3          |
+    /// | 3  | Security System   | Smart security with cameras    | Hardware  |            |
+    /// ```
+    /// </remarks>
+    [HttpPost("templates/import")]
+    [Consumes("multipart/form-data")]
+    [ApiExplorerSettings(GroupName = "instructor-templates")]
+    [ProducesResponseType(typeof(ResultModel<ImportTemplatesResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultModel<ImportTemplatesResponseDto>>> ImportTemplatesFromExcel(
+        [FromForm] IFormFile excelFile,
+        [FromForm] int classId)
+    {
+        if (excelFile == null)
+        {
+            return BadRequest(new ResultModel<ImportTemplatesResponseDto>
+            {
+                IsSuccess = false,
+                Message = "Excel file is required",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var instructorId))
+        {
+            instructorId = 2; // Fallback
+        }
+
+        var request = new ImportTemplatesFromExcelRequestDto
+        {
+            ExcelFile = excelFile,
+            ClassId = classId
+        };
+
+        var result = await _templateService.ImportTemplatesFromExcelAsync(request, instructorId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
     /// Get all templates for a class
     /// </summary>
     /// <param name="classId">Class ID</param>

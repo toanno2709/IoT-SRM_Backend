@@ -1,5 +1,7 @@
 namespace AppBackend.Services.ApiModels.Commons;
 
+using Microsoft.AspNetCore.Http;
+
 /// <summary>
 /// DTO for creating a new project template
 /// </summary>
@@ -23,6 +25,62 @@ public class CreateTemplateMilestoneDto
     public int OrderIndex { get; set; }
     public decimal? Weight { get; set; }
     public int? DaysDuration { get; set; }
+}
+
+/// <summary>
+/// DTO for importing project templates from Excel file
+/// </summary>
+public class ImportTemplatesFromExcelRequestDto
+{
+    /// <summary>
+    /// Excel file to upload (.xlsx or .xls)
+    /// Columns: Title, Description, Component, Max Groups
+    /// </summary>
+    public IFormFile ExcelFile { get; set; } = null!;
+    
+    /// <summary>
+    /// Class ID to create templates for
+    /// </summary>
+    public int ClassId { get; set; }
+}
+
+/// <summary>
+/// Response DTO after importing templates from Excel
+/// </summary>
+public class ImportTemplatesResponseDto
+{
+    public int TotalRowsInFile { get; set; }
+    public int TemplatesCreatedSuccessfully { get; set; }
+    public int TemplatesSkipped { get; set; }
+    public int TemplatesFailed { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public List<ImportedTemplateDto> SuccessfulTemplates { get; set; } = new();
+    public List<TemplateImportErrorDto> Errors { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+}
+
+/// <summary>
+/// DTO for successfully imported template
+/// </summary>
+public class ImportedTemplateDto
+{
+    public int RowNumber { get; set; }
+    public int TemplateId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Component { get; set; }
+    public int? MaxGroups { get; set; }
+}
+
+/// <summary>
+/// DTO for template import error
+/// </summary>
+public class TemplateImportErrorDto
+{
+    public int RowNumber { get; set; }
+    public string? Title { get; set; }
+    public string? ErrorReason { get; set; }
+    public string? ErrorType { get; set; } // "ValidationError", "InvalidFormat", "DuplicateTitle"
 }
 
 /// <summary>
