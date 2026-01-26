@@ -39,6 +39,13 @@ public interface IProjectService
     /// Changes status to "Resubmitted" for instructor to review again
     /// </summary>
     Task<ResultModel<UpdateProjectStatusResponseDto>> StudentResubmitProjectAsync(int projectId, StudentResubmitProjectDto request, int studentId);
+    
+    /// <summary>
+    /// Get all projects in a semester with comprehensive information
+    /// No authentication required - public API for external viewing
+    /// Includes: Project details, Simulations, Final submission, Grades, Feedback
+    /// </summary>
+    Task<ResultModel<SemesterProjectsResponseDto>> GetProjectsBySemesterAsync(int semesterId);
 }
 
 

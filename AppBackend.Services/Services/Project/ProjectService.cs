@@ -7,6 +7,7 @@ using AppBackend.Repositories.Repositories.ProjectRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace AppBackend.Services.Services.Project
 {
@@ -14,11 +15,13 @@ namespace AppBackend.Services.Services.Project
     {
         private readonly IProjectRepository _projectRepository;
         private readonly IotShowroomContext _db;
+        private readonly ILogger<ProjectService> _logger;
 
-        public ProjectService(IProjectRepository projectRepository, IotShowroomContext db)
+        public ProjectService(IProjectRepository projectRepository, IotShowroomContext db, ILogger<ProjectService> logger)
         {
             _projectRepository = projectRepository;
             _db = db;
+            _logger = logger;
         }
 
         // 1. Create project (leader OR instructor of the class)
@@ -995,6 +998,184 @@ namespace AppBackend.Services.Services.Project
                     IsSuccess = false,
                     ResponseCode = CommonMessageConstants.ERROR,
                     Message = $"Error resubmitting project: {ex.Message}",
+                    Data = null,
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        // 11. Get all projects in a semester with comprehensive information (No authentication required)
+        public async Task<ResultModel<SemesterProjectsResponseDto>> GetProjectsBySemesterAsync(int semesterId)
+        {
+            try
+            {
+                _logger.LogInformation("Getting all projects for semester {SemesterId}", semesterId);
+
+                // 1. Validate semester exists
+                var semester = await _db.Semesters
+                    .FirstOrDefaultAsync(s => s.SemesterId == semesterId);
+
+                if (semester == null)
+                {
+                    return new ResultModel<SemesterProjectsResponseDto>
+                    {
+                        IsSuccess = false,
+                        ResponseCode = CommonMessageConstants.NOT_FOUND,
+                        Message = "Semester not found",
+                        Data = null,
+                        StatusCode = StatusCodes.Status404NotFound
+                    };
+                }
+
+                // 2. Get all projects in this semester with full details
+                var projects = await _db.Projects
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.Leader)
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                            .ThenInclude(gm => gm.User)
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                            .ThenInclude(c => c!.Instructor)
+                    .Include(p => p.Simulations)
+                    .Include(p => p.FinalProjectSubmission)
+                        .ThenInclude(fps => fps!.FinalSubmissionGrades)
+                            .ThenInclude(fsg => fsg.Instructor)
+                    .Include(p => p.FinalProjectSubmission)
+                        .ThenInclude(fps => fps!.GradedByNavigation)
+                    .Where(p => p.Group!.Class!.SemesterId == semesterId)
+                    .OrderBy(p => p.Group!.Class!.ClassName)
+                        .ThenBy(p => p.Group!.GroupName)
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {ProjectCount} projects for semester {SemesterId}", 
+                    projects.Count, semesterId);
+
+                // 3. Map to comprehensive DTOs
+                var projectDtos = new List<ComprehensiveProjectDto>();
+
+                foreach (var project in projects)
+                {
+                    var projectDto = new ComprehensiveProjectDto
+                    {
+                        // Basic info
+                        ProjectId = project.ProjectId,
+                        Title = project.Title,
+                        Description = project.Description,
+                        Component = project.Component,
+                        Status = project.Status,
+                        CreatedAt = project.CreatedAt,
+                        UpdatedAt = project.UpdatedAt,
+                        
+                        // Group info
+                        GroupId = project.GroupId ?? 0,
+                        GroupName = project.Group?.GroupName,
+                        LeaderId = project.Group?.LeaderId,
+                        LeaderName = project.Group?.Leader?.FullName,
+                        
+                        // Class info
+                        ClassId = project.Group?.ClassId ?? 0,
+                        ClassName = project.Group?.Class?.ClassName,
+                        InstructorName = project.Group?.Class?.Instructor?.FullName,
+                        
+                        // Members - User model doesn't have StudentCode property
+                        Members = project.Group?.GroupMembers?.Select(gm => new ProjectMemberSimpleDto
+                        {
+                            UserId = gm.UserId,
+                            FullName = gm.User?.FullName,
+                            Email = gm.User?.Email,
+                            StudentCode = null, // User model doesn't have StudentCode
+                            RoleInGroup = gm.RoleInGroup
+                        }).ToList() ?? new List<ProjectMemberSimpleDto>(),
+                        
+                        // Simulations
+                        Simulations = project.Simulations?.Select(s => new SimulationInfoDto
+                        {
+                            SimulationId = s.SimulationId,
+                            Title = s.Title,
+                            Description = s.Description,
+                            WokwiProjectUrl = s.WokwiProjectUrl,
+                            WokwiProjectId = s.WokwiProjectId,
+                            Status = s.Status,
+                            CreatedAt = s.CreatedAt,
+                            UpdatedAt = s.UpdatedAt
+                        }).ToList() ?? new List<SimulationInfoDto>(),
+                    };
+
+                    // Final submission info
+                    if (project.FinalProjectSubmission != null)
+                    {
+                        var fps = project.FinalProjectSubmission;
+                        projectDto.FinalSubmission = new FinalSubmissionInfoDto
+                        {
+                            FinalSubmissionId = fps.FinalSubmissionId,
+                            FinalReportUrl = fps.FinalReportUrl,
+                            PresentationUrl = fps.PresentationUrl,
+                            SourceCodeUrl = fps.SourceCodeUrl,
+                            VideoDemoUrl = fps.VideoDemoUrl,
+                            RepositoryUrl = fps.RepositoryUrl,
+                            SubmissionNotes = fps.SubmissionNotes,
+                            SubmittedAt = fps.SubmittedAt,
+                            LastUpdatedAt = fps.LastUpdatedAt,
+                            InstructorGrade = fps.Grade,
+                            InstructorFeedback = fps.Feedback,
+                            GradedByInstructorName = fps.GradedByNavigation?.FullName,
+                            InstructorGradedAt = fps.GradedAt
+                        };
+
+                        // Grader grades
+                        projectDto.GraderGrades = fps.FinalSubmissionGrades?.Select(fsg => new GraderGradeInfoDto
+                        {
+                            GradeId = fsg.GradeId,
+                            InstructorId = fsg.InstructorId,
+                            InstructorName = fsg.Instructor?.FullName,
+                            InstructorEmail = fsg.Instructor?.Email,
+                            Grade = fsg.Grade,
+                            Feedback = fsg.Feedback,
+                            GradedAt = fsg.GradedAt
+                        }).ToList() ?? new List<GraderGradeInfoDto>();
+
+                        // Calculate average grader grade
+                        if (projectDto.GraderGrades.Any())
+                        {
+                            projectDto.AverageGraderGrade = projectDto.GraderGrades.Average(g => g.Grade);
+                        }
+                    }
+
+                    projectDtos.Add(projectDto);
+                }
+
+                // 4. Build response - Semester uses Name and Code properties
+                var response = new SemesterProjectsResponseDto
+                {
+                    SemesterId = semester.SemesterId,
+                    SemesterName = semester.Name,
+                    SemesterCode = semester.Code,
+                    TotalProjects = projectDtos.Count,
+                    Projects = projectDtos
+                };
+
+                _logger.LogInformation(
+                    "Successfully retrieved {ProjectCount} projects for semester {SemesterId} ({SemesterName})", 
+                    projectDtos.Count, semesterId, semester.Name);
+
+                return new ResultModel<SemesterProjectsResponseDto>
+                {
+                    IsSuccess = true,
+                    ResponseCode = CommonMessageConstants.SUCCESS,
+                    Message = $"Retrieved {projectDtos.Count} projects for semester {semester.Name}",
+                    Data = response,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting projects for semester {SemesterId}", semesterId);
+                return new ResultModel<SemesterProjectsResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = CommonMessageConstants.ERROR,
+                    Message = $"Error retrieving semester projects: {ex.Message}",
                     Data = null,
                     StatusCode = StatusCodes.Status500InternalServerError
                 };
