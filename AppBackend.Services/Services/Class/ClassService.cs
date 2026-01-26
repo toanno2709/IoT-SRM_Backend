@@ -693,6 +693,27 @@ public class ClassService : IClassService
 
             if (projects.Any())
             {
+                // ? NEW VALIDATION: Check if all projects have total milestone weight = 100%
+                foreach (var project in projects)
+                {
+                    var milestones = project.ProjectMilestones ?? new List<BusinessObjects.Models.ProjectMilestone>();
+                    
+                    if (milestones.Any())
+                    {
+                        var totalWeight = milestones.Sum(m => m.Weight ?? 0);
+                        
+                        if (totalWeight != 100)
+                        {
+                            validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - Total milestone weight is {totalWeight}%, must be exactly 100%");
+                        }
+                    }
+                    else
+                    {
+                        // Project has no milestones
+                        validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - No milestones defined (total weight must be 100%)");
+                    }
+                }
+
                 // Check if all milestones are graded
                 foreach (var project in projects)
                 {
