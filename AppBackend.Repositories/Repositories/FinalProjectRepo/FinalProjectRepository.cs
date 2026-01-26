@@ -31,7 +31,8 @@ public class FinalProjectRepository : GenericRepository<FinalProjectSubmission>,
                     .ThenInclude(g => g!.GroupMembers)
             .Include(f => f.Project)
                 .ThenInclude(p => p.Group)
-                    .ThenInclude(g => g!.Class) // ? This includes Class with InstructorId
+                    .ThenInclude(g => g!.Class)
+                        .ThenInclude(c => c!.ClassGraders) // ? Include ClassGraders for authorization check
             .Include(f => f.SubmittedByNavigation)
             .Include(f => f.GradedByNavigation)
             .FirstOrDefaultAsync(f => f.ProjectId == projectId);

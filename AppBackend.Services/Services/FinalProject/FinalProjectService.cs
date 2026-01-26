@@ -343,51 +343,26 @@ public class FinalProjectService : IFinalProjectService
 
             _logger.LogInformation("Found submission {SubmissionId} for project {ProjectId}", submission.FinalSubmissionId, projectId);
 
-            // ? Log navigation property loading
-            _logger.LogInformation("Submission.Project is null: {IsNull}", submission.Project == null);
-            if (submission.Project != null)
-            {
-                _logger.LogInformation("Submission.Project.Group is null: {IsNull}", submission.Project.Group == null);
-                if (submission.Project.Group != null)
-                {
-                    _logger.LogInformation("Group {GroupId} found. ClassId: {ClassId}", 
-                        submission.Project.Group.GroupId, 
-                        submission.Project.Group.ClassId);
-                    _logger.LogInformation("Group.Class is null: {IsNull}", submission.Project.Group.Class == null);
-                    
-                    if (submission.Project.Group.Class != null)
-                    {
-                        _logger.LogInformation("Class {ClassId} found. InstructorId: {InstructorId}", 
-                            submission.Project.Group.Class.ClassId, 
-                            submission.Project.Group.Class.InstructorId);
-                    }
-                    
-                    _logger.LogInformation("Group.GroupMembers is null: {IsNull}", submission.Project.Group.GroupMembers == null);
-                    if (submission.Project.Group.GroupMembers != null)
-                    {
-                        var memberIds = string.Join(", ", submission.Project.Group.GroupMembers.Select(m => m.UserId));
-                        _logger.LogInformation("Group has {MemberCount} members: [{MemberIds}]", 
-                            submission.Project.Group.GroupMembers.Count, 
-                            memberIds);
-                    }
-                }
-            }
-
-            // ? Check if user is a member of the project group
+            // Check if user is a member of the project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
             _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
             
-            // ? Check if user is the instructor of the class
-            var instructorId = submission.Project?.Group?.Class?.InstructorId;
-            var isInstructor = instructorId == userId;
-            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is instructor: {IsInstructor}", 
-                instructorId, userId, isInstructor);
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
+            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is main instructor: {IsMainInstructor}", 
+                mainInstructorId, userId, isMainInstructor);
 
-            // ? Allow access if user is either a group member OR the instructor
-            if (!isMember && !isInstructor)
+            // Check if user is an assigned grader for this class
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+            _logger.LogInformation("User {UserId} is assigned grader: {IsAssignedGrader}", userId, isAssignedGrader);
+
+            // Allow access if user is group member OR main instructor OR assigned grader
+            if (!isMember && !isMainInstructor && !isAssignedGrader)
             {
-                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsInstructor: {IsInstructor}", 
-                    userId, isMember, isInstructor);
+                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsMainInstructor: {IsMainInstructor}, IsAssignedGrader: {IsAssignedGrader}", 
+                    userId, isMember, isMainInstructor, isAssignedGrader);
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
                     "You are not authorized to view this submission",
@@ -626,12 +601,16 @@ public class FinalProjectService : IFinalProjectService
             // Check if user is a member of the project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
             
-            // Check if user is the instructor of the class
-            var instructorId = submission.Project?.Group?.Class?.InstructorId;
-            var isInstructor = instructorId == userId;
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
 
-            // Allow access if user is either a group member OR the instructor
-            if (!isMember && !isInstructor)
+            // Check if user is an assigned grader for this class
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+
+            // Allow access if user is group member OR main instructor OR assigned grader
+            if (!isMember && !isMainInstructor && !isAssignedGrader)
             {
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
