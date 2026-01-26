@@ -862,20 +862,28 @@ public class InstructorController : ControllerBase
     /// </summary>
     /// <param name="finalSubmissionId">Final submission ID</param>
     /// <param name="request">Grade and feedback</param>
-    /// <returns>Grading result with average grade from all instructors</returns>
+    /// <returns>Grading result with average grade from all graders</returns>
     /// <remarks>
     /// Allows assigned instructor to grade or update their grade for a final submission.
     /// 
     /// Multiple instructors can grade the same submission independently.
-    /// The system automatically calculates the average grade from all instructor grades.
+    /// Each grader's score is stored separately in the Final_Submission_Grades table.
+    /// 
+    /// IMPORTANT: Grader grades are SEPARATE from the main instructor's grade:
+    /// - Grader grades are stored in Final_Submission_Grades table
+    /// - Main instructor grade is stored in Final_Project_Submissions.grade field
+    /// - These two are completely independent and do NOT affect each other
     /// 
     /// Actions performed:
     /// - Creates or updates instructor's grade in Final_Submission_Grades table
-    /// - Trigger automatically recalculates average and updates Final_Project_Submissions.grade
+    /// - Calculates average of all grader grades for display purposes only
+    /// - Does NOT update Final_Project_Submissions.grade (reserved for main instructor)
     /// - Sends notification to all group members
     /// 
-    /// Example: If 2 instructors grade the same project as 85 and 90, 
-    /// the average grade will be 87.5
+    /// Use Cases:
+    /// - Multiple graders can independently evaluate the same project
+    /// - Each grader sees their own grade and the average of all grader grades
+    /// - Main instructor uses separate endpoint: POST /api/Instructor/projects/{projectId}/final-grade
     /// </remarks>
     [HttpPost("grading/submissions/{finalSubmissionId}/grade")]
     [ApiExplorerSettings(GroupName = "instructor-grading")]

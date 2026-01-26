@@ -1309,7 +1309,11 @@ public class AdminReportService : IAdminReportService
                     Feedback = fsg.Feedback,
                     GradedAt = fsg.GradedAt
                 }).ToList() ?? new List<FinalSubmissionGraderDto>(),
-                AverageGrade = fs.Grade,
+                // FIXED: Calculate average from grader grades, not from submission.Grade
+                // submission.Grade is for main instructor only
+                AverageGrade = fs.FinalSubmissionGrades?.Any() == true 
+                    ? fs.FinalSubmissionGrades.Average(fsg => fsg.Grade) 
+                    : null,
                 Students = fs.Project?.Group?.GroupMembers?.Select(gm => new FinalSubmissionStudentDto
                 {
                     StudentId = gm.UserId,
