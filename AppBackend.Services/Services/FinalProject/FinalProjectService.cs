@@ -897,10 +897,10 @@ public class FinalProjectService : IFinalProjectService
             ProjectId = submission.ProjectId,
             ProjectTitle = project?.Title,
             GroupName = project?.Group?.GroupName,
-            FinalReportUrl = ConvertToDownloadableUrl(submission.FinalReportUrl),
-            PresentationUrl = ConvertToDownloadableUrl(submission.PresentationUrl),
-            SourceCodeUrl = ConvertToDownloadableUrl(submission.SourceCodeUrl),
-            VideoDemoUrl = ConvertToDownloadableUrl(submission.VideoDemoUrl),
+            FinalReportUrl = submission.FinalReportUrl, // ? FIX: Return original URL
+            PresentationUrl = submission.PresentationUrl, // ? FIX: Return original URL
+            SourceCodeUrl = submission.SourceCodeUrl, // ? FIX: Return original URL
+            VideoDemoUrl = submission.VideoDemoUrl, // ? FIX: Return original URL
             RepositoryUrl = submission.RepositoryUrl,
             SubmissionNotes = submission.SubmissionNotes,
             SubmittedBy = submission.SubmittedBy,
@@ -916,65 +916,5 @@ public class FinalProjectService : IFinalProjectService
             CanUpdate = canUpdate,
             Deadline = finalMilestone?.DueDate?.ToDateTime(TimeOnly.MaxValue)
         };
-    }
-
-    /// <summary>
-    /// Convert stored Cloudinary URL to downloadable URL with fl_attachment flag
-    /// This ensures files like PDF and ZIP can be downloaded properly
-    /// </summary>
-    private string? ConvertToDownloadableUrl(string? cloudinaryUrl)
-    {
-        if (string.IsNullOrEmpty(cloudinaryUrl))
-            return cloudinaryUrl;
-
-        try
-        {
-            // Check if URL is from Cloudinary
-            if (!cloudinaryUrl.Contains("cloudinary.com"))
-                return cloudinaryUrl;
-
-            // Check if it's a raw file (not an image)
-            if (!cloudinaryUrl.Contains("/raw/upload/") && !cloudinaryUrl.Contains("/video/upload/"))
-                return cloudinaryUrl;
-
-            // Check if already has fl_attachment
-            if (cloudinaryUrl.Contains("fl_attachment"))
-                return cloudinaryUrl;
-
-            var uri = new Uri(cloudinaryUrl);
-            var path = uri.AbsolutePath;
-            
-            // Find the "upload/" part
-            var uploadIndex = path.IndexOf("/upload/");
-            if (uploadIndex == -1)
-                return cloudinaryUrl;
-
-            // Extract filename from the URL
-            var lastSlashIndex = path.LastIndexOf('/');
-            var fileName = lastSlashIndex > 0 ? path.Substring(lastSlashIndex + 1) : "download";
-            
-            // URL decode the filename if needed
-            fileName = Uri.UnescapeDataString(fileName);
-            
-            // Encode the filename for URL
-            var encodedFileName = Uri.EscapeDataString(fileName);
-            
-            // Insert the fl_attachment transformation
-            var beforeUpload = path.Substring(0, uploadIndex + 8); // Include "/upload/"
-            var afterUpload = path.Substring(uploadIndex + 8);
-            
-            // Build the new path with fl_attachment
-            var newPath = $"{beforeUpload}fl_attachment:{encodedFileName}/{afterUpload}";
-            
-            // Reconstruct the full URL
-            var downloadUrl = $"{uri.Scheme}://{uri.Host}{newPath}";
-            
-            return downloadUrl;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not convert URL to downloadable format: {Url}", cloudinaryUrl);
-            return cloudinaryUrl; // Return original URL if conversion fails
-        }
     }
 }
