@@ -190,9 +190,14 @@ public class FinalProjectService : IFinalProjectService
     {
         try
         {
+            _logger.LogInformation("=== UploadFilesAsync START === ProjectId: {ProjectId}, UserId: {UserId}", projectId, userId);
+            _logger.LogInformation("Files received - FinalReport: {HasReport}, Presentation: {HasPresentation}, SourceCode: {HasSourceCode}, VideoDemo: {HasVideoDemo}",
+                finalReport != null, presentation != null, sourceCode != null, videoDemo != null);
+
             var submission = await _finalProjectRepository.GetByProjectIdWithDetailsAsync(projectId);
             if (submission == null)
             {
+                _logger.LogWarning("Final submission not found for ProjectId: {ProjectId}", projectId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Final submission not found. Please create submission first.",
@@ -200,8 +205,13 @@ public class FinalProjectService : IFinalProjectService
                 );
             }
 
+            _logger.LogInformation("Found submission {SubmissionId}", submission.FinalSubmissionId);
+
             // Validate user is member of project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
+            _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
+            
             if (!isMember)
             {
                 throw new AppException(
@@ -213,6 +223,8 @@ public class FinalProjectService : IFinalProjectService
 
             // Check if can update
             var canUpdate = await _finalProjectRepository.CanUpdateAsync(projectId);
+            _logger.LogInformation("Can update submission: {CanUpdate}", canUpdate);
+            
             if (!canUpdate)
             {
                 throw new AppException(
@@ -229,64 +241,88 @@ public class FinalProjectService : IFinalProjectService
             // Upload final report
             if (finalReport != null)
             {
+                _logger.LogInformation("Uploading final report: {FileName} ({Size} bytes, {ContentType})",
+                    finalReport.FileName, finalReport.Length, finalReport.ContentType);
+                    
                 var result = await UploadFileToCloudinary(finalReport, "final_reports");
                 if (result != null)
                 {
                     submission.FinalReportUrl = result;
                     response.FinalReportUrl = result;
                     successCount++;
+                    _logger.LogInformation("Final report uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload final report: {finalReport.FileName}");
+                    var errorMsg = $"Failed to upload final report: {finalReport.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload presentation
             if (presentation != null)
             {
+                _logger.LogInformation("Uploading presentation: {FileName} ({Size} bytes, {ContentType})",
+                    presentation.FileName, presentation.Length, presentation.ContentType);
+                    
                 var result = await UploadFileToCloudinary(presentation, "presentations");
                 if (result != null)
                 {
                     submission.PresentationUrl = result;
                     response.PresentationUrl = result;
                     successCount++;
+                    _logger.LogInformation("Presentation uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload presentation: {presentation.FileName}");
+                    var errorMsg = $"Failed to upload presentation: {presentation.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload source code
             if (sourceCode != null)
             {
+                _logger.LogInformation("Uploading source code: {FileName} ({Size} bytes, {ContentType})",
+                    sourceCode.FileName, sourceCode.Length, sourceCode.ContentType);
+                    
                 var result = await UploadFileToCloudinary(sourceCode, "source_code");
                 if (result != null)
                 {
                     submission.SourceCodeUrl = result;
                     response.SourceCodeUrl = result;
                     successCount++;
+                    _logger.LogInformation("Source code uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload source code: {sourceCode.FileName}");
+                    var errorMsg = $"Failed to upload source code: {sourceCode.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload video demo
             if (videoDemo != null)
             {
+                _logger.LogInformation("Uploading video demo: {FileName} ({Size} bytes, {ContentType})",
+                    videoDemo.FileName, videoDemo.Length, videoDemo.ContentType);
+                    
                 var result = await UploadFileToCloudinary(videoDemo, "video_demos");
                 if (result != null)
                 {
                     submission.VideoDemoUrl = result;
                     response.VideoDemoUrl = result;
                     successCount++;
+                    _logger.LogInformation("Video demo uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload video demo: {videoDemo.FileName}");
+                    var errorMsg = $"Failed to upload video demo: {videoDemo.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
@@ -295,9 +331,13 @@ public class FinalProjectService : IFinalProjectService
             await _finalProjectRepository.UpdateAsync(submission);
             await _finalProjectRepository.SaveChangesAsync();
 
+            _logger.LogInformation("Submission updated. Success: {SuccessCount}, Failed: {FailedCount}", successCount, errors.Count);
+
             response.SuccessCount = successCount;
             response.FailedCount = errors.Count;
             response.ErrorMessages = errors;
+
+            _logger.LogInformation("=== UploadFilesAsync SUCCESS ===");
 
             return new ResultModel<FinalProjectFileUploadResponseDto>
             {

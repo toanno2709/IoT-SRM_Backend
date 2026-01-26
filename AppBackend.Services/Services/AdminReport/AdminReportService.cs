@@ -1344,6 +1344,8 @@ public class AdminReportService : IAdminReportService
                                              classIds.Contains(ce.ClassId.Value)).Result;
 
             decimal totalMilestoneScore = 0;
+            bool allMilestonesPass = true; // NEW: Check if all milestones >= 4
+            
             if (project != null)
             {
                 var projectMilestones = milestoneEvaluations
@@ -1352,22 +1354,50 @@ public class AdminReportService : IAdminReportService
                 
                 totalMilestoneScore = projectMilestones
                     .Sum(me => me.Score * (me.MilestoneDef?.Weight ?? 0) / 100);
+                
+                // NEW: Check if ALL milestone scores >= 4
+                if (projectMilestones.Any())
+                {
+                    allMilestonesPass = projectMilestones.All(me => me.Score >= 4);
+                }
+                else
+                {
+                    // No milestones = auto fail
+                    allMilestonesPass = false;
+                }
+            }
+            else
+            {
+                // No project = auto fail
+                allMilestonesPass = false;
             }
 
             var finalSubmission = project != null 
                 ? finalSubmissions.FirstOrDefault(fs => fs.ProjectId == project.ProjectId)
                 : null;
 
-            // Get average grader score from graders
+            // Get average grader score from graders (for display only, not for pass/fail logic)
             decimal? averageGraderScore = null;
+            bool allGraderGradesPass = true; // NEW: Check if all grader grades >= 5
+            
             if (finalSubmission?.FinalSubmissionGrades?.Any() == true)
             {
                 averageGraderScore = finalSubmission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+                
+                // NEW: Check if ALL grader grades >= 5
+                allGraderGradesPass = finalSubmission.FinalSubmissionGrades.All(fsg => fsg.Grade >= 5);
+            }
+            else
+            {
+                // No grader grades = auto fail
+                allGraderGradesPass = false;
             }
 
+            // Main instructor's grade from Final_Project_Submissions table
             decimal? finalScore = finalSubmission?.Grade;
+            bool mainInstructorGradePass = finalScore.HasValue && finalScore.Value >= 5;
             
-            // Calculate overall: 40% milestone + 60% final
+            // Calculate overall: 40% milestone + 60% final (for display only)
             decimal? overallScore = null;
             if (finalScore.HasValue)
             {
@@ -1377,11 +1407,18 @@ public class AdminReportService : IAdminReportService
             bool hasFinalSubmission = finalSubmission != null;
             bool isProjectCompleted = project?.Status == "Completed";
             
-            // Fix PASS logic: check overallScore >= 50 AND project completed AND has final submission
-            bool isPassed = overallScore.HasValue && 
-                           overallScore.Value >= 50 && 
+            // NEW PASS LOGIC:
+            // Student PASSES if ALL conditions are met:
+            // 1. Has final submission
+            // 2. Project status is "Completed"
+            // 3. ALL milestone scores >= 4
+            // 4. Main instructor's grade (Final_Project_Submissions.grade) >= 5
+            // 5. ALL grader grades (Final_Submission_Grades) >= 5
+            bool isPassed = hasFinalSubmission && 
                            isProjectCompleted && 
-                           hasFinalSubmission;
+                           allMilestonesPass && 
+                           mainInstructorGradePass &&
+                           allGraderGradesPass;
 
             return new StudentPassStatusDto
             {
