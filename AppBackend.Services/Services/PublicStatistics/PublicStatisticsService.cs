@@ -31,20 +31,25 @@ public class PublicStatisticsService : IPublicStatisticsService
             // Count total projects
             var totalProjects = await _db.Projects.CountAsync();
 
-            // Count active classes (classes with status "Active" or all classes if no status field)
-            // Based on Class model, if there's a Status field, we can filter by it
-            // Otherwise, count all classes with at least 1 enrollment
+            // Count active classes (classes with at least 1 enrolled student)
             var activeClasses = await _db.Classes
                 .Where(c => c.ClassEnrollments!.Any())
                 .CountAsync();
 
-            // Count live demos (demos that are currently running - ended_at is null or in the future)
-            var liveDemos = await _db.LiveDemos
-                .Where(d => d.EndedAt == null || d.EndedAt > DateTime.UtcNow)
+            // Count projects with submitted simulations (Live Demos)
+            var liveDemos = await _db.Projects
+                .Where(p => p.Simulations.Any(s => s.Status == "submitted"))
                 .CountAsync();
 
-            // Count connected devices (sensors)
-            var connectedDevices = await _db.Sensors.CountAsync();
+            // Count connected devices (sensors with recent activity - data within last 30 days)
+            // If no sensor data, count all sensors instead
+            var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+            var activeSensors = await _db.Sensors
+                .Where(s => s.SensorData.Any(sd => sd.Timestamp != null && sd.Timestamp > thirtyDaysAgo))
+                .CountAsync();
+            
+            // If no active sensors, fall back to total sensor count
+            var connectedDevices = activeSensors > 0 ? activeSensors : await _db.Sensors.CountAsync();
 
             var statistics = new PublicStatisticsResponseDto
             {
@@ -55,7 +60,7 @@ public class PublicStatisticsService : IPublicStatisticsService
             };
 
             _logger.LogInformation(
-                "Public statistics retrieved: {TotalProjects} projects, {ActiveClasses} classes, {LiveDemos} demos, {ConnectedDevices} devices",
+                "Public statistics retrieved: {TotalProjects} projects, {ActiveClasses} classes, {LiveDemos} projects with submitted simulations, {ConnectedDevices} active devices",
                 totalProjects, activeClasses, liveDemos, connectedDevices);
 
             return new ResultModel<PublicStatisticsResponseDto>
