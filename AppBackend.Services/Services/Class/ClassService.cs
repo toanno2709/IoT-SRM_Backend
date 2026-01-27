@@ -344,8 +344,8 @@ public class ClassService : IClassService
                     IsSuccess = false,
                     ResponseCode = "INSTRUCTOR_NOT_FOUND",
                     Message = "Instructor not found",
-                    Data = null,
-                    StatusCode = StatusCodes.Status400BadRequest
+                Data = null,
+                StatusCode = StatusCodes.Status400BadRequest
                 };
             }
 
@@ -693,6 +693,14 @@ public class ClassService : IClassService
 
             if (projects.Any())
             {
+                // ? NEW VALIDATION 6: Check if class has at least 1 milestone
+                var totalMilestones = projects.Sum(p => (p.ProjectMilestones ?? new List<BusinessObjects.Models.ProjectMilestone>()).Count);
+                
+                if (totalMilestones == 0)
+                {
+                    validationErrors.Add("Class must have at least 1 milestone defined before it can be marked as 'Completed'");
+                }
+
                 // ? NEW VALIDATION: Check if all projects have total milestone weight = 100%
                 foreach (var project in projects)
                 {

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.Semester;
 using AppBackend.Services.ApiModels.Commons;
 using AppBackend.Services.ApiModels.Semester;
@@ -22,10 +21,7 @@ namespace AppBackend.ApiCore.Controllers
         /// </summary>
         /// <returns>List of semesters</returns>
         [HttpGet]
-        [Authorize(Roles = "Admin,Instructor")]
         [ProducesResponseType(typeof(ResultModel<List<SemesterResponseDto>>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<List<SemesterResponseDto>>>> GetAll()
         {
             var result = await _semesterService.GetAllSemestersAsync();
@@ -42,11 +38,8 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="id">Semester ID</param>
         /// <returns>Semester details</returns>
         [HttpGet("{id}")]
-        [Authorize(Roles = "Admin,Instructor")]
         [ProducesResponseType(typeof(ResultModel<SemesterDetailDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<SemesterDetailDto>>> GetById(int id)
         {
             var result = await _semesterService.GetSemesterByIdAsync(id);
@@ -62,10 +55,8 @@ namespace AppBackend.ApiCore.Controllers
         /// </summary>
         /// <returns>Active semester</returns>
         [HttpGet("active")]
-        [Authorize(Roles = "Admin,Instructor,Student")]
         [ProducesResponseType(typeof(ResultModel<SemesterResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<ResultModel<SemesterResponseDto>>> GetActive()
         {
             var result = await _semesterService.GetActiveSemesterAsync();
@@ -82,10 +73,7 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="year">Year</param>
         /// <returns>List of semesters for the specified year</returns>
         [HttpGet("year/{year}")]
-        [Authorize(Roles = "Admin,Instructor")]
         [ProducesResponseType(typeof(ResultModel<List<SemesterResponseDto>>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<List<SemesterResponseDto>>>> GetByYear(int year)
         {
             var result = await _semesterService.GetSemestersByYearAsync(year);
@@ -102,12 +90,9 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="request">Semester creation data</param>
         /// <returns>Created semester</returns>
         [HttpPost]
-        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ResultModel<SemesterResponseDto>), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<SemesterResponseDto>>> Create([FromBody] CreateSemesterRequestDto request)
         {
             if (!ModelState.IsValid)
@@ -136,12 +121,9 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="request">Semester update data</param>
         /// <returns>Updated semester</returns>
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ResultModel<SemesterResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<SemesterResponseDto>>> Update(int id, [FromBody] UpdateSemesterRequestDto request)
         {
             if (!ModelState.IsValid)
@@ -169,12 +151,9 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="id">Semester ID</param>
         /// <returns>Deletion result</returns>
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<bool>>> Delete(int id)
         {
             var result = await _semesterService.DeleteSemesterAsync(id);
@@ -191,11 +170,8 @@ namespace AppBackend.ApiCore.Controllers
         /// <param name="id">Semester ID to set as active</param>
         /// <returns>Activation result</returns>
         [HttpPost("{id}/activate")]
-        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ResultModel<bool>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ResultModel<bool>>> SetActive(int id)
         {
             var result = await _semesterService.SetActiveSemesterAsync(id);
