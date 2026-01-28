@@ -54,4 +54,14 @@ public interface IFinalProjectService
         int projectId,
         FinalProjectGradeRequestDto request,
         int instructorId);
+
+    /// <summary>
+    /// Get file URL for download with authorization check
+    /// </summary>
+    Task<ResultModel<string>> GetFileUrlAsync(int projectId, string fileType, int userId);
+
+    /// <summary>
+    /// Get file URL for download by submission ID with authorization check (Instructor)
+    /// </summary>
+    Task<ResultModel<string>> GetFileUrlBySubmissionIdAsync(int finalSubmissionId, string fileType, int userId);
 }

@@ -232,10 +232,12 @@ public class HallOfFameService : IHallOfFameService
                         })
                         .ToListAsync();
 
+                    // FIXED: Calculate average from grader grades, not from submission.Grade  
+                    // submission.Grade is for main instructor only
                     finalSubmission = new LeaderboardFinalSubmissionDto
                     {
                         FinalSubmissionId = project.FinalProjectSubmission.FinalSubmissionId,
-                        AverageGrade = project.FinalProjectSubmission.Grade,
+                        AverageGrade = graderGrades.Any() ? graderGrades.Average(g => g.Grade) : null,
                         FinalReportUrl = project.FinalProjectSubmission.FinalReportUrl,
                         PresentationUrl = project.FinalProjectSubmission.PresentationUrl,
                         DemoVideoUrl = project.FinalProjectSubmission.VideoDemoUrl,

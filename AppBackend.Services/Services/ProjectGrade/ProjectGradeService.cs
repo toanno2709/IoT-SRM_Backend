@@ -169,7 +169,9 @@ public class ProjectGradeService : IProjectGradeService
                 GroupId = project.GroupId ?? 0,
                 GroupName = project.Group.GroupName ?? "Unnamed Group",
                 ProjectStatus = project.Status ?? "Unknown",
-                AverageGrade = finalSubmission?.Grade, // This is already the average calculated by trigger
+                // FIXED: Calculate average from grader grades dynamically
+                // submission.Grade is for main instructor only
+                AverageGrade = submissionGrades.Any() ? submissionGrades.Average(sg => sg.Grade) : null,
                 TotalGradersAssigned = assignedGraders.Count,
                 GradersCompleted = submissionGrades.Count,
                 FinalSubmission = finalSubmissionInfo,

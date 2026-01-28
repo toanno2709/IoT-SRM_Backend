@@ -36,6 +36,32 @@ public class ClassEnrollmentService : IClassEnrollmentService
     }
 
     /// <summary>
+    /// Helper method to check if student is already enrolled in another class in the same semester
+    /// </summary>
+    private async Task<(bool IsEnrolled, string? ClassName, int? ClassId)> IsStudentEnrolledInSemesterAsync(int studentId, int? semesterId, int? excludeClassId = null)
+    {
+        if (!semesterId.HasValue)
+        {
+            return (false, null, null);
+        }
+
+        // Find if student is enrolled in any other class in the same semester
+        var existingEnrollment = await _context.ClassEnrollments
+            .Include(ce => ce.Class)
+            .Where(ce => ce.StudentId == studentId 
+                      && ce.Class!.SemesterId == semesterId
+                      && (excludeClassId == null || ce.ClassId != excludeClassId))
+            .FirstOrDefaultAsync();
+
+        if (existingEnrollment != null && existingEnrollment.Class != null)
+        {
+            return (true, existingEnrollment.Class.ClassName, existingEnrollment.Class.ClassId);
+        }
+
+        return (false, null, null);
+    }
+
+    /// <summary>
     /// Helper method to create or update StudentCourseHistory when student enrolls in class
     /// </summary>
     private async Task CreateOrUpdateStudentCourseHistoryAsync(int studentId, int? semesterId)
@@ -127,7 +153,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
     {
         try
         {
-            // 1. Ki?m tra class có t?n t?i không và l?y semester_id
+            // 1. Ki?m tra class c? t?n t?i kh?ng v? l?y semester_id
             var classEntity = await _context.Classes
                 .FirstOrDefaultAsync(c => c.ClassId == request.ClassId);
                 
@@ -150,7 +176,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 .Where(ce => ce.ClassId == request.ClassId)
                 .CountAsync();
 
-            // 3. Tính s? h?c sinh c?n thêm
+            // 3. T?nh s? h?c sinh c?n th?m
             var studentsToAdd = request.MaxMembers - currentStudentCount;
 
             if (studentsToAdd <= 0)
@@ -175,29 +201,38 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 4. L?y danh sách student IDs ?ã có trong class
+            // 4. L?y danh s?ch student IDs ?? c? trong class
             var existingStudentIds = await _context.ClassEnrollments
                 .Where(ce => ce.ClassId == request.ClassId)
                 .Select(ce => ce.StudentId)
                 .ToListAsync();
 
-            // 5. Tìm students available
+            // 5. T?m students available
             var availableStudents = await _context.Users
                 .Where(u => u.RoleId == 3 && !existingStudentIds.Contains(u.UserId))
                 .Take(studentsToAdd * 2)
                 .ToListAsync();
 
-            // Filter out students who have passed the course
+            // Filter out students who have passed the course OR already enrolled in another class in same semester
             var eligibleStudents = new List<UserModel>();
             foreach (var student in availableStudents)
             {
                 var isEligible = await _studentCourseHistoryRepo.IsEligibleForEnrollmentAsync(student.UserId);
-                if (isEligible)
+                if (!isEligible)
                 {
-                    eligibleStudents.Add(student);
-                    if (eligibleStudents.Count >= studentsToAdd)
-                        break;
+                    continue;
                 }
+
+                // NEW: Check if student is already in another class in the same semester
+                var (isEnrolled, className, classId) = await IsStudentEnrolledInSemesterAsync(student.UserId, semesterId, request.ClassId);
+                if (isEnrolled)
+                {
+                    continue; // Skip this student
+                }
+
+                eligibleStudents.Add(student);
+                if (eligibleStudents.Count >= studentsToAdd)
+                    break;
             }
 
             if (!eligibleStudents.Any())
@@ -216,7 +251,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                         TotalStudentsNow = currentStudentCount,
                         StudentsNotAdded = studentsToAdd,
                         Message = $"No eligible students found to add to class",
-                        Warnings = new List<string> { "All available students have either already enrolled, already passed the course, or no students exist" }
+                        Warnings = new List<string> { "All available students have either already enrolled in a class this semester, already passed the course, or no students exist" }
                     },
                     StatusCode = StatusCodes.Status200OK
                 };
@@ -247,7 +282,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 });
             }
 
-            // 7. Bulk insert vào database
+            // 7. Bulk insert v?o database
             await _context.ClassEnrollments.AddRangeAsync(enrollments);
             await _context.SaveChangesAsync();
 
@@ -303,7 +338,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
     {
         try
         {
-            // 1. Ki?m tra class có t?n t?i và l?y semester_id
+            // 1. Ki?m tra class c? t?n t?i v? l?y semester_id
             var classEntity = await _context.Classes
                 .FirstOrDefaultAsync(c => c.ClassId == classId);
                 
@@ -321,7 +356,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
             var semesterId = classEntity.SemesterId;
 
-            // 2. Ki?m tra student có t?n t?i và có role_id = 3
+            // 2. Ki?m tra student c? t?n t?i v? c? role_id = 3
             var student = await _context.Users
                 .FirstOrDefaultAsync(u => u.UserId == studentId && u.RoleId == 3);
 
@@ -337,7 +372,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 3. Ki?m tra student ?ã có trong class ch?a
+            // 3. Ki?m tra student ?? c? trong class ch?a
             var existingEnrollment = await _context.ClassEnrollments
                 .FirstOrDefaultAsync(ce => ce.ClassId == classId && ce.StudentId == studentId);
 
@@ -353,7 +388,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 3.5. Ki?m tra student ?ã hoàn thành môn h?c ch?a
+            // 3.5. Ki?m tra student ?? ho?n th?nh m?n h?c ch?a
             var isEligible = await _studentCourseHistoryRepo.IsEligibleForEnrollmentAsync(studentId);
             if (!isEligible)
             {
@@ -367,7 +402,21 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 };
             }
 
-            // 4. Thêm student vào class
+            // 3.6. NEW: Ki?m tra student ?? c? trong l?p kh?c trong c?ng k? h?c ch?a
+            var (isEnrolledInSemester, otherClassName, otherClassId) = await IsStudentEnrolledInSemesterAsync(studentId, semesterId, classId);
+            if (isEnrolledInSemester)
+            {
+                return new ResultModel<AddStudentToClassResponseDto>
+                {
+                    IsSuccess = false,
+                    ResponseCode = "ALREADY_ENROLLED_IN_SEMESTER",
+                    Message = $"Student is already enrolled in class '{otherClassName}' (ID: {otherClassId}) in the same semester. A student can only be enrolled in one class per semester.",
+                    Data = null,
+                    StatusCode = StatusCodes.Status409Conflict
+                };
+            }
+
+            // 4. Th?m student v?o class
             var enrollment = new ClassEnrollmentModel
             {
                 ClassId = classId,
@@ -884,7 +933,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Reason = "Email không t?n t?i trong h? th?ng",
+                        Reason = "Email kh?ng t?n t?i trong h? th?ng",
                         ReasonCode = "EMAIL_NOT_FOUND"
                     });
                     continue;
@@ -899,7 +948,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Reason = "Ng??i dùng không ph?i là sinh viên",
+                        Reason = "Ng??i d?ng kh?ng ph?i l? sinh vi?n",
                         ReasonCode = "NOT_STUDENT"
                     });
                     continue;
@@ -912,7 +961,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Reason = "Sinh viên ?ã có trong l?p",
+                        Reason = "Sinh vi?n ?? c? trong l?p",
                         ReasonCode = "DUPLICATE"
                     });
                     continue;
@@ -926,8 +975,22 @@ public class ClassEnrollmentService : IClassEnrollmentService
                     {
                         RowNumber = row.RowNumber,
                         Email = row.Email,
-                        Reason = "Sinh viên ?ã hoàn thành môn IoT (không th? thêm vào l?p)",
+                        Reason = "Sinh vi?n ?? ho?n th?nh m?n IoT (kh?ng th? th?m v?o l?p)",
                         ReasonCode = "ALREADY_PASSED_COURSE"
+                    });
+                    continue;
+                }
+
+                // Validation 3.7: NEW - Check if student is already enrolled in another class in the same semester
+                var (isEnrolledInSemester, otherClassName, otherClassId) = await IsStudentEnrolledInSemesterAsync(user.UserId, semesterId, classId);
+                if (isEnrolledInSemester)
+                {
+                    failedList.Add(new ImportStudentFailureDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Email = row.Email,
+                        Reason = $"Sinh vi?n ?? c? trong l?p '{otherClassName}' (ID: {otherClassId}) trong c?ng k? h?c",
+                        ReasonCode = "ALREADY_ENROLLED_IN_SEMESTER"
                     });
                     continue;
                 }

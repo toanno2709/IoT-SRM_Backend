@@ -6,6 +6,7 @@ public interface IProjectTemplateService
 {
     // Instructor APIs
     Task<ResultModel<ProjectTemplateResponseDto>> CreateTemplateAsync(CreateProjectTemplateDto dto, int instructorId);
+    Task<ResultModel<ImportTemplatesResponseDto>> ImportTemplatesFromExcelAsync(ImportTemplatesFromExcelRequestDto request, int instructorId);
     Task<ResultModel<ProjectTemplateResponseDto>> GetTemplateByIdAsync(int templateId, int instructorId);
     Task<ResultModel<List<ProjectTemplateResponseDto>>> GetTemplatesByClassIdAsync(int classId, int instructorId);
     Task<ResultModel<ProjectTemplateResponseDto>> UpdateTemplateAsync(int templateId, UpdateProjectTemplateDto dto, int instructorId);

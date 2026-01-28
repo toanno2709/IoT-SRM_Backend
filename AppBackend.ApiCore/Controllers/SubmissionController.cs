@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.Submission;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
@@ -11,10 +12,12 @@ namespace AppBackend.ApiCore.Controllers;
 public class SubmissionController : ControllerBase
 {
     private readonly ISubmissionService _submissionService;
+    private readonly ICloudinaryService _cloudinaryService;
 
-    public SubmissionController(ISubmissionService submissionService)
+    public SubmissionController(ISubmissionService submissionService, ICloudinaryService cloudinaryService)
     {
         _submissionService = submissionService;
+        _cloudinaryService = cloudinaryService;
     }
 
     /// <summary>
@@ -167,5 +170,57 @@ public class SubmissionController : ControllerBase
             return Ok(result);
         
         return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Download a file from submission
+    /// </summary>
+    [HttpGet("api/student/milestones/files/{fileId}/download")]
+    [Authorize(Roles = "Student,Instructor")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DownloadFile([FromRoute] int fileId)
+    {
+        try
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { isSuccess = false, message = "User not authenticated" });
+            }
+
+            // Get file info from database
+            var fileResult = await _submissionService.GetFileInfoAsync(fileId, userId);
+            
+            if (!fileResult.IsSuccess || fileResult.Data == null)
+            {
+                return StatusCode(fileResult.StatusCode, new { 
+                    isSuccess = false, 
+                    message = fileResult.Message 
+                });
+            }
+
+            var fileInfo = fileResult.Data;
+            
+            // Download from Cloudinary
+            var downloadResult = await _cloudinaryService.DownloadFileAsync(fileInfo.FileUrl);
+            
+            if (downloadResult == null)
+            {
+                return StatusCode(500, new { 
+                    isSuccess = false, 
+                    message = "Failed to download file from storage" 
+                });
+            }
+
+            // Return file
+            return File(downloadResult.Value.fileData, downloadResult.Value.contentType, downloadResult.Value.fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { 
+                isSuccess = false, 
+                message = $"Error downloading file: {ex.Message}" 
+            });
+        }
     }
 }

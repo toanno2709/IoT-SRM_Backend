@@ -344,8 +344,8 @@ public class ClassService : IClassService
                     IsSuccess = false,
                     ResponseCode = "INSTRUCTOR_NOT_FOUND",
                     Message = "Instructor not found",
-                    Data = null,
-                    StatusCode = StatusCodes.Status400BadRequest
+                Data = null,
+                StatusCode = StatusCodes.Status400BadRequest
                 };
             }
 
@@ -693,6 +693,35 @@ public class ClassService : IClassService
 
             if (projects.Any())
             {
+                // ? NEW VALIDATION 6: Check if class has at least 1 milestone
+                var totalMilestones = projects.Sum(p => (p.ProjectMilestones ?? new List<BusinessObjects.Models.ProjectMilestone>()).Count);
+                
+                if (totalMilestones == 0)
+                {
+                    validationErrors.Add("Class must have at least 1 milestone defined before it can be marked as 'Completed'");
+                }
+
+                // ? NEW VALIDATION: Check if all projects have total milestone weight = 100%
+                foreach (var project in projects)
+                {
+                    var milestones = project.ProjectMilestones ?? new List<BusinessObjects.Models.ProjectMilestone>();
+                    
+                    if (milestones.Any())
+                    {
+                        var totalWeight = milestones.Sum(m => m.Weight ?? 0);
+                        
+                        if (totalWeight != 100)
+                        {
+                            validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - Total milestone weight is {totalWeight}%, must be exactly 100%");
+                        }
+                    }
+                    else
+                    {
+                        // Project has no milestones
+                        validationErrors.Add($"Project '{project.Title}' (Group: {project.Group?.GroupName}) - No milestones defined (total weight must be 100%)");
+                    }
+                }
+
                 // Check if all milestones are graded
                 foreach (var project in projects)
                 {
@@ -918,6 +947,11 @@ public class ClassService : IClassService
                         .ThenInclude(g => g!.Projects)
                             .ThenInclude(p => p.FinalProjectSubmission)
                                 .ThenInclude(fs => fs!.FinalSubmissionGrades)
+                            .ThenInclude(fsg => fsg.Instructor)
+                    .Include(gm => gm.Group)
+                        .ThenInclude(g => g!.Projects)
+                            .ThenInclude(p => p.ProjectMilestones)
+                                .ThenInclude(pm => pm.MilestoneEvaluations)
                     .Where(gm => gm.UserId == studentId && gm.Group!.ClassId == classId)
                     .Select(gm => gm.Group)
                     .FirstOrDefaultAsync();
@@ -926,74 +960,152 @@ public class ClassService : IClassService
                 decimal? avgGradeFromOthers = null;
                 int? finalSubmissionId = null;
 
+                // NEW: Variables to track pass/fail conditions
+                bool hasProject = studentGroup != null;
+                bool hasFinalSubmission = false;
+                bool mainInstructorGradePass = false;
+                bool allGraderGradesPass = false;
+                bool allMilestonesPass = false;
+                string failReasons = "";
+
                 if (studentGroup != null)
                 {
                     var project = studentGroup.Projects?.FirstOrDefault();
-                    if (project?.FinalProjectSubmission != null)
+                    
+                    if (project != null)
                     {
-                        var finalSubmission = project.FinalProjectSubmission;
-                        finalSubmissionId = finalSubmission.FinalSubmissionId;
-                        
-                        // Get the average final grade (from Final_Project_Submissions.grade)
-                        finalGrade = finalSubmission.Grade;
+                        // Check milestone grades: ALL must be >= 4
+                        var milestoneEvaluations = project.ProjectMilestones?
+                            .SelectMany(pm => pm.MilestoneEvaluations ?? new List<MilestoneEvaluation>())
+                            .ToList() ?? new List<MilestoneEvaluation>();
 
-                        // Calculate average grade from other instructors (excluding primary class instructor)
-                        if (finalSubmission.FinalSubmissionGrades != null && finalSubmission.FinalSubmissionGrades.Any())
+                        if (milestoneEvaluations.Any())
                         {
-                            var otherInstructorGrades = finalSubmission.FinalSubmissionGrades
-                                .Where(g => classInstructorId.HasValue && g.InstructorId != classInstructorId.Value)
-                                .Select(g => g.Grade)
-                                .ToList();
-
-                            if (otherInstructorGrades.Any())
+                            allMilestonesPass = milestoneEvaluations.All(me => me.Score >= 4);
+                            if (!allMilestonesPass)
                             {
-                                avgGradeFromOthers = otherInstructorGrades.Average();
+                                var failedMilestones = milestoneEvaluations.Where(me => me.Score < 4).ToList();
+                                failReasons += $"Milestone scores below 4: {string.Join(", ", failedMilestones.Select(m => $"{m.MilestoneDef?.Title ?? "Unknown"} ({m.Score:F2})"))}. ";
                             }
-                        }
-                    }
-                }
-
-                // Determine Pass/Not Pass based on final grade
-                string newStatus;
-                bool isRetake;
-                string notes;
-
-                if (finalGrade.HasValue)
-                {
-                    if (finalGrade.Value >= 5)
-                    {
-                        newStatus = "Pass";
-                        isRetake = false;
-                        notes = $"Passed with final grade: {finalGrade.Value:F2}/10";
-                    }
-                    else
-                    {
-                        newStatus = "Not Pass";
-                        isRetake = true;
-                        notes = $"Not passed with final grade: {finalGrade.Value:F2}/10 (Below passing threshold of 5.0)";
-                    }
-
-                    // Add information about other instructor grades if available
-                    if (avgGradeFromOthers.HasValue)
-                    {
-                        notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10";
-                        
-                        if (avgGradeFromOthers.Value >= 5)
-                        {
-                            notes += " (Pass)";
                         }
                         else
                         {
-                            notes += " (Not Pass)";
+                            allMilestonesPass = false;
+                            failReasons += "No milestone evaluations found. ";
                         }
+
+                        // Check final submission
+                        if (project.FinalProjectSubmission != null)
+                        {
+                            var finalSubmission = project.FinalProjectSubmission;
+                            hasFinalSubmission = true;
+                            finalSubmissionId = finalSubmission.FinalSubmissionId;
+                            
+                            // Check main instructor's grade (from Final_Project_Submissions.grade)
+                            finalGrade = finalSubmission.Grade;
+                            mainInstructorGradePass = finalGrade.HasValue && finalGrade.Value >= 5;
+                            
+                            if (!mainInstructorGradePass)
+                            {
+                                if (finalGrade.HasValue)
+                                {
+                                    failReasons += $"Main instructor grade ({finalGrade.Value:F2}) is below 5. ";
+                                }
+                                else
+                                {
+                                    failReasons += "Main instructor has not graded yet. ";
+                                }
+                            }
+
+                            // Check ALL grader grades: ALL must be >= 5
+                            if (finalSubmission.FinalSubmissionGrades != null && finalSubmission.FinalSubmissionGrades.Any())
+                            {
+                                allGraderGradesPass = finalSubmission.FinalSubmissionGrades.All(fsg => fsg.Grade >= 5);
+                                
+                                if (!allGraderGradesPass)
+                                {
+                                    var failedGraders = finalSubmission.FinalSubmissionGrades.Where(fsg => fsg.Grade < 5).ToList();
+                                    failReasons += $"Grader scores below 5: {string.Join(", ", failedGraders.Select(g => $"{g.Instructor?.FullName ?? "Unknown"} ({g.Grade:F2})"))}. ";
+                                }
+
+                                // Calculate average grade from other instructors (excluding primary class instructor)
+                                var otherInstructorGrades = finalSubmission.FinalSubmissionGrades
+                                    .Where(g => classInstructorId.HasValue && g.InstructorId != classInstructorId.Value)
+                                    .Select(g => g.Grade)
+                                    .ToList();
+
+                                if (otherInstructorGrades.Any())
+                                {
+                                    avgGradeFromOthers = otherInstructorGrades.Average();
+                                }
+                            }
+                            else
+                            {
+                                allGraderGradesPass = false;
+                                failReasons += "No grader grades found. ";
+                            }
+                        }
+                        else
+                        {
+                            hasFinalSubmission = false;
+                            failReasons += "No final submission. ";
+                        }
+                    }
+                    else
+                    {
+                        failReasons += "No project found. ";
                     }
                 }
                 else
                 {
-                    // No final grade available - student might not have submitted or not graded
+                    failReasons += "Student not in any group. ";
+                }
+
+                // Determine Pass/Not Pass based on NEW logic:
+                // Student PASSES if ALL conditions are met:
+                // 1. Has project
+                // 2. Has final submission
+                // 3. Main instructor grade (Final_Project_Submissions.grade) >= 5
+                // 4. ALL grader grades (Final_Submission_Grades) >= 5
+                // 5. ALL milestone scores >= 4
+                string newStatus;
+                bool isRetake;
+                string notes;
+
+                bool isPassed = hasProject && 
+                               hasFinalSubmission && 
+                               mainInstructorGradePass && 
+                               allGraderGradesPass && 
+                               allMilestonesPass;
+
+                if (isPassed)
+                {
+                    newStatus = "Pass";
+                    isRetake = false;
+                    notes = $"Pass with Main Instructor Grade: {(finalGrade.HasValue ? $"{finalGrade.Value:F2}" : "N/A")}/100";
+                    
+                    if (avgGradeFromOthers.HasValue)
+                    {
+                        notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/100";
+                    }
+                }
+                else
+                {
                     newStatus = "Not Pass";
                     isRetake = true;
-                    notes = "No final submission or final grade not available";
+                    
+                    // Build detailed fail reason
+                    notes = $"Not passed. Reasons: {failReasons.TrimEnd()}";
+                    
+                    if (finalGrade.HasValue)
+                    {
+                        notes += $" Main instructor grade: {finalGrade.Value:F2}/100.";
+                    }
+                    
+                    if (avgGradeFromOthers.HasValue)
+                    {
+                        notes += $" Average grade from other instructors: {avgGradeFromOthers.Value:F2}/100.";
+                    }
                 }
 
                 // Update the history record
@@ -1041,7 +1153,7 @@ public class ClassService : IClassService
                     // Add information about grades and Pass/Not Pass status
                     if (history.FinalGrade.HasValue)
                     {
-                        message += $"? Final grade: {history.FinalGrade.Value:F2}/\n";
+                        message += $"?? Main Instructor Grade: {history.FinalGrade.Value:F2}/100\n";
                         
                         if (history.Status == "Pass")
                         {
@@ -1050,24 +1162,25 @@ public class ClassService : IClassService
                         else if (history.Status == "Not Pass")
                         {
                             message += $"? Result: NOT PASS\n";
+                            message += $"?? Details: {history.Notes}\n";
                         }
 
                         // Add information about grades from other instructors if available
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
-                            message += $"? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/\n";
+                            message += $"?? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/100\n";
                         }
                     }
                     else
                     {
                         message += $"? Result: NOT PASS\n";
-                        message += "? Reason: No final grade available or no submission\n";
+                        message += $"?? Reason: {history.Notes ?? "No final grade available or no submission"}\n";
                     }
 
                     // Add note if need to retake
                     if (history.IsRetake == true)
                     {
-                        message += "\n? You need to re-register for this course.";
+                        message += "\n?? You need to re-register for this course.";
                     }
 
                     // Send notification with data containing userId

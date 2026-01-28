@@ -12,11 +12,14 @@ public class CloudinaryService : ICloudinaryService
 {
     private readonly Cloudinary _cloudinary;
     private readonly ILogger<CloudinaryService> _logger;
+    private readonly HttpClient _httpClient;
 
-    public CloudinaryService(Cloudinary cloudinary, ILogger<CloudinaryService> logger)
+    public CloudinaryService(Cloudinary cloudinary, ILogger<CloudinaryService> logger, IHttpClientFactory httpClientFactory)
     {
         _cloudinary = cloudinary;
         _logger = logger;
+        _httpClient = httpClientFactory.CreateClient();
+        _httpClient.Timeout = TimeSpan.FromMinutes(10); // Large files may take time
     }
 
     public async Task<ResultModel<CloudinaryUploadResponseDto>> UploadAsync(CloudinaryUploadRequestDto request)
@@ -43,10 +46,9 @@ public class CloudinaryService : ICloudinaryService
             // Clean filename to make it URL-safe
             var safeFileName = CleanFileName(fileName);
             
-            // Create public_id with folder path and original filename
-            var publicId = string.IsNullOrEmpty(request.Folder) 
-                ? safeFileName 
-                : $"{request.Folder}/{safeFileName}";
+            // ? FIX: Don't include folder in publicId - Cloudinary adds it automatically
+            // Just use the safe filename
+            var publicId = safeFileName;
 
             // Determine if it's an image or raw file (document, video, etc.)
             var isImage = request.File.ContentType?.StartsWith("image/") ?? false;
@@ -78,6 +80,8 @@ public class CloudinaryService : ICloudinaryService
                     UseFilename = true,
                     UniqueFilename = false, // Don't add random string
                     Overwrite = true // Allow overwriting existing file
+                    // ? REMOVED: AccessMode - not supported in CloudinaryDotNet library
+                    // Raw files are public by default
                 };
                 uploadResult = await _cloudinary.UploadAsync(uploadParams);
             }
@@ -93,16 +97,12 @@ public class CloudinaryService : ICloudinaryService
                 };
             }
 
-            _logger.LogInformation("File uploaded successfully. PublicId: {PublicId}, Url: {Url}",
-                uploadResult.PublicId, uploadResult.SecureUrl);
+            _logger.LogInformation("File uploaded successfully. PublicId: {PublicId}, Url: {Url}, IsImage: {IsImage}",
+                uploadResult.PublicId, uploadResult.SecureUrl, isImage);
 
-            // For raw files (PDF, ZIP, etc.), create a download URL with fl_attachment flag
+            // ? FIX: Return the SecureUrl as-is from Cloudinary
+            // We'll handle download through the API endpoint, not direct browser access
             var secureUrl = uploadResult.SecureUrl?.ToString();
-            if (!isImage && !string.IsNullOrEmpty(secureUrl))
-            {
-                secureUrl = ConvertToDownloadUrl(secureUrl, request.File.FileName);
-                _logger.LogInformation("Created download URL: {DownloadUrl}", secureUrl);
-            }
 
             var response = new CloudinaryUploadResponseDto
             {
@@ -249,53 +249,6 @@ public class CloudinaryService : ICloudinaryService
     }
 
     /// <summary>
-    /// Convert Cloudinary URL to download URL with fl_attachment flag
-    /// This forces the browser to download the file instead of displaying it
-    /// </summary>
-    /// <param name="cloudinaryUrl">Original Cloudinary URL</param>
-    /// <param name="originalFileName">Original filename to use for download</param>
-    /// <returns>Download URL with fl_attachment flag</returns>
-    private string ConvertToDownloadUrl(string cloudinaryUrl, string originalFileName)
-    {
-        try
-        {
-            // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/raw/upload/v{version}/{path}
-            // We need to insert "fl_attachment:{filename}" after "upload/"
-            
-            var uri = new Uri(cloudinaryUrl);
-            var path = uri.AbsolutePath;
-            
-            // Find the "upload/" part
-            var uploadIndex = path.IndexOf("/upload/");
-            if (uploadIndex == -1)
-            {
-                _logger.LogWarning("Could not find '/upload/' in URL: {Url}", cloudinaryUrl);
-                return cloudinaryUrl;
-            }
-
-            // Encode the filename for URL
-            var encodedFileName = Uri.EscapeDataString(originalFileName);
-            
-            // Insert the fl_attachment transformation
-            var beforeUpload = path.Substring(0, uploadIndex + 8); // Include "/upload/"
-            var afterUpload = path.Substring(uploadIndex + 8);
-            
-            // Build the new path with fl_attachment
-            var newPath = $"{beforeUpload}fl_attachment:{encodedFileName}/{afterUpload}";
-            
-            // Reconstruct the full URL
-            var downloadUrl = $"{uri.Scheme}://{uri.Host}{newPath}";
-            
-            return downloadUrl;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error converting URL to download URL: {Url}", cloudinaryUrl);
-            return cloudinaryUrl; // Return original URL if conversion fails
-        }
-    }
-
-    /// <summary>
     /// Clean filename to make it URL-safe and valid for Cloudinary public_id
     /// </summary>
     private string CleanFileName(string fileName)
@@ -319,5 +272,193 @@ public class CloudinaryService : ICloudinaryService
             fileName = fileName.Substring(0, 200);
         
         return fileName;
+    }
+
+    /// <summary>
+    /// Download file from Cloudinary URL
+    /// </summary>
+    public async Task<(byte[] fileData, string fileName, string contentType)?> DownloadFileAsync(string cloudinaryUrl)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(cloudinaryUrl))
+            {
+                _logger.LogWarning("Download requested with empty URL");
+                return null;
+            }
+
+            _logger.LogInformation("Downloading file from Cloudinary: {Url}", cloudinaryUrl);
+
+            // Extract public_id and resource type
+            var (publicId, resourceType) = ExtractPublicIdAndResourceType(cloudinaryUrl);
+            
+            if (string.IsNullOrEmpty(publicId))
+            {
+                _logger.LogError("Could not extract public_id from URL: {Url}", cloudinaryUrl);
+                return null;
+            }
+
+            _logger.LogInformation("Extracted PublicId: {PublicId}, ResourceType: {ResourceType}", publicId, resourceType);
+
+            string downloadUrl;
+            
+            // For raw files, use Admin API to get fresh download URL with authentication
+            if (resourceType == "raw")
+            {
+                try
+                {
+                    // Use Admin API GetResource to get authenticated URL
+                    var getResourceParams = new GetResourceParams(publicId)
+                    {
+                        ResourceType = ResourceType.Raw
+                    };
+                    
+                    _logger.LogInformation("Calling Admin API GetResource for: {PublicId}", publicId);
+                    var resourceResult = await _cloudinary.GetResourceAsync(getResourceParams);
+                    
+                    if (resourceResult?.SecureUrl != null)
+                    {
+                        downloadUrl = resourceResult.SecureUrl;
+                        _logger.LogInformation("Got authenticated URL from Admin API: {Url}", downloadUrl);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("GetResource returned null, falling back to fl_attachment transformation");
+                        // Fallback: add fl_attachment flag to force download
+                        downloadUrl = cloudinaryUrl.Replace("/upload/", "/upload/fl_attachment/");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "GetResource failed, using fl_attachment transformation");
+                    // Fallback: add fl_attachment flag to force download
+                    downloadUrl = cloudinaryUrl.Replace("/upload/", "/upload/fl_attachment/");
+                }
+            }
+            else
+            {
+                // For images, use direct URL with attachment flag
+                downloadUrl = cloudinaryUrl.Replace("/upload/", "/upload/fl_attachment/");
+            }
+
+            // Download the file
+            _logger.LogInformation("Attempting download from: {Url}", downloadUrl);
+            var response = await _httpClient.GetAsync(downloadUrl);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Download failed. Status: {StatusCode}, Reason: {Reason}", 
+                    response.StatusCode, response.ReasonPhrase);
+                return null;
+            }
+
+            var fileData = await response.Content.ReadAsByteArrayAsync();
+            
+            // Extract filename from original URL
+            var uri = new Uri(cloudinaryUrl);
+            var fileName = Path.GetFileName(uri.LocalPath);
+            
+            // Decode URL-encoded filename
+            fileName = Uri.UnescapeDataString(fileName);
+            
+            if (string.IsNullOrEmpty(fileName))
+            {
+                var extension = Path.GetExtension(uri.LocalPath);
+                fileName = "download" + extension;
+            }
+
+            // Get content type from response or infer from extension
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            
+            if (string.IsNullOrEmpty(contentType))
+            {
+                var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+                contentType = extension switch
+                {
+                    ".pdf" => "application/pdf",
+                    ".zip" => "application/zip",
+                    ".txt" => "text/plain",
+                    ".doc" => "application/msword",
+                    ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".xls" => "application/vnd.ms-excel",
+                    ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ".ppt" => "application/vnd.ms-powerpoint",
+                    ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    ".rar" => "application/x-rar-compressed",
+                    ".7z" => "application/x-7z-compressed",
+                    _ => "application/octet-stream"
+                };
+            }
+            
+            _logger.LogInformation("Downloaded {Size} bytes, filename: {FileName}, contentType: {ContentType}", 
+                fileData.Length, fileName, contentType);
+
+            return (fileData, fileName, contentType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading file from Cloudinary: {Url}", cloudinaryUrl);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extract public_id and resource type from Cloudinary URL
+    /// </summary>
+    private (string publicId, string resourceType) ExtractPublicIdAndResourceType(string cloudinaryUrl)
+    {
+        try
+        {
+            var uri = new Uri(cloudinaryUrl);
+            var pathSegments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            
+            // Cloudinary URL format: 
+            // Images: .../image/upload/v{version}/{folder}/{publicId}.{format}
+            // Raw files: .../raw/upload/v{version}/{folder}/{publicId}.{format}
+            
+            // Find resource type (image or raw)
+            string resourceType = "image"; // default
+            int uploadIndex = -1;
+            
+            for (int i = 0; i < pathSegments.Length; i++)
+            {
+                if (pathSegments[i] == "raw")
+                {
+                    resourceType = "raw";
+                }
+                
+                if (pathSegments[i] == "upload")
+                {
+                    uploadIndex = i;
+                    break;
+                }
+            }
+            
+            if (uploadIndex < 0 || uploadIndex + 2 >= pathSegments.Length)
+            {
+                _logger.LogWarning("Could not find upload index in URL: {Url}", cloudinaryUrl);
+                return (string.Empty, resourceType);
+            }
+            
+            // Get segments after version number (skip "v{version}")
+            var publicIdParts = pathSegments.Skip(uploadIndex + 2).ToArray();
+            var publicIdWithExtension = string.Join("/", publicIdParts);
+            
+            // Remove file extension for public_id
+            var lastDotIndex = publicIdWithExtension.LastIndexOf('.');
+            var publicId = lastDotIndex > 0 
+                ? publicIdWithExtension.Substring(0, lastDotIndex) 
+                : publicIdWithExtension;
+            
+            _logger.LogInformation("Extracted from URL - PublicId: {PublicId}, ResourceType: {ResourceType}", 
+                publicId, resourceType);
+            
+            return (publicId, resourceType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting public_id from URL: {Url}", cloudinaryUrl);
+            return (string.Empty, "image");
+        }
     }
 }

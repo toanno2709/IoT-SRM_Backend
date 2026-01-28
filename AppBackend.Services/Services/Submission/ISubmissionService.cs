@@ -33,4 +33,9 @@ public interface ISubmissionService
     /// Delete a submission file
     /// </summary>
     Task<ResultModel<bool>> DeleteFileAsync(int fileId, int userId);
+
+    /// <summary>
+    /// Get file information with authorization check
+    /// </summary>
+    Task<ResultModel<MilestoneFileDto>> GetFileInfoAsync(int fileId, int userId);
 }

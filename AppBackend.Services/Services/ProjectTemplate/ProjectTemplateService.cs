@@ -6,6 +6,7 @@ using AppBackend.Repositories.Repositories.ProjectTemplateRepo;
 using AppBackend.Services.ApiModels.Commons;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using OfficeOpenXml;
 
 namespace AppBackend.Services.Services.ProjectTemplate;
 
@@ -20,6 +21,9 @@ public class ProjectTemplateService : IProjectTemplateService
     {
         _templateRepo = templateRepo;
         _context = context;
+        
+        // Set EPPlus License Context
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
     /// <summary>
@@ -735,6 +739,243 @@ public class ProjectTemplateService : IProjectTemplateService
             {
                 IsSuccess = false,
                 Message = $"Error registering template: {ex.Message}. Inner: {ex.InnerException?.Message}",
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
+        }
+    }
+
+    public async Task<ResultModel<ImportTemplatesResponseDto>> ImportTemplatesFromExcelAsync(
+        ImportTemplatesFromExcelRequestDto request, 
+        int instructorId)
+    {
+        var response = new ImportTemplatesResponseDto
+        {
+            SuccessfulTemplates = new List<ImportedTemplateDto>(),
+            Errors = new List<TemplateImportErrorDto>(),
+            Warnings = new List<string>()
+        };
+
+        try
+        {
+            // Validate class and instructor authorization
+            var classEntity = await _context.Classes
+                .FirstOrDefaultAsync(c => c.ClassId == request.ClassId && c.InstructorId == instructorId);
+
+            if (classEntity == null)
+            {
+                return new ResultModel<ImportTemplatesResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Class not found or you are not the instructor",
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            // Validate file extension
+            var fileExtension = Path.GetExtension(request.ExcelFile.FileName).ToLower();
+            if (fileExtension != ".xlsx" && fileExtension != ".xls")
+            {
+                return new ResultModel<ImportTemplatesResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Only .xlsx and .xls files are supported",
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            // Validate file size (max 10MB)
+            if (request.ExcelFile.Length > 10 * 1024 * 1024)
+            {
+                return new ResultModel<ImportTemplatesResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "File size must not exceed 10MB",
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            using var stream = new MemoryStream();
+            await request.ExcelFile.CopyToAsync(stream);
+            stream.Position = 0;
+
+            using var package = new ExcelPackage(stream);
+            var worksheet = package.Workbook.Worksheets[0]; // First sheet
+
+            if (worksheet == null || worksheet.Dimension == null)
+            {
+                return new ResultModel<ImportTemplatesResponseDto>
+                {
+                    IsSuccess = false,
+                    Message = "Excel file is empty or invalid",
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            var rowCount = worksheet.Dimension.Rows;
+            response.TotalRowsInFile = rowCount - 1; // Exclude header row
+
+            // Get existing template titles in this class
+            var existingTemplates = await _context.ProjectTemplates
+                .Where(t => t.ClassId == request.ClassId)
+                .Select(t => t.Title.ToLower())
+                .ToListAsync();
+            var existingTitles = new HashSet<string>(existingTemplates, StringComparer.OrdinalIgnoreCase);
+
+            // Track titles in current import batch
+            var batchTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var createdAt = TruncateToSeconds(DateTime.UtcNow);
+
+            // Process each row (skip header row 1)
+            // Expected columns: A=No, B=Title, C=Description, D=Component, E=Max Groups
+            for (int row = 2; row <= rowCount; row++)
+            {
+                try
+                {
+                    // Read data from Excel
+                    var title = worksheet.Cells[row, 2].Value?.ToString()?.Trim();
+                    var description = worksheet.Cells[row, 3].Value?.ToString()?.Trim();
+                    var component = worksheet.Cells[row, 4].Value?.ToString()?.Trim();
+                    var maxGroupsValue = worksheet.Cells[row, 5].Value?.ToString()?.Trim();
+
+                    // Validate required field: Title
+                    if (string.IsNullOrEmpty(title))
+                    {
+                        response.Errors.Add(new TemplateImportErrorDto
+                        {
+                            RowNumber = row,
+                            Title = title,
+                            ErrorReason = "Title is required",
+                            ErrorType = "ValidationError"
+                        });
+                        response.TemplatesFailed++;
+                        continue;
+                    }
+
+                    // Parse Max Groups (should be number or empty for unlimited)
+                    int? maxGroups = null;
+                    if (!string.IsNullOrEmpty(maxGroupsValue))
+                    {
+                        if (int.TryParse(maxGroupsValue, out var parsedMaxGroups))
+                        {
+                            if (parsedMaxGroups < 0)
+                            {
+                                response.Errors.Add(new TemplateImportErrorDto
+                                {
+                                    RowNumber = row,
+                                    Title = title,
+                                    ErrorReason = "Max Groups must be a positive number or empty for unlimited",
+                                    ErrorType = "InvalidFormat"
+                                });
+                                response.TemplatesFailed++;
+                                continue;
+                            }
+                            maxGroups = parsedMaxGroups;
+                        }
+                        else
+                        {
+                            response.Errors.Add(new TemplateImportErrorDto
+                            {
+                                RowNumber = row,
+                                Title = title,
+                                ErrorReason = "Max Groups must be a valid number",
+                                ErrorType = "InvalidFormat"
+                            });
+                            response.TemplatesFailed++;
+                            continue;
+                        }
+                    }
+
+                    // Check duplicate title in database
+                    if (existingTitles.Contains(title))
+                    {
+                        response.Errors.Add(new TemplateImportErrorDto
+                        {
+                            RowNumber = row,
+                            Title = title,
+                            ErrorReason = "Template with this title already exists in the class",
+                            ErrorType = "DuplicateTitle"
+                        });
+                        response.TemplatesSkipped++;
+                        continue;
+                    }
+
+                    // Check duplicate title in current batch
+                    if (batchTitles.Contains(title))
+                    {
+                        response.Errors.Add(new TemplateImportErrorDto
+                        {
+                            RowNumber = row,
+                            Title = title,
+                            ErrorReason = "Duplicate title in Excel file",
+                            ErrorType = "DuplicateTitle"
+                        });
+                        response.TemplatesSkipped++;
+                        continue;
+                    }
+
+                    // Create template
+                    var template = new BusinessObjects.Models.ProjectTemplate
+                    {
+                        ClassId = request.ClassId,
+                        Title = title,
+                        Description = description,
+                        Component = component,
+                        MaxGroups = maxGroups,
+                        RegisteredCount = 0,
+                        IsActive = true,
+                        CreatedBy = instructorId,
+                        CreatedAt = createdAt
+                    };
+
+                    await _templateRepo.CreateAsync(template);
+
+                    // Add to batch tracking
+                    batchTitles.Add(title);
+                    existingTitles.Add(title.ToLower());
+
+                    // Add to successful list
+                    response.SuccessfulTemplates.Add(new ImportedTemplateDto
+                    {
+                        RowNumber = row,
+                        TemplateId = template.TemplateId,
+                        Title = template.Title,
+                        Description = template.Description,
+                        Component = template.Component,
+                        MaxGroups = template.MaxGroups
+                    });
+                    response.TemplatesCreatedSuccessfully++;
+                }
+                catch (Exception ex)
+                {
+                    response.Errors.Add(new TemplateImportErrorDto
+                    {
+                        RowNumber = row,
+                        ErrorReason = $"Error processing row: {ex.Message}",
+                        ErrorType = "ProcessingError"
+                    });
+                    response.TemplatesFailed++;
+                }
+            }
+
+            // Build response message
+            response.Message = $"Import completed: {response.TemplatesCreatedSuccessfully} templates created, " +
+                             $"{response.TemplatesSkipped} skipped (duplicates), {response.TemplatesFailed} failed";
+
+            return new ResultModel<ImportTemplatesResponseDto>
+            {
+                IsSuccess = true,
+                Message = response.Message,
+                Data = response,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<ImportTemplatesResponseDto>
+            {
+                IsSuccess = false,
+                Message = $"Error importing templates: {ex.Message}",
                 StatusCode = StatusCodes.Status500InternalServerError
             };
         }

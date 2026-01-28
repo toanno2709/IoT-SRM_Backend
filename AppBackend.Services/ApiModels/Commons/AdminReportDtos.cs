@@ -433,4 +433,76 @@ public class StudentPassStatusDto
     public string PassStatus { get; set; } = "NOT PASS"; // "PASS" or "NOT PASS"
 }
 
+/// <summary>
+/// Student pass/not pass statistics for chart visualization
+/// </summary>
+public class StudentPassStatisticsDto
+{
+    /// <summary>
+    /// Semester information
+    /// </summary>
+    public int SemesterId { get; set; }
+    public string? SemesterName { get; set; }
+    public string? SemesterCode { get; set; }
+    
+    /// <summary>
+    /// Total students in the semester
+    /// </summary>
+    public int TotalStudents { get; set; }
+    
+    /// <summary>
+    /// Number of students who passed
+    /// </summary>
+    public int PassedStudents { get; set; }
+    
+    /// <summary>
+    /// Number of students who did not pass
+    /// </summary>
+    public int NotPassedStudents { get; set; }
+    
+    /// <summary>
+    /// Pass rate percentage (0-100)
+    /// </summary>
+    public decimal PassRate { get; set; }
+    
+    /// <summary>
+    /// Chart labels (for frontend)
+    /// </summary>
+    public List<string> Labels { get; set; } = new List<string> { "PASS", "NOT PASS" };
+    
+    /// <summary>
+    /// Chart values (for frontend)
+    /// </summary>
+    public List<int> Values { get; set; } = new();
+}
+
+/// <summary>
+/// Multi-semester pass/not pass comparison
+/// </summary>
+public class StudentPassStatisticsComparisonDto
+{
+    /// <summary>
+    /// Total statistics across all semesters
+    /// </summary>
+    public StudentPassStatisticsSummaryDto Overall { get; set; } = new();
+    
+    /// <summary>
+    /// Statistics by semester
+    /// </summary>
+    public List<StudentPassStatisticsDto> BySemester { get; set; } = new();
+}
+
+/// <summary>
+/// Overall pass/not pass summary
+/// </summary>
+public class StudentPassStatisticsSummaryDto
+{
+    public int TotalStudents { get; set; }
+    public int PassedStudents { get; set; }
+    public int NotPassedStudents { get; set; }
+    public decimal PassRate { get; set; }
+    public List<string> Labels { get; set; } = new List<string> { "PASS", "NOT PASS" };
+    public List<int> Values { get; set; } = new();
+}
+
 #endregion

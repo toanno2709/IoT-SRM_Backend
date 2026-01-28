@@ -398,7 +398,41 @@ public class AdminReportService : IAdminReportService
                 })
                 .ToList();
 
-            var completionBySemester = new List<MilestoneCompletionBySemesterDto>();
+            // FIXED: Populate CompletionBySemester with all milestones
+            var allClasses = await _classRepository.GetAllAsync();
+            
+            // Filter classes by semesterId if provided
+            if (semesterId.HasValue)
+            {
+                allClasses = allClasses.Where(c => c.SemesterId == semesterId.Value).ToList();
+            }
+            
+            var completionBySemester = allClasses
+                .Where(c => c.SemesterId.HasValue && c.Semester != null)
+                .GroupBy(c => new { c.SemesterId, SemesterName = c.Semester!.Name })
+                .Select(g =>
+                {
+                    var semesterClassIds = g.Select(c => c.ClassId).ToHashSet();
+                    
+                    // Get ALL milestone evaluations for this semester (not just completed ones)
+                    var semesterEvaluations = evaluations
+                        .Where(e => e.Project?.Group != null && semesterClassIds.Contains(e.Project.Group.ClassId))
+                        .ToList();
+                    
+                    var total = semesterEvaluations.Count;
+                    var completed = semesterEvaluations.Count(e => e.Score > 0);
+                    
+                    return new MilestoneCompletionBySemesterDto
+                    {
+                        SemesterId = g.Key.SemesterId ?? 0,
+                        SemesterName = g.Key.SemesterName,
+                        TotalMilestones = total,
+                        Completed = completed,
+                        CompletionRate = total > 0 ? Math.Round((decimal)completed / total * 100, 2) : 0
+                    };
+                })
+                .OrderByDescending(x => x.SemesterId)
+                .ToList();
 
             var report = new MilestoneProgressReportDto
             {
@@ -1309,7 +1343,11 @@ public class AdminReportService : IAdminReportService
                     Feedback = fsg.Feedback,
                     GradedAt = fsg.GradedAt
                 }).ToList() ?? new List<FinalSubmissionGraderDto>(),
-                AverageGrade = fs.Grade,
+                // FIXED: Calculate average from grader grades, not from submission.Grade
+                // submission.Grade is for main instructor only
+                AverageGrade = fs.FinalSubmissionGrades?.Any() == true 
+                    ? fs.FinalSubmissionGrades.Average(fsg => fsg.Grade) 
+                    : null,
                 Students = fs.Project?.Group?.GroupMembers?.Select(gm => new FinalSubmissionStudentDto
                 {
                     StudentId = gm.UserId,
@@ -1340,6 +1378,8 @@ public class AdminReportService : IAdminReportService
                                              classIds.Contains(ce.ClassId.Value)).Result;
 
             decimal totalMilestoneScore = 0;
+            bool allMilestonesPass = true; // NEW: Check if all milestones >= 4
+            
             if (project != null)
             {
                 var projectMilestones = milestoneEvaluations
@@ -1348,22 +1388,50 @@ public class AdminReportService : IAdminReportService
                 
                 totalMilestoneScore = projectMilestones
                     .Sum(me => me.Score * (me.MilestoneDef?.Weight ?? 0) / 100);
+                
+                // NEW: Check if ALL milestone scores >= 4
+                if (projectMilestones.Any())
+                {
+                    allMilestonesPass = projectMilestones.All(me => me.Score >= 4);
+                }
+                else
+                {
+                    // No milestones = auto fail
+                    allMilestonesPass = false;
+                }
+            }
+            else
+            {
+                // No project = auto fail
+                allMilestonesPass = false;
             }
 
             var finalSubmission = project != null 
                 ? finalSubmissions.FirstOrDefault(fs => fs.ProjectId == project.ProjectId)
                 : null;
 
-            // Get average grader score from graders
+            // Get average grader score from graders (for display only, not for pass/fail logic)
             decimal? averageGraderScore = null;
+            bool allGraderGradesPass = true; // NEW: Check if all grader grades >= 5
+            
             if (finalSubmission?.FinalSubmissionGrades?.Any() == true)
             {
                 averageGraderScore = finalSubmission.FinalSubmissionGrades.Average(fsg => fsg.Grade);
+                
+                // NEW: Check if ALL grader grades >= 5
+                allGraderGradesPass = finalSubmission.FinalSubmissionGrades.All(fsg => fsg.Grade >= 5);
+            }
+            else
+            {
+                // No grader grades = auto fail
+                allGraderGradesPass = false;
             }
 
+            // Main instructor's grade from Final_Project_Submissions table
             decimal? finalScore = finalSubmission?.Grade;
+            bool mainInstructorGradePass = finalScore.HasValue && finalScore.Value >= 5;
             
-            // Calculate overall: 40% milestone + 60% final
+            // Calculate overall: 40% milestone + 60% final (for display only)
             decimal? overallScore = null;
             if (finalScore.HasValue)
             {
@@ -1373,11 +1441,18 @@ public class AdminReportService : IAdminReportService
             bool hasFinalSubmission = finalSubmission != null;
             bool isProjectCompleted = project?.Status == "Completed";
             
-            // Fix PASS logic: check overallScore >= 50 AND project completed AND has final submission
-            bool isPassed = overallScore.HasValue && 
-                           overallScore.Value >= 50 && 
+            // NEW PASS LOGIC:
+            // Student PASSES if ALL conditions are met:
+            // 1. Has final submission
+            // 2. Project status is "Completed"
+            // 3. ALL milestone scores >= 4
+            // 4. Main instructor's grade (Final_Project_Submissions.grade) >= 5
+            // 5. ALL grader grades (Final_Submission_Grades) >= 5
+            bool isPassed = hasFinalSubmission && 
                            isProjectCompleted && 
-                           hasFinalSubmission;
+                           allMilestonesPass && 
+                           mainInstructorGradePass &&
+                           allGraderGradesPass;
 
             return new StudentPassStatusDto
             {
@@ -1416,6 +1491,115 @@ public class AdminReportService : IAdminReportService
                 IsSuccess = false,
                 StatusCode = 500,
                 Message = $"Error generating comprehensive semester report: {ex.Message}"
+            };
+        }
+    }
+    
+    public async Task<ResultModel<StudentPassStatisticsComparisonDto>> GetStudentPassStatisticsBySeRequest(int? semesterId = null)
+    {
+        try
+        {
+            var comparison = new StudentPassStatisticsComparisonDto();
+            var semesterStats = new List<StudentPassStatisticsDto>();
+
+            // Get semesters to process
+            IEnumerable<SemesterEntity> semesters;
+            if (semesterId.HasValue)
+            {
+                var semester = await _context.Semesters
+                    .FirstOrDefaultAsync(s => s.SemesterId == semesterId.Value);
+                
+                if (semester == null)
+                {
+                    return new ResultModel<StudentPassStatisticsComparisonDto>
+                    {
+                        IsSuccess = false,
+                        StatusCode = 404,
+                        Message = "Semester not found"
+                    };
+                }
+                
+                semesters = new List<SemesterEntity> { semester };
+            }
+            else
+            {
+                semesters = await _context.Semesters
+                    .OrderByDescending(s => s.Year)
+                    .ThenByDescending(s => s.Term)
+                    .ToListAsync();
+            }
+
+            int overallTotalStudents = 0;
+            int overallPassedStudents = 0;
+            int overallNotPassedStudents = 0;
+
+            // Process each semester
+            foreach (var semester in semesters)
+            {
+                // Get all student course histories for this semester
+                var histories = await _context.StudentCourseHistories
+                    .Include(sch => sch.Student)
+                    .Include(sch => sch.Semester)
+                    .Where(sch => sch.SemesterId == semester.SemesterId)
+                    .ToListAsync();
+
+                int totalStudents = histories.Count;
+                int passedStudents = histories.Count(h => h.Status == "Pass");
+                int notPassedStudents = histories.Count(h => h.Status == "Not Pass");
+                
+                decimal passRate = totalStudents > 0 
+                    ? Math.Round((decimal)passedStudents / totalStudents * 100, 2) 
+                    : 0;
+
+                semesterStats.Add(new StudentPassStatisticsDto
+                {
+                    SemesterId = semester.SemesterId,
+                    SemesterName = semester.Name,
+                    SemesterCode = semester.Code,
+                    TotalStudents = totalStudents,
+                    PassedStudents = passedStudents,
+                    NotPassedStudents = notPassedStudents,
+                    PassRate = passRate,
+                    Labels = new List<string> { "PASS", "NOT PASS" },
+                    Values = new List<int> { passedStudents, notPassedStudents }
+                });
+
+                overallTotalStudents += totalStudents;
+                overallPassedStudents += passedStudents;
+                overallNotPassedStudents += notPassedStudents;
+            }
+
+            // Calculate overall statistics
+            decimal overallPassRate = overallTotalStudents > 0 
+                ? Math.Round((decimal)overallPassedStudents / overallTotalStudents * 100, 2) 
+                : 0;
+
+            comparison.Overall = new StudentPassStatisticsSummaryDto
+            {
+                TotalStudents = overallTotalStudents,
+                PassedStudents = overallPassedStudents,
+                NotPassedStudents = overallNotPassedStudents,
+                PassRate = overallPassRate,
+                Labels = new List<string> { "PASS", "NOT PASS" },
+                Values = new List<int> { overallPassedStudents, overallNotPassedStudents }
+            };
+
+            comparison.BySemester = semesterStats;
+
+            return new ResultModel<StudentPassStatisticsComparisonDto>
+            {
+                IsSuccess = true,
+                Data = comparison,
+                Message = CommonMessageConstants.GET_SUCCESS
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<StudentPassStatisticsComparisonDto>
+            {
+                IsSuccess = false,
+                StatusCode = 500,
+                Message = $"Error generating student pass statistics: {ex.Message}"
             };
         }
     }

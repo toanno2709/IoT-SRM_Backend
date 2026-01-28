@@ -57,6 +57,7 @@ using AppBackend.Services.BackgroundServices;
 using AppBackend.Services.Services.AdminClassGrader;
 using AppBackend.ApiCore.Services;
 using AppBackend.Services.Services.ProjectGrade;
+using AppBackend.Services.Services.PublicStatistics;
 
 namespace AppBackend.Extensions;
 
@@ -117,6 +118,10 @@ public static class ServicesConfig
         services.AddScoped<IGroupManagementService, GroupManagementService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ICloudinaryService, CloudinaryService>();
+        
+        // Register HttpClient for CloudinaryService
+        services.AddHttpClient();
+        
         services.AddScoped<IClassEnrollmentService, ClassEnrollmentService>();
         
         // Admin services
@@ -151,6 +156,9 @@ public static class ServicesConfig
         services.AddScoped<IOTPService, OTPService>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddSingleton<RateLimiterStore>();
+        
+        // Public services (no authentication)
+        services.AddScoped<IPublicStatisticsService, PublicStatisticsService>();
 
         // Background Services
         services.AddHostedService<MilestoneWeightCheckBackgroundService>();

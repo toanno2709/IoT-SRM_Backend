@@ -2,20 +2,22 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.FinalProject;
 using AppBackend.Services.ApiModels.Commons;
+using AppBackend.Services;
 using System.Security.Claims;
 
 namespace AppBackend.ApiCore.Controllers;
 
 [ApiController]
 [Route("api/student/projects")]
-
 public class FinalProjectController : ControllerBase
 {
     private readonly IFinalProjectService _finalProjectService;
+    private readonly ICloudinaryService _cloudinaryService;
 
-    public FinalProjectController(IFinalProjectService finalProjectService)
+    public FinalProjectController(IFinalProjectService finalProjectService, ICloudinaryService cloudinaryService)
     {
         _finalProjectService = finalProjectService;
+        _cloudinaryService = cloudinaryService;
     }
 
     /// <summary>
@@ -312,5 +314,147 @@ public class FinalProjectController : ControllerBase
             return Ok(result);
 
         return StatusCode(result.StatusCode, result);
+    }
+
+    /// <summary>
+    /// Download a file from final project submission
+    /// </summary>
+    /// <param name="projectId">Project ID</param>
+    /// <param name="fileType">Type of file: report, presentation, sourcecode, video</param>
+    /// <returns>File download</returns>
+    [HttpGet("{projectId}/final-submission/files/{fileType}/download")]
+    [Authorize(Roles = "Student,Instructor")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadFile(
+        [FromRoute] int projectId,
+        [FromRoute] string fileType)
+    {
+        try
+        {
+            var validTypes = new[] { "report", "presentation", "sourcecode", "video" };
+            if (!validTypes.Contains(fileType.ToLower()))
+            {
+                return BadRequest(new
+                {
+                    isSuccess = false,
+                    message = "Invalid file type. Valid types: report, presentation, sourcecode, video"
+                });
+            }
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new
+                {
+                    isSuccess = false,
+                    message = "User not authenticated"
+                });
+            }
+
+            // Get file URL with authorization check
+            var fileUrlResult = await _finalProjectService.GetFileUrlAsync(projectId, fileType, userId);
+            
+            if (!fileUrlResult.IsSuccess || string.IsNullOrEmpty(fileUrlResult.Data))
+            {
+                return StatusCode(fileUrlResult.StatusCode, new { 
+                    isSuccess = false, 
+                    message = fileUrlResult.Message 
+                });
+            }
+
+            // Download from Cloudinary
+            var downloadResult = await _cloudinaryService.DownloadFileAsync(fileUrlResult.Data);
+            
+            if (downloadResult == null)
+            {
+                return StatusCode(500, new { 
+                    isSuccess = false, 
+                    message = "Failed to download file from storage" 
+                });
+            }
+
+            // Return file
+            return File(downloadResult.Value.fileData, downloadResult.Value.contentType, downloadResult.Value.fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { 
+                isSuccess = false, 
+                message = $"Error downloading file: {ex.Message}" 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Download a file from final project submission by ID (Instructor access)
+    /// </summary>
+    /// <param name="finalSubmissionId">Final submission ID</param>
+    /// <param name="fileType">Type of file: report, presentation, sourcecode, video</param>
+    /// <returns>File download</returns>
+    [HttpGet("final-submissions/{finalSubmissionId}/files/{fileType}/download")]
+    [Authorize(Roles = "Instructor")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadFileBySubmissionId(
+        [FromRoute] int finalSubmissionId,
+        [FromRoute] string fileType)
+    {
+        try
+        {
+            var validTypes = new[] { "report", "presentation", "sourcecode", "video" };
+            if (!validTypes.Contains(fileType.ToLower()))
+            {
+                return BadRequest(new
+                {
+                    isSuccess = false,
+                    message = "Invalid file type. Valid types: report, presentation, sourcecode, video"
+                });
+            }
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new
+                {
+                    isSuccess = false,
+                    message = "User not authenticated"
+                });
+            }
+
+            // Get file URL with authorization check by submission ID
+            var fileUrlResult = await _finalProjectService.GetFileUrlBySubmissionIdAsync(finalSubmissionId, fileType, userId);
+            
+            if (!fileUrlResult.IsSuccess || string.IsNullOrEmpty(fileUrlResult.Data))
+            {
+                return StatusCode(fileUrlResult.StatusCode, new { 
+                    isSuccess = false, 
+                    message = fileUrlResult.Message 
+                });
+            }
+
+            // Download from Cloudinary
+            var downloadResult = await _cloudinaryService.DownloadFileAsync(fileUrlResult.Data);
+            
+            if (downloadResult == null)
+            {
+                return StatusCode(500, new { 
+                    isSuccess = false, 
+                    message = "Failed to download file from storage" 
+                });
+            }
+
+            // Return file
+            return File(downloadResult.Value.fileData, downloadResult.Value.contentType, downloadResult.Value.fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { 
+                isSuccess = false, 
+                message = $"Error downloading file: {ex.Message}" 
+            });
+        }
     }
 }

@@ -12,4 +12,9 @@ public interface ICloudinaryService
     // Helper methods for easier usage
     Task<CloudinaryUploadResponseDto?> UploadFileAsync(IFormFile file, string? folder = null);
     Task<bool> DeleteFileAsync(string fileUrl);
+    
+    /// <summary>
+    /// Download file from Cloudinary URL as byte array
+    /// </summary>
+    Task<(byte[] fileData, string fileName, string contentType)?> DownloadFileAsync(string cloudinaryUrl);
 }

@@ -311,5 +311,39 @@ namespace AppBackend.ApiCore.Controllers
             
             return StatusCode(result.StatusCode, result);
         }
+
+        /// <summary>
+        /// Get all projects in a semester with comprehensive information
+        /// </summary>
+        /// <param name="semesterId">Semester ID</param>
+        /// <returns>All projects with details, simulations, final submissions, and grades</returns>
+        /// <remarks>
+        /// **NO AUTHENTICATION REQUIRED** - Public API for external viewing
+        /// 
+        /// Returns comprehensive information for each project:
+        /// - Project details (title, description, component, status)
+        /// - Group information (name, leader, members)
+        /// - Class information (class name, instructor)
+        /// - IoT Simulations (Wokwi links, status)
+        /// - Final submission (files, notes, submission date)
+        /// - Grades and feedback from all graders
+        /// - Average grader grade
+        /// 
+        /// Use Cases:
+        /// - Public showcase of semester projects
+        /// - External portfolio viewing
+        /// - Project gallery/exhibition
+        /// </remarks>
+        [HttpGet("semester/{semesterId}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<ResultModel<SemesterProjectsResponseDto>>> GetProjectsBySemester(int semesterId)
+        {
+            var result = await _projectService.GetProjectsBySemesterAsync(semesterId);
+            
+            if (result.IsSuccess)
+                return Ok(result);
+            
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }

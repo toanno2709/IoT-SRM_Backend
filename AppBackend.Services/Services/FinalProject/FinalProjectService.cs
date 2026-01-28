@@ -190,9 +190,14 @@ public class FinalProjectService : IFinalProjectService
     {
         try
         {
+            _logger.LogInformation("=== UploadFilesAsync START === ProjectId: {ProjectId}, UserId: {UserId}", projectId, userId);
+            _logger.LogInformation("Files received - FinalReport: {HasReport}, Presentation: {HasPresentation}, SourceCode: {HasSourceCode}, VideoDemo: {HasVideoDemo}",
+                finalReport != null, presentation != null, sourceCode != null, videoDemo != null);
+
             var submission = await _finalProjectRepository.GetByProjectIdWithDetailsAsync(projectId);
             if (submission == null)
             {
+                _logger.LogWarning("Final submission not found for ProjectId: {ProjectId}", projectId);
                 throw new AppException(
                     CommonMessageConstants.NOT_FOUND,
                     "Final submission not found. Please create submission first.",
@@ -200,8 +205,13 @@ public class FinalProjectService : IFinalProjectService
                 );
             }
 
+            _logger.LogInformation("Found submission {SubmissionId}", submission.FinalSubmissionId);
+
             // Validate user is member of project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
+            _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
+            
             if (!isMember)
             {
                 throw new AppException(
@@ -213,6 +223,8 @@ public class FinalProjectService : IFinalProjectService
 
             // Check if can update
             var canUpdate = await _finalProjectRepository.CanUpdateAsync(projectId);
+            _logger.LogInformation("Can update submission: {CanUpdate}", canUpdate);
+            
             if (!canUpdate)
             {
                 throw new AppException(
@@ -229,64 +241,88 @@ public class FinalProjectService : IFinalProjectService
             // Upload final report
             if (finalReport != null)
             {
+                _logger.LogInformation("Uploading final report: {FileName} ({Size} bytes, {ContentType})",
+                    finalReport.FileName, finalReport.Length, finalReport.ContentType);
+                    
                 var result = await UploadFileToCloudinary(finalReport, "final_reports");
                 if (result != null)
                 {
                     submission.FinalReportUrl = result;
                     response.FinalReportUrl = result;
                     successCount++;
+                    _logger.LogInformation("Final report uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload final report: {finalReport.FileName}");
+                    var errorMsg = $"Failed to upload final report: {finalReport.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload presentation
             if (presentation != null)
             {
+                _logger.LogInformation("Uploading presentation: {FileName} ({Size} bytes, {ContentType})",
+                    presentation.FileName, presentation.Length, presentation.ContentType);
+                    
                 var result = await UploadFileToCloudinary(presentation, "presentations");
                 if (result != null)
                 {
                     submission.PresentationUrl = result;
                     response.PresentationUrl = result;
                     successCount++;
+                    _logger.LogInformation("Presentation uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload presentation: {presentation.FileName}");
+                    var errorMsg = $"Failed to upload presentation: {presentation.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload source code
             if (sourceCode != null)
             {
+                _logger.LogInformation("Uploading source code: {FileName} ({Size} bytes, {ContentType})",
+                    sourceCode.FileName, sourceCode.Length, sourceCode.ContentType);
+                    
                 var result = await UploadFileToCloudinary(sourceCode, "source_code");
                 if (result != null)
                 {
                     submission.SourceCodeUrl = result;
                     response.SourceCodeUrl = result;
                     successCount++;
+                    _logger.LogInformation("Source code uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload source code: {sourceCode.FileName}");
+                    var errorMsg = $"Failed to upload source code: {sourceCode.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
             // Upload video demo
             if (videoDemo != null)
             {
+                _logger.LogInformation("Uploading video demo: {FileName} ({Size} bytes, {ContentType})",
+                    videoDemo.FileName, videoDemo.Length, videoDemo.ContentType);
+                    
                 var result = await UploadFileToCloudinary(videoDemo, "video_demos");
                 if (result != null)
                 {
                     submission.VideoDemoUrl = result;
                     response.VideoDemoUrl = result;
                     successCount++;
+                    _logger.LogInformation("Video demo uploaded successfully: {Url}", result);
                 }
                 else
                 {
-                    errors.Add($"Failed to upload video demo: {videoDemo.FileName}");
+                    var errorMsg = $"Failed to upload video demo: {videoDemo.FileName}";
+                    errors.Add(errorMsg);
+                    _logger.LogError(errorMsg);
                 }
             }
 
@@ -295,9 +331,13 @@ public class FinalProjectService : IFinalProjectService
             await _finalProjectRepository.UpdateAsync(submission);
             await _finalProjectRepository.SaveChangesAsync();
 
+            _logger.LogInformation("Submission updated. Success: {SuccessCount}, Failed: {FailedCount}", successCount, errors.Count);
+
             response.SuccessCount = successCount;
             response.FailedCount = errors.Count;
             response.ErrorMessages = errors;
+
+            _logger.LogInformation("=== UploadFilesAsync SUCCESS ===");
 
             return new ResultModel<FinalProjectFileUploadResponseDto>
             {
@@ -343,51 +383,26 @@ public class FinalProjectService : IFinalProjectService
 
             _logger.LogInformation("Found submission {SubmissionId} for project {ProjectId}", submission.FinalSubmissionId, projectId);
 
-            // ? Log navigation property loading
-            _logger.LogInformation("Submission.Project is null: {IsNull}", submission.Project == null);
-            if (submission.Project != null)
-            {
-                _logger.LogInformation("Submission.Project.Group is null: {IsNull}", submission.Project.Group == null);
-                if (submission.Project.Group != null)
-                {
-                    _logger.LogInformation("Group {GroupId} found. ClassId: {ClassId}", 
-                        submission.Project.Group.GroupId, 
-                        submission.Project.Group.ClassId);
-                    _logger.LogInformation("Group.Class is null: {IsNull}", submission.Project.Group.Class == null);
-                    
-                    if (submission.Project.Group.Class != null)
-                    {
-                        _logger.LogInformation("Class {ClassId} found. InstructorId: {InstructorId}", 
-                            submission.Project.Group.Class.ClassId, 
-                            submission.Project.Group.Class.InstructorId);
-                    }
-                    
-                    _logger.LogInformation("Group.GroupMembers is null: {IsNull}", submission.Project.Group.GroupMembers == null);
-                    if (submission.Project.Group.GroupMembers != null)
-                    {
-                        var memberIds = string.Join(", ", submission.Project.Group.GroupMembers.Select(m => m.UserId));
-                        _logger.LogInformation("Group has {MemberCount} members: [{MemberIds}]", 
-                            submission.Project.Group.GroupMembers.Count, 
-                            memberIds);
-                    }
-                }
-            }
-
-            // ? Check if user is a member of the project group
+            // Check if user is a member of the project group
             var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
             _logger.LogInformation("User {UserId} is member: {IsMember}", userId, isMember);
             
-            // ? Check if user is the instructor of the class
-            var instructorId = submission.Project?.Group?.Class?.InstructorId;
-            var isInstructor = instructorId == userId;
-            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is instructor: {IsInstructor}", 
-                instructorId, userId, isInstructor);
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
+            _logger.LogInformation("Class InstructorId: {InstructorId}, User {UserId} is main instructor: {IsMainInstructor}", 
+                mainInstructorId, userId, isMainInstructor);
 
-            // ? Allow access if user is either a group member OR the instructor
-            if (!isMember && !isInstructor)
+            // Check if user is an assigned grader for this class
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+            _logger.LogInformation("User {UserId} is assigned grader: {IsAssignedGrader}", userId, isAssignedGrader);
+
+            // Allow access if user is group member OR main instructor OR assigned grader
+            if (!isMember && !isMainInstructor && !isAssignedGrader)
             {
-                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsInstructor: {IsInstructor}", 
-                    userId, isMember, isInstructor);
+                _logger.LogWarning("Access denied for user {UserId}. IsMember: {IsMember}, IsMainInstructor: {IsMainInstructor}, IsAssignedGrader: {IsAssignedGrader}", 
+                    userId, isMember, isMainInstructor, isAssignedGrader);
                 throw new AppException(
                     CommonMessageConstants.FORBIDDEN,
                     "You are not authorized to view this submission",
@@ -609,6 +624,166 @@ public class FinalProjectService : IFinalProjectService
         }
     }
 
+    public async Task<ResultModel<string>> GetFileUrlAsync(int projectId, string fileType, int userId)
+    {
+        try
+        {
+            var submission = await _finalProjectRepository.GetByProjectIdWithDetailsAsync(projectId);
+            if (submission == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Final submission not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Check if user is a member of the project group
+            var isMember = submission.Project?.Group?.GroupMembers?.Any(gm => gm.UserId == userId) ?? false;
+            
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
+
+            // Check if user is an assigned grader for this class
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+
+            // Allow access if user is group member OR main instructor OR assigned grader
+            if (!isMember && !isMainInstructor && !isAssignedGrader)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You are not authorized to access this file",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            // Get file URL
+            string? fileUrl = fileType.ToLower() switch
+            {
+                "report" => submission.FinalReportUrl,
+                "presentation" => submission.PresentationUrl,
+                "sourcecode" => submission.SourceCodeUrl,
+                "video" => submission.VideoDemoUrl,
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(fileUrl))
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "File not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            return new ResultModel<string>
+            {
+                IsSuccess = true,
+                Message = "File URL retrieved successfully",
+                Data = fileUrl,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file URL");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting file URL: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
+    public async Task<ResultModel<string>> GetFileUrlBySubmissionIdAsync(int finalSubmissionId, string fileType, int userId)
+    {
+        try
+        {
+            var submission = await _context.FinalProjectSubmissions
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.GroupMembers)
+                .Include(s => s.Project)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g!.Class)
+                            .ThenInclude(c => c!.ClassGraders)
+                .FirstOrDefaultAsync(s => s.FinalSubmissionId == finalSubmissionId);
+
+            if (submission == null)
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "Final submission not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            // Check if user is the main instructor of the class
+            var mainInstructorId = submission.Project?.Group?.Class?.InstructorId;
+            var isMainInstructor = mainInstructorId == userId;
+
+            // Check if user is an assigned grader
+            var isAssignedGrader = submission.Project?.Group?.Class?.ClassGraders?
+                .Any(cg => cg.InstructorId == userId && cg.IsActive) ?? false;
+
+            // Allow access if user is main instructor OR assigned grader
+            if (!isMainInstructor && !isAssignedGrader)
+            {
+                throw new AppException(
+                    CommonMessageConstants.FORBIDDEN,
+                    "You are not authorized to access this file",
+                    StatusCodes.Status403Forbidden
+                );
+            }
+
+            // Get file URL
+            string? fileUrl = fileType.ToLower() switch
+            {
+                "report" => submission.FinalReportUrl,
+                "presentation" => submission.PresentationUrl,
+                "sourcecode" => submission.SourceCodeUrl,
+                "video" => submission.VideoDemoUrl,
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(fileUrl))
+            {
+                throw new AppException(
+                    CommonMessageConstants.NOT_FOUND,
+                    "File not found",
+                    StatusCodes.Status404NotFound
+                );
+            }
+
+            return new ResultModel<string>
+            {
+                IsSuccess = true,
+                Message = "File URL retrieved successfully",
+                Data = fileUrl,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+        catch (AppException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file URL by submission ID");
+            throw new AppException(
+                CommonMessageConstants.ERROR,
+                $"Error getting file URL: {ex.Message}",
+                StatusCodes.Status500InternalServerError
+            );
+        }
+    }
+
     public async Task<ResultModel<FinalProjectSubmissionResponseDto>> GradeFinalProjectAsync(
         int projectId,
         FinalProjectGradeRequestDto request,
@@ -762,10 +937,10 @@ public class FinalProjectService : IFinalProjectService
             ProjectId = submission.ProjectId,
             ProjectTitle = project?.Title,
             GroupName = project?.Group?.GroupName,
-            FinalReportUrl = ConvertToDownloadableUrl(submission.FinalReportUrl),
-            PresentationUrl = ConvertToDownloadableUrl(submission.PresentationUrl),
-            SourceCodeUrl = ConvertToDownloadableUrl(submission.SourceCodeUrl),
-            VideoDemoUrl = ConvertToDownloadableUrl(submission.VideoDemoUrl),
+            FinalReportUrl = submission.FinalReportUrl, // ? FIX: Return original URL
+            PresentationUrl = submission.PresentationUrl, // ? FIX: Return original URL
+            SourceCodeUrl = submission.SourceCodeUrl, // ? FIX: Return original URL
+            VideoDemoUrl = submission.VideoDemoUrl, // ? FIX: Return original URL
             RepositoryUrl = submission.RepositoryUrl,
             SubmissionNotes = submission.SubmissionNotes,
             SubmittedBy = submission.SubmittedBy,
@@ -781,65 +956,5 @@ public class FinalProjectService : IFinalProjectService
             CanUpdate = canUpdate,
             Deadline = finalMilestone?.DueDate?.ToDateTime(TimeOnly.MaxValue)
         };
-    }
-
-    /// <summary>
-    /// Convert stored Cloudinary URL to downloadable URL with fl_attachment flag
-    /// This ensures files like PDF and ZIP can be downloaded properly
-    /// </summary>
-    private string? ConvertToDownloadableUrl(string? cloudinaryUrl)
-    {
-        if (string.IsNullOrEmpty(cloudinaryUrl))
-            return cloudinaryUrl;
-
-        try
-        {
-            // Check if URL is from Cloudinary
-            if (!cloudinaryUrl.Contains("cloudinary.com"))
-                return cloudinaryUrl;
-
-            // Check if it's a raw file (not an image)
-            if (!cloudinaryUrl.Contains("/raw/upload/") && !cloudinaryUrl.Contains("/video/upload/"))
-                return cloudinaryUrl;
-
-            // Check if already has fl_attachment
-            if (cloudinaryUrl.Contains("fl_attachment"))
-                return cloudinaryUrl;
-
-            var uri = new Uri(cloudinaryUrl);
-            var path = uri.AbsolutePath;
-            
-            // Find the "upload/" part
-            var uploadIndex = path.IndexOf("/upload/");
-            if (uploadIndex == -1)
-                return cloudinaryUrl;
-
-            // Extract filename from the URL
-            var lastSlashIndex = path.LastIndexOf('/');
-            var fileName = lastSlashIndex > 0 ? path.Substring(lastSlashIndex + 1) : "download";
-            
-            // URL decode the filename if needed
-            fileName = Uri.UnescapeDataString(fileName);
-            
-            // Encode the filename for URL
-            var encodedFileName = Uri.EscapeDataString(fileName);
-            
-            // Insert the fl_attachment transformation
-            var beforeUpload = path.Substring(0, uploadIndex + 8); // Include "/upload/"
-            var afterUpload = path.Substring(uploadIndex + 8);
-            
-            // Build the new path with fl_attachment
-            var newPath = $"{beforeUpload}fl_attachment:{encodedFileName}/{afterUpload}";
-            
-            // Reconstruct the full URL
-            var downloadUrl = $"{uri.Scheme}://{uri.Host}{newPath}";
-            
-            return downloadUrl;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not convert URL to downloadable format: {Url}", cloudinaryUrl);
-            return cloudinaryUrl; // Return original URL if conversion fails
-        }
     }
 }
