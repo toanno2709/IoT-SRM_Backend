@@ -1494,4 +1494,113 @@ public class AdminReportService : IAdminReportService
             };
         }
     }
+    
+    public async Task<ResultModel<StudentPassStatisticsComparisonDto>> GetStudentPassStatisticsBySeRequest(int? semesterId = null)
+    {
+        try
+        {
+            var comparison = new StudentPassStatisticsComparisonDto();
+            var semesterStats = new List<StudentPassStatisticsDto>();
+
+            // Get semesters to process
+            IEnumerable<SemesterEntity> semesters;
+            if (semesterId.HasValue)
+            {
+                var semester = await _context.Semesters
+                    .FirstOrDefaultAsync(s => s.SemesterId == semesterId.Value);
+                
+                if (semester == null)
+                {
+                    return new ResultModel<StudentPassStatisticsComparisonDto>
+                    {
+                        IsSuccess = false,
+                        StatusCode = 404,
+                        Message = "Semester not found"
+                    };
+                }
+                
+                semesters = new List<SemesterEntity> { semester };
+            }
+            else
+            {
+                semesters = await _context.Semesters
+                    .OrderByDescending(s => s.Year)
+                    .ThenByDescending(s => s.Term)
+                    .ToListAsync();
+            }
+
+            int overallTotalStudents = 0;
+            int overallPassedStudents = 0;
+            int overallNotPassedStudents = 0;
+
+            // Process each semester
+            foreach (var semester in semesters)
+            {
+                // Get all student course histories for this semester
+                var histories = await _context.StudentCourseHistories
+                    .Include(sch => sch.Student)
+                    .Include(sch => sch.Semester)
+                    .Where(sch => sch.SemesterId == semester.SemesterId)
+                    .ToListAsync();
+
+                int totalStudents = histories.Count;
+                int passedStudents = histories.Count(h => h.Status == "Pass");
+                int notPassedStudents = histories.Count(h => h.Status == "Not Pass");
+                
+                decimal passRate = totalStudents > 0 
+                    ? Math.Round((decimal)passedStudents / totalStudents * 100, 2) 
+                    : 0;
+
+                semesterStats.Add(new StudentPassStatisticsDto
+                {
+                    SemesterId = semester.SemesterId,
+                    SemesterName = semester.Name,
+                    SemesterCode = semester.Code,
+                    TotalStudents = totalStudents,
+                    PassedStudents = passedStudents,
+                    NotPassedStudents = notPassedStudents,
+                    PassRate = passRate,
+                    Labels = new List<string> { "PASS", "NOT PASS" },
+                    Values = new List<int> { passedStudents, notPassedStudents }
+                });
+
+                overallTotalStudents += totalStudents;
+                overallPassedStudents += passedStudents;
+                overallNotPassedStudents += notPassedStudents;
+            }
+
+            // Calculate overall statistics
+            decimal overallPassRate = overallTotalStudents > 0 
+                ? Math.Round((decimal)overallPassedStudents / overallTotalStudents * 100, 2) 
+                : 0;
+
+            comparison.Overall = new StudentPassStatisticsSummaryDto
+            {
+                TotalStudents = overallTotalStudents,
+                PassedStudents = overallPassedStudents,
+                NotPassedStudents = overallNotPassedStudents,
+                PassRate = overallPassRate,
+                Labels = new List<string> { "PASS", "NOT PASS" },
+                Values = new List<int> { overallPassedStudents, overallNotPassedStudents }
+            };
+
+            comparison.BySemester = semesterStats;
+
+            return new ResultModel<StudentPassStatisticsComparisonDto>
+            {
+                IsSuccess = true,
+                Data = comparison,
+                Message = CommonMessageConstants.GET_SUCCESS
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ResultModel<StudentPassStatisticsComparisonDto>
+            {
+                IsSuccess = false,
+                StatusCode = 500,
+                Message = $"Error generating student pass statistics: {ex.Message}"
+            };
+        }
+    }
 }

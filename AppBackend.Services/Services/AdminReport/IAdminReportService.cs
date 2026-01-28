@@ -13,4 +13,5 @@ public interface IAdminReportService
     Task<ResultModel<ReportExportResponseDto>> ExportReportAsync(ReportExportRequestDto request);
     Task<ResultModel<ReportExportResponseDto>> ExportComprehensiveSemesterReportAsync(int semesterId);
     Task<ResultModel<ComprehensiveSemesterReportDto>> GetComprehensiveSemesterReportAsync(int semesterId);
+    Task<ResultModel<StudentPassStatisticsComparisonDto>> GetStudentPassStatisticsBySeRequest(int? semesterId = null);
 }

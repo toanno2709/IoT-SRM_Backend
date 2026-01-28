@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AppBackend.Services.Services.AdminDashboard;
 using AppBackend.Services.ApiModels.Commons;
@@ -111,7 +111,7 @@ public class AdminController : ControllerBase
     /// <summary>
     /// Get classes by semester chart data
     /// </summary>
-    /// <returns>Bar chart data showing number of classes per semester</returns>
+    /// <returns>Bar chart data showing the number of classes per semester</returns>
     /// <remarks>
     /// Returns data suitable for rendering a bar chart showing:
     /// - Number of classes in each semester
@@ -1338,4 +1338,91 @@ public class AdminController : ControllerBase
     }
 
     #endregion
+
+    #region Reports & Analytics APIs
+
+    /// <summary>
+    /// Get student pass/not pass statistics by semester
+    /// </summary>
+    /// <param name="semesterId">Optional semester ID. If not provided, returns all semesters</param>
+    /// <returns>Pass/Not Pass statistics in chart-ready format (labels and values)</returns>
+    /// <remarks>
+    /// Returns student pass/not pass statistics by semester, formatted for chart visualization.
+    /// 
+    /// **Response Format:**
+    /// - **Overall**: Total statistics across all selected semesters
+    ///   - Labels: ["PASS", "NOT PASS"]
+    ///   - Values: [passedCount, notPassedCount]
+    ///   - Pass rate percentage
+    /// 
+    /// - **BySemester**: Statistics for each semester
+    ///   - Semester information (ID, name, code)
+    ///   - Total students in semester
+    ///   - Passed students count
+    ///   - Not passed students count
+    ///   - Pass rate percentage
+    ///   - Chart-ready format: Labels ["PASS", "NOT PASS"] and Values [passedCount, notPassedCount]
+    /// 
+    /// **Use Cases:**
+    /// - `/api/admin/statistics/pass-not-pass` - Get all semesters
+    /// - `/api/admin/statistics/pass-not-pass?semesterId=5` - Get specific semester
+    /// 
+    /// **Pass Criteria (as determined by class completion logic):**
+    /// - Overall score >= 50
+    /// - Project status = "Completed"
+    /// - Final submission submitted
+    /// - ALL milestone scores >= 4
+    /// - Main instructor grade >= 5
+    /// - ALL grader grades >= 5
+    /// 
+    /// Data is based on Student_Course_History table where Status = "Pass" or "Not Pass".
+    /// 
+    /// **Example Response:**
+    /// ```json
+    /// {
+    ///   "overall": {
+    ///     "totalStudents": 100,
+    ///     "passedStudents": 75,
+    ///     "notPassedStudents": 25,
+    ///     "passRate": 75.00,
+    ///     "labels": ["PASS", "NOT PASS"],
+    ///     "values": [75, 25]
+    ///   },
+    ///   "bySemester": [
+    ///     {
+    ///       "semesterId": 1,
+    ///       "semesterName": "Fall 2024",
+    ///       "semesterCode": "FA24",
+    ///       "totalStudents": 50,
+    ///       "passedStudents": 40,
+    ///       "notPassedStudents": 10,
+    ///       "passRate": 80.00,
+    ///       "labels": ["PASS", "NOT PASS"],
+    ///       "values": [40, 10]
+    ///     }
+    ///   ]
+    /// }
+    /// ```
+    /// </remarks>
+    [HttpGet("statistics/pass-not-pass")]
+    [ApiExplorerSettings(GroupName = "admin-statistics")]
+    [AllowAnonymous] // Public statistics endpoint
+    [RateLimit(permitLimit: 30, windowSeconds: 60)]
+    [ProducesResponseType(typeof(ResultModel<StudentPassStatisticsComparisonDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ResultModel<StudentPassStatisticsComparisonDto>>> GetStudentPassStatistics(
+        [FromQuery] int? semesterId = null)
+    {
+        var result = await _reportService.GetStudentPassStatisticsBySeRequest(semesterId);
+
+        if (result.IsSuccess)
+            return Ok(result);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    #endregion
 }
+
+
