@@ -7,7 +7,7 @@ namespace AppBackend.Services.BackgroundServices;
 
 /// <summary>
 /// Background service that runs daily to check milestone deadlines and send reminders to students
-/// Runs at 9:00 AM UTC every day
+/// Runs at 1:00 AM Vietnam Time (18:00 UTC / 6:00 PM UTC) every day
 /// </summary>
 public class MilestoneDeadlineReminderBackgroundService : BackgroundService
 {
@@ -27,20 +27,20 @@ public class MilestoneDeadlineReminderBackgroundService : BackgroundService
     {
         _logger.LogInformation("Milestone Deadline Reminder Background Service is starting");
 
-        // Calculate time until next 9:00 AM UTC
+        // Calculate time until next 6:00 PM UTC (1:00 AM Vietnam Time)
         var now = DateTime.UtcNow;
-        var next9AM = CalculateNext9AM(now);
-        var timeUntilNext9AM = next9AM - now;
+        var next6PM = CalculateNext6PM(now);
+        var timeUntilNext6PM = next6PM - now;
 
         _logger.LogInformation(
-            "Next milestone deadline check scheduled for: {Next9AM} (in {Hours} hours)",
-            next9AM, timeUntilNext9AM.TotalHours);
+            "Next milestone deadline check scheduled for: {Next6PM} UTC (1:00 AM Vietnam Time) (in {Hours} hours)",
+            next6PM, timeUntilNext6PM.TotalHours);
 
         // Schedule the first execution
         _timer = new Timer(
             DoWork,
             null,
-            timeUntilNext9AM,
+            timeUntilNext6PM,
             TimeSpan.FromDays(1)); // Run every 24 hours
 
         return Task.CompletedTask;
@@ -50,7 +50,7 @@ public class MilestoneDeadlineReminderBackgroundService : BackgroundService
     {
         try
         {
-            _logger.LogInformation("=== Starting Daily Milestone Deadline Reminder Job at {Time} ===", DateTime.UtcNow);
+            _logger.LogInformation("=== Starting Daily Milestone Deadline Reminder Job at {Time} UTC (1:00 AM Vietnam Time) ===", DateTime.UtcNow);
 
             using (var scope = _serviceProvider.CreateScope())
             {
@@ -95,22 +95,22 @@ public class MilestoneDeadlineReminderBackgroundService : BackgroundService
             _logger.LogError(ex, "Error occurred during daily milestone deadline reminder check");
         }
 
-        _logger.LogInformation("Next check will run in 24 hours at 9:00 AM UTC");
+        _logger.LogInformation("Next check will run in 24 hours at 6:00 PM UTC (1:00 AM Vietnam Time)");
     }
 
-    private DateTime CalculateNext9AM(DateTime fromDate)
+    private DateTime CalculateNext6PM(DateTime fromDate)
     {
-        // Set to 9:00 AM UTC
-        var targetTime = new TimeSpan(9, 0, 0);
-        var next9AM = fromDate.Date.Add(targetTime);
+        // Set to 6:00 PM UTC (1:00 AM Vietnam Time UTC+7)
+        var targetTime = new TimeSpan(18, 0, 0);
+        var next6PM = fromDate.Date.Add(targetTime);
 
-        // If current time is past 9:00 AM today, schedule for tomorrow
+        // If current time is past 6:00 PM today, schedule for tomorrow
         if (fromDate.TimeOfDay >= targetTime)
         {
-            next9AM = next9AM.AddDays(1);
+            next6PM = next6PM.AddDays(1);
         }
 
-        return next9AM;
+        return next6PM;
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)

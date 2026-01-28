@@ -52,6 +52,76 @@ public class MilestoneDeadlineReminderService : IMilestoneDeadlineReminderServic
 
             result.TotalMilestonesChecked = milestones.Count;
 
+            // ? PHASE 1: Update milestone statuses (with error handling)
+            var statusUpdateErrors = 0;
+            foreach (var milestone in milestones)
+            {
+                if (milestone.DueDate == null)
+                    continue;
+
+                var daysUntilDue = milestone.DueDate.Value.DayNumber - today.DayNumber;
+
+                // Only update status for overdue milestones
+                if (daysUntilDue < 0)
+                {
+                    try
+                    {
+                        var hasSubmission = milestone.MilestoneSubmissions.Any();
+                        
+                        // Update status to Overdue if not already set
+                        if (!hasSubmission && milestone.Status != "Overdue")
+                        {
+                            milestone.Status = "Overdue";
+                            milestone.UpdatedAt = DateTime.UtcNow;
+                            _context.ProjectMilestones.Update(milestone);
+                            
+                            _logger.LogInformation(
+                                "Marked milestone {MilestoneId} '{Title}' as 'Overdue' (Due: {DueDate}, Days overdue: {DaysOverdue})",
+                                milestone.MilestoneId, milestone.Title, milestone.DueDate, Math.Abs(daysUntilDue));
+                        }
+                        
+                        // If submitted, update status to "Completed" if not already
+                        if (hasSubmission && milestone.Status != "Completed")
+                        {
+                            milestone.Status = "Completed";
+                            milestone.UpdatedAt = DateTime.UtcNow;
+                            _context.ProjectMilestones.Update(milestone);
+                            
+
+                            _logger.LogInformation(
+                                "Marked milestone {MilestoneId} '{Title}' as 'Completed' (has submission)",
+                                milestone.MilestoneId, milestone.Title);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        statusUpdateErrors++;
+                        _logger.LogWarning(ex, 
+                            "Failed to update status for milestone {MilestoneId} '{Title}'. Will continue with notifications.",
+                            milestone.MilestoneId, milestone.Title);
+                        // ? Continue to next milestone - không throw exception
+                    }
+                }
+            }
+
+            // ? Try to save status updates (but don't fail if it errors)
+            if (_context.ChangeTracker.HasChanges())
+            {
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Successfully saved {Count} milestone status updates", 
+                        _context.ChangeTracker.Entries().Count(e => e.State == EntityState.Modified));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save milestone status updates. Notifications will still be sent.");
+                    // ? Clear tracked changes to avoid conflicts with notification saves
+                    _context.ChangeTracker.Clear();
+                }
+            }
+
+            // ? PHASE 2: Send notifications (independent of status updates)
             foreach (var milestone in milestones)
             {
                 if (milestone.DueDate == null || milestone.Project?.Group == null)
@@ -163,26 +233,45 @@ public class MilestoneDeadlineReminderService : IMilestoneDeadlineReminderServic
                 });
 
                 _logger.LogInformation(
-                    "Sent {Type} reminder for milestone {MilestoneId} '{Title}' to {Count} students",
+                    "Prepared {Type} reminder for milestone {MilestoneId} '{Title}' to {Count} students",
                     reminderType, milestone.MilestoneId, milestone.Title, groupMembers.Count);
             }
 
-            await _context.SaveChangesAsync();
-
-            result.TotalStudentsNotified = studentsNotified.Count;
-
-            _logger.LogInformation(
-                "=== Milestone Deadline Check Complete === Milestones: {Milestones}, Students Notified: {Students}, Total Reminders: {Reminders}",
-                result.TotalMilestonesChecked, result.TotalStudentsNotified, 
-                result.TotalReminders7Days + result.TotalReminders3Days + result.TotalReminders1Day + result.TotalOverdueReminders);
-
-            return new ResultModel<MilestoneDeadlineReminderResultDto>
+            // ? Save notifications (this is the critical part)
+            try
             {
-                IsSuccess = true,
-                Message = $"Checked {result.TotalMilestonesChecked} milestones. Sent reminders to {result.TotalStudentsNotified} students.",
-                Data = result,
-                StatusCode = StatusCodes.Status200OK
-            };
+                await _context.SaveChangesAsync();
+                result.TotalStudentsNotified = studentsNotified.Count;
+                
+                _logger.LogInformation(
+                    "=== Milestone Deadline Check Complete === Milestones: {Milestones}, Students Notified: {Students}, Total Reminders: {Reminders}, Status Update Errors: {Errors}",
+                    result.TotalMilestonesChecked, result.TotalStudentsNotified, 
+                    result.TotalReminders7Days + result.TotalReminders3Days + result.TotalReminders1Day + result.TotalOverdueReminders,
+                    statusUpdateErrors);
+
+                var message = $"Checked {result.TotalMilestonesChecked} milestones. Sent reminders to {result.TotalStudentsNotified} students.";
+                if (statusUpdateErrors > 0)
+                {
+                    message += $" Warning: {statusUpdateErrors} milestone(s) failed to update status.";
+                }
+
+                return new ResultModel<MilestoneDeadlineReminderResultDto>
+                {
+                    IsSuccess = true,
+                    Message = message,
+                    Data = result,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical error: Failed to save notifications");
+                throw new AppException(
+                    CommonMessageConstants.ERROR,
+                    $"Failed to send notifications: {ex.Message}",
+                    StatusCodes.Status500InternalServerError
+                );
+            }
         }
         catch (Exception ex)
         {
