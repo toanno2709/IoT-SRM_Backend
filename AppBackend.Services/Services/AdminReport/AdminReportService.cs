@@ -398,7 +398,41 @@ public class AdminReportService : IAdminReportService
                 })
                 .ToList();
 
-            var completionBySemester = new List<MilestoneCompletionBySemesterDto>();
+            // FIXED: Populate CompletionBySemester with all milestones
+            var allClasses = await _classRepository.GetAllAsync();
+            
+            // Filter classes by semesterId if provided
+            if (semesterId.HasValue)
+            {
+                allClasses = allClasses.Where(c => c.SemesterId == semesterId.Value).ToList();
+            }
+            
+            var completionBySemester = allClasses
+                .Where(c => c.SemesterId.HasValue && c.Semester != null)
+                .GroupBy(c => new { c.SemesterId, SemesterName = c.Semester!.Name })
+                .Select(g =>
+                {
+                    var semesterClassIds = g.Select(c => c.ClassId).ToHashSet();
+                    
+                    // Get ALL milestone evaluations for this semester (not just completed ones)
+                    var semesterEvaluations = evaluations
+                        .Where(e => e.Project?.Group != null && semesterClassIds.Contains(e.Project.Group.ClassId))
+                        .ToList();
+                    
+                    var total = semesterEvaluations.Count;
+                    var completed = semesterEvaluations.Count(e => e.Score > 0);
+                    
+                    return new MilestoneCompletionBySemesterDto
+                    {
+                        SemesterId = g.Key.SemesterId ?? 0,
+                        SemesterName = g.Key.SemesterName,
+                        TotalMilestones = total,
+                        Completed = completed,
+                        CompletionRate = total > 0 ? Math.Round((decimal)completed / total * 100, 2) : 0
+                    };
+                })
+                .OrderByDescending(x => x.SemesterId)
+                .ToList();
 
             var report = new MilestoneProgressReportDto
             {

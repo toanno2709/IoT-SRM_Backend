@@ -1082,11 +1082,11 @@ public class ClassService : IClassService
                 {
                     newStatus = "Pass";
                     isRetake = false;
-                    notes = $"Passed with final grade: {finalGrade?.ToString("F2") ?? "N/A"}/10";
+                    notes = $"Pass with Main Instructor Grade: {(finalGrade.HasValue ? $"{finalGrade.Value:F2}" : "N/A")}/100";
                     
                     if (avgGradeFromOthers.HasValue)
                     {
-                        notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10";
+                        notes += $". Average grade from other instructors: {avgGradeFromOthers.Value:F2}/100";
                     }
                 }
                 else
@@ -1099,12 +1099,12 @@ public class ClassService : IClassService
                     
                     if (finalGrade.HasValue)
                     {
-                        notes += $" Main instructor grade: {finalGrade.Value:F2}/10.";
+                        notes += $" Main instructor grade: {finalGrade.Value:F2}/100.";
                     }
                     
                     if (avgGradeFromOthers.HasValue)
                     {
-                        notes += $" Average grade from other instructors: {avgGradeFromOthers.Value:F2}/10.";
+                        notes += $" Average grade from other instructors: {avgGradeFromOthers.Value:F2}/100.";
                     }
                 }
 
@@ -1153,7 +1153,7 @@ public class ClassService : IClassService
                     // Add information about grades and Pass/Not Pass status
                     if (history.FinalGrade.HasValue)
                     {
-                        message += $"?? Final grade: {history.FinalGrade.Value:F2}/10\n";
+                        message += $"?? Main Instructor Grade: {history.FinalGrade.Value:F2}/100\n";
                         
                         if (history.Status == "Pass")
                         {
@@ -1168,7 +1168,7 @@ public class ClassService : IClassService
                         // Add information about grades from other instructors if available
                         if (history.AverageGradeFromOtherInstructors.HasValue)
                         {
-                            message += $"?? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/10\n";
+                            message += $"?? Average grade from other instructors: {history.AverageGradeFromOtherInstructors.Value:F2}/100\n";
                         }
                     }
                     else
